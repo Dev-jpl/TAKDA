@@ -5,7 +5,7 @@ import {
   BookOpen, Code, MusicNote, Airplane, House,
   Heart, Flask, Camera, Rocket, Leaf,
   Star, Brain, Person, ChartBar, PencilSimple,
-  Folder, Globe, GameController, Dumbbell, Bicycle,
+  Folder, Globe, GameController, Timer, Bicycle,
   Coffee, Dog, Sun, Moon, Lightning,
   Fire, Plant, Sword, Trophy, Megaphone,
   Headphones, FilmSlate, ShoppingCart, Wrench, Microscope,
@@ -13,16 +13,20 @@ import {
 import { colors } from '../../constants/colors'
 
 // Explicit map — one source of truth shared with SpaceIcon
-export const ICON_MAP = {
+// Safety: filter out any undefined imports so a bad name can never crash the picker
+const _RAW_MAP = {
   Briefcase, Barbell, CurrencyDollar, User, Palette,
   BookOpen, Code, MusicNote, Airplane, House,
   Heart, Flask, Camera, Rocket, Leaf,
   Star, Brain, Person, ChartBar, PencilSimple,
-  Folder, Globe, GameController, Dumbbell, Bicycle,
+  Folder, Globe, GameController, Timer, Bicycle,
   Coffee, Dog, Sun, Moon, Lightning,
   Fire, Plant, Sword, Trophy, Megaphone,
   Headphones, FilmSlate, ShoppingCart, Wrench, Microscope,
 }
+export const ICON_MAP = Object.fromEntries(
+  Object.entries(_RAW_MAP).filter(([, v]) => v != null)
+)
 
 const ICON_LIST = Object.keys(ICON_MAP)
 
@@ -31,6 +35,7 @@ const ICON_LIST = Object.keys(ICON_MAP)
 // THIS button's selection state or color changes
 const IconButton = memo(({ iconName, isSelected, color, onSelect }) => {
   const IconComponent = ICON_MAP[iconName]
+  if (!IconComponent) return null  // guard against any undefined icon
   return (
     <TouchableOpacity
       style={[

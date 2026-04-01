@@ -96,7 +96,7 @@ export default function CreateSpaceScreen({ navigation, route }) {
         {/* Icon picker */}
         <View style={styles.section}>
           <Text style={styles.label}>Icon</Text>
-          <IconPicker selected={icon} color={color} onSelect={handleIconSelect} />
+          <IconPicker defaultSelected={icon} color={color} onSelect={handleIconSelect} />
         </View>
 
         {/* Color picker */}

@@ -1,11 +1,5 @@
 import React, { useState, useCallback, memo } from 'react'
-import {
-  View,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  FlatList,
-} from 'react-native'
+import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native'
 import {
   Briefcase, Barbell, CurrencyDollar, User, Palette,
   BookOpen, Code, MusicNote, Airplane, House,
@@ -18,7 +12,7 @@ import {
 } from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
 
-// Explicit map — avoids import * unreliability with Metro/Hermes
+// Explicit map — one source of truth shared with SpaceIcon
 export const ICON_MAP = {
   Briefcase, Barbell, CurrencyDollar, User, Palette,
   BookOpen, Code, MusicNote, Airplane, House,
@@ -32,9 +26,11 @@ export const ICON_MAP = {
 
 const ICON_LIST = Object.keys(ICON_MAP)
 
-// Memoized per-icon button — only re-renders when ITS selection state changes
+// ─── Per-icon button ──────────────────────────────────────────────────────────
+// Custom comparator ignores `onSelect` (stable ref) — only re-renders when
+// THIS button's selection state or color changes
 const IconButton = memo(({ iconName, isSelected, color, onSelect }) => {
-  const IconComponent = ICON_MAP[iconName] || Folder
+  const IconComponent = ICON_MAP[iconName]
   return (
     <TouchableOpacity
       style={[
@@ -57,22 +53,24 @@ const IconButton = memo(({ iconName, isSelected, color, onSelect }) => {
   prev.iconName === next.iconName
 )
 
-export default function IconPicker({ selected, color, onSelect }) {
+// ─── Picker ───────────────────────────────────────────────────────────────────
+// Wrapped in React.memo so parent re-renders (e.g. SpaceIcon preview updating)
+// don't cascade back into the grid.
+// Selection state lives HERE — not in the parent — so tapping an icon only
+// re-renders IconPicker once (internal state), not twice.
+function IconPicker({ defaultSelected = 'Folder', color, onSelect }) {
+  const [selected, setSelected] = useState(defaultSelected)
   const [search, setSearch] = useState('')
+
+  // Stable handler — doesn't change between renders
+  const handleSelect = useCallback((iconName) => {
+    setSelected(iconName)
+    onSelect(iconName)
+  }, [onSelect])
 
   const filtered = search
     ? ICON_LIST.filter(n => n.toLowerCase().includes(search.toLowerCase()))
     : ICON_LIST
-
-  // Stable renderItem — only invalidated when selected or color changes
-  const renderItem = useCallback(({ item }) => (
-    <IconButton
-      iconName={item}
-      isSelected={item === selected}
-      color={color}
-      onSelect={onSelect}
-    />
-  ), [selected, color, onSelect])
 
   return (
     <View style={styles.container}>
@@ -83,21 +81,25 @@ export default function IconPicker({ selected, color, onSelect }) {
         placeholder="Search icons..."
         placeholderTextColor={colors.text.tertiary}
       />
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item}
-        renderItem={renderItem}
-        numColumns={6}
-        columnWrapperStyle={styles.row}
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={false}
-        extraData={selected + color}   // tells FlatList to re-evaluate when selection changes
-        removeClippedSubviews={false}
-      />
+      {/* Plain flexWrap View — faster than FlatList for a small static list */}
+      <View style={styles.grid}>
+        {filtered.map(iconName => (
+          <IconButton
+            key={iconName}
+            iconName={iconName}
+            isSelected={iconName === selected}
+            color={color}
+            onSelect={handleSelect}
+          />
+        ))}
+      </View>
     </View>
   )
 }
 
+export default memo(IconPicker)
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { gap: 12 },
   search: {
@@ -110,7 +112,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text.primary,
   },
-  row: { gap: 8, marginBottom: 8 },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   iconBtn: {
     width: 48,
     height: 48,

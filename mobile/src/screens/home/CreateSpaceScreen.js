@@ -1,64 +1,55 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from 'react'
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
-} from "react-native";
-import { supabase } from "../../services/supabase";
-import { spacesService } from "../../services/spaces";
-import { colors } from "../../constants/colors";
-import SpaceIcon from "../../components/common/SpaceIcon";
-import IconPicker from "../../components/common/IconPicker";
+  View, Text, TextInput, TouchableOpacity,
+  StyleSheet, ScrollView, ActivityIndicator, Alert,
+} from 'react-native'
+import { supabase } from '../../services/supabase'
+import { spacesService } from '../../services/spaces'
+import { colors } from '../../constants/colors'
+import SpaceIcon from '../../components/common/SpaceIcon'
+import IconPicker from '../../components/common/IconPicker'
 
 const COLORS = [
-  "#7F77DD",
-  "#1D9E75",
-  "#378ADD",
-  "#D85A30",
-  "#BA7517",
-  "#E24B4A",
-  "#A855F7",
-  "#EC4899",
-];
+  '#7F77DD', '#1D9E75', '#378ADD', '#D85A30',
+  '#BA7517', '#E24B4A', '#A855F7', '#EC4899',
+]
 
-export default function CreateSpaceScreen({ navigation }) {
-  const [name, setName] = useState("");
-  const [icon, setIcon] = useState("Folder");
-  const [color, setColor] = useState("#7F77DD");
-  const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState(null);
+export default function CreateSpaceScreen({ navigation, route }) {
+  const editSpace = route.params?.space ?? null
+  const isEdit = !!editSpace
+
+  const [name, setName] = useState(editSpace?.name ?? '')
+  const [icon, setIcon] = useState(editSpace?.icon ?? 'Folder')
+  const [color, setColor] = useState(editSpace?.color ?? '#7F77DD')
+  const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-  }, []);
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user))
+  }, [])
 
-  async function handleCreate() {
+  // Stable callback to avoid IconPicker re-renders from parent
+  const handleIconSelect = useCallback((iconName) => setIcon(iconName), [])
+
+  async function handleSave() {
     if (!name.trim()) {
-      Alert.alert("Name required", "Please enter a space name.");
-      return;
+      Alert.alert('Name required', 'Please enter a space name.')
+      return
     }
-    if (!user) return;
+    if (!user) return
 
-    setLoading(true);
+    setLoading(true)
     try {
-      await spacesService.createSpace({
-        userId: user.id,
-        name: name.trim(),
-        icon,
-        color,
-      });
-      navigation.goBack();
+      if (isEdit) {
+        await spacesService.updateSpace(editSpace.id, { name: name.trim(), icon, color })
+      } else {
+        await spacesService.createSpace({ userId: user.id, name: name.trim(), icon, color })
+      }
+      navigation.goBack()
     } catch (e) {
-      Alert.alert("Error", "Failed to create space.");
+      Alert.alert('Error', isEdit ? 'Failed to update space.' : 'Failed to create space.')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
@@ -74,24 +65,19 @@ export default function CreateSpaceScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Text style={styles.cancel}>Cancel</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>New space</Text>
-          <TouchableOpacity onPress={handleCreate} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.text.secondary} />
-            ) : (
-              <Text style={styles.create}>Create</Text>
-            )}
+          <Text style={styles.title}>{isEdit ? 'Edit space' : 'New space'}</Text>
+          <TouchableOpacity onPress={handleSave} disabled={loading}>
+            {loading
+              ? <ActivityIndicator size="small" color={colors.text.secondary} />
+              : <Text style={styles.saveBtn}>{isEdit ? 'Save' : 'Create'}</Text>
+            }
           </TouchableOpacity>
         </View>
 
         {/* Preview */}
-        <SpaceIcon
-          icon={icon}
-          color={color}
-          size={72}
-          iconSize={34}
-          weight="light"
-        />
+        <View style={styles.preview}>
+          <SpaceIcon icon={icon} color={color} size={72} iconSize={34} weight="light" />
+        </View>
 
         {/* Name */}
         <View style={styles.section}>
@@ -102,7 +88,7 @@ export default function CreateSpaceScreen({ navigation }) {
             onChangeText={setName}
             placeholder="e.g. Side project"
             placeholderTextColor={colors.text.tertiary}
-            autoFocus
+            autoFocus={!isEdit}
             maxLength={30}
           />
         </View>
@@ -110,7 +96,7 @@ export default function CreateSpaceScreen({ navigation }) {
         {/* Icon picker */}
         <View style={styles.section}>
           <Text style={styles.label}>Icon</Text>
-          <IconPicker selected={icon} color={color} onSelect={setIcon} />
+          <IconPicker selected={icon} color={color} onSelect={handleIconSelect} />
         </View>
 
         {/* Color picker */}
@@ -120,11 +106,7 @@ export default function CreateSpaceScreen({ navigation }) {
             {COLORS.map((c) => (
               <TouchableOpacity
                 key={c}
-                style={[
-                  styles.colorBtn,
-                  { backgroundColor: c },
-                  color === c && styles.colorBtnActive,
-                ]}
+                style={[styles.colorBtn, { backgroundColor: c }, color === c && styles.colorBtnActive]}
                 onPress={() => setColor(c)}
               />
             ))}
@@ -132,48 +114,27 @@ export default function CreateSpaceScreen({ navigation }) {
         </View>
       </ScrollView>
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  inner: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
+  container: { flex: 1, backgroundColor: colors.background.primary },
+  inner: { paddingHorizontal: 20, paddingBottom: 40 },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: 60,
     paddingBottom: 32,
   },
-  cancel: {
-    fontSize: 15,
-    color: colors.text.tertiary,
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: colors.text.primary,
-  },
-  create: {
-    fontSize: 15,
-    color: colors.text.secondary,
-    fontWeight: "500",
-  },
-  section: {
-    marginBottom: 28,
-    gap: 12,
-  },
+  cancel: { fontSize: 15, color: colors.text.tertiary },
+  title: { fontSize: 15, fontWeight: '500', color: colors.text.primary },
+  saveBtn: { fontSize: 15, color: colors.text.secondary, fontWeight: '500' },
+  preview: { alignItems: 'center', marginBottom: 32 },
+  section: { marginBottom: 28, gap: 12 },
   label: {
-    fontSize: 12,
-    color: colors.text.tertiary,
-    letterSpacing: 1,
-    textTransform: "uppercase",
+    fontSize: 12, color: colors.text.tertiary,
+    letterSpacing: 1, textTransform: 'uppercase',
   },
   input: {
     backgroundColor: colors.background.secondary,
@@ -185,20 +146,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text.primary,
   },
-  colorRow: {
-    flexDirection: "row",
-    gap: 10,
-    flexWrap: "wrap",
-  },
+  colorRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   colorBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 0.5,
-    borderColor: "transparent",
+    width: 36, height: 36, borderRadius: 18,
+    borderWidth: 0.5, borderColor: 'transparent',
   },
-  colorBtnActive: {
-    borderWidth: 2,
-    borderColor: colors.text.primary,
-  },
-});
+  colorBtnActive: { borderWidth: 2, borderColor: colors.text.primary },
+})

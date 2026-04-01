@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { supabase } from '../../services/supabase'
@@ -51,6 +52,36 @@ export default function HomeScreen({ navigation }) {
     navigation.navigate('Space', { space })
   }
 
+  const handleSpaceLongPress = (space) => {
+    Alert.alert(space.name, 'What would you like to do?', [
+      { text: 'Edit', onPress: () => navigation.navigate('CreateSpace', { space }) },
+      { text: 'Delete', style: 'destructive', onPress: () => handleDeleteSpace(space) },
+      { text: 'Cancel', style: 'cancel' },
+    ])
+  }
+
+  const handleDeleteSpace = (space) => {
+    Alert.alert(
+      'Delete space',
+      `Are you sure you want to delete "${space.name}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await spacesService.deleteSpace(space.id)
+              setSpaces(prev => prev.filter(s => s.id !== space.id))
+            } catch (e) {
+              Alert.alert('Error', 'Could not delete space.')
+            }
+          },
+        },
+      ]
+    )
+  }
+
   const handleAddSpace = () => {
     navigation.navigate('CreateSpace')
   }
@@ -59,6 +90,8 @@ export default function HomeScreen({ navigation }) {
   <TouchableOpacity
     style={[styles.spaceCard, { borderColor: item.color + '30' }]}
     onPress={() => handleSpacePress(item)}
+    onLongPress={() => handleSpaceLongPress(item)}
+    delayLongPress={400}
     activeOpacity={0.8}
   >
     <SpaceIcon

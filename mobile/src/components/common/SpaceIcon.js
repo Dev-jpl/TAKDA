@@ -1,6 +1,7 @@
 import React from 'react'
 import { View, StyleSheet } from 'react-native'
-import * as PhosphorIcons from 'phosphor-react-native'
+import { Folder } from 'phosphor-react-native'
+import { ICON_MAP } from './IconPicker'
 
 export default function SpaceIcon({
   icon = 'Folder',
@@ -10,7 +11,7 @@ export default function SpaceIcon({
   weight = 'light',
   style,
 }) {
-  const IconComponent = PhosphorIcons[icon] || PhosphorIcons.Folder
+  const IconComponent = ICON_MAP[icon] || Folder
 
   return (
     <View
@@ -25,11 +26,7 @@ export default function SpaceIcon({
         style,
       ]}
     >
-      <IconComponent
-        size={iconSize}
-        color={color}
-        weight={weight}
-      />
+      <IconComponent size={iconSize} color={color} weight={weight} />
     </View>
   )
 }

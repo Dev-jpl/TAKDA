@@ -79,38 +79,36 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Greeting */}
-      <View style={styles.greetingRow}>
-        <View>
-          <Text style={styles.greetingLabel}>{getGreeting()}</Text>
-          <Text style={styles.userName}>
-            {user?.user_metadata?.full_name?.split(' ')[0]?.toUpperCase() || 'USER'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.calendarBtn}
-          onPress={() => navigation.navigate('Calendar')}
+      {/* Recents Quick Access */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Recents</Text>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.recentsList}
         >
-          <Calendar color={colors.text.secondary} size={18} weight="light" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Stats bar */}
-      <View style={styles.statsBar}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{spaces.length}</Text>
-          <Text style={styles.statLabel}>Spaces</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{recentHubs.length}</Text>
-          <Text style={styles.statLabel}>Hubs</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{upcomingEvents.length}</Text>
-          <Text style={styles.statLabel}>Events</Text>
-        </View>
+          {recentHubs.map((hub) => (
+            <TouchableOpacity 
+              key={hub.id} 
+              style={styles.recentItem}
+              onPress={() => navigation.navigate('Main', { 
+                screen: hub.space_id, 
+                params: { 
+                  screen: 'Hub', 
+                  params: { hub, space: { id: hub.space_id } } 
+                } 
+              })}
+            >
+              <View style={[styles.recentIcon, { backgroundColor: hub.color + '15' }]}>
+                <SpaceIcon icon={hub.icon} color={hub.color} size={28} iconSize={14} />
+              </View>
+              <Text style={styles.recentLabel} numberOfLines={1}>{hub.name}</Text>
+            </TouchableOpacity>
+          ))}
+          {recentHubs.length === 0 && (
+            <Text style={styles.emptyRecentText}>No recent activity</Text>
+          )}
+        </ScrollView>
       </View>
 
       {/* Upcoming missions */}
@@ -269,68 +267,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Greeting
-  greetingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  // Recents
+  recentsList: {
+    paddingVertical: 12,
+    gap: 16,
+  },
+  recentItem: {
     alignItems: 'center',
-    marginBottom: 20,
+    width: 64,
   },
-  greetingLabel: {
-    fontSize: 11,
-    color: colors.text.tertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 3,
-  },
-  userName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.text.primary,
-    letterSpacing: -0.5,
-  },
-  calendarBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.background.secondary,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
+  recentIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
-
-  // Stats bar
-  statsBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: 14,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    paddingVertical: 14,
-    marginBottom: 20,
+  recentLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 3,
-  },
-  statLabel: {
-    fontSize: 9,
+  emptyRecentText: {
+    fontSize: 11,
     color: colors.text.tertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  statDivider: {
-    width: 0.5,
-    height: 28,
-    backgroundColor: colors.border.primary,
+    fontStyle: 'italic',
+    paddingVertical: 10,
   },
 
   // Section

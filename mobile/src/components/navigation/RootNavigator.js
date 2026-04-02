@@ -12,6 +12,7 @@ import CreateSpaceScreen from '../../screens/home/CreateSpaceScreen'
 import KalayScreen from '../../screens/kalay/KalayScreen'
 import KalayQuizScreen from '../../screens/kalay/KalayQuizScreen'
 import CalendarScreen from '../../screens/calendar/CalendarScreen'
+import SpaceScreen from '../../screens/space/SpaceScreen'
 
 const Stack = createNativeStackNavigator()
 
@@ -49,6 +50,7 @@ export default function RootNavigator() {
             <Stack.Screen name="Kalay" component={KalayScreen} />
             <Stack.Screen name="KalayQuiz" component={KalayQuizScreen} />
             <Stack.Screen name="Calendar" component={CalendarScreen} />
+            <Stack.Screen name="Space" component={SpaceScreen} />
           </>
         ) : (
           <>

@@ -45,6 +45,7 @@ export default function RootNavigator() {
           <>
             <Stack.Screen name="Main" component={SidebarNavigator} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
             <Stack.Screen name="Kalay" component={KalayScreen} />
             <Stack.Screen name="KalayQuiz" component={KalayQuizScreen} />
             <Stack.Screen name="Calendar" component={CalendarScreen} />

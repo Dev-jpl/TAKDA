@@ -30,6 +30,7 @@ export default function CalendarScreen({ navigation }) {
   // Manual Add Modal State
   const [modalVisible, setModalVisible] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+  const [newDescription, setNewDescription] = useState('')
   const [newTime, setNewTime] = useState('09:00')
 
   useEffect(() => {
@@ -79,6 +80,7 @@ export default function CalendarScreen({ navigation }) {
       await eventService.createEvent({
         user_id: user.id,
         title: newTitle,
+        description: newDescription,
         start_time: start.toISOString(),
         end_time: end.toISOString(),
         is_all_day: false,
@@ -86,6 +88,7 @@ export default function CalendarScreen({ navigation }) {
       
       setModalVisible(false)
       setNewTitle('')
+      setNewDescription('')
       loadEvents()
     } catch (e) {
       console.warn('Manual create error:', e)
@@ -251,12 +254,20 @@ export default function CalendarScreen({ navigation }) {
               value={newTime}
               onChangeText={setNewTime}
             />
+            <TextInput 
+              style={[styles.modalInput, styles.modalArea]} 
+              placeholder="Description (Optional)" 
+              placeholderTextColor={colors.text.tertiary}
+              value={newDescription}
+              onChangeText={setNewDescription}
+              multiline
+            />
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleManualCreate} style={styles.confirmBtn}>
-                <Text style={styles.confirmText}>Deploy</Text>
+                <Text style={styles.confirmText}>Create Event</Text>
               </TouchableOpacity>
             </View>
             
@@ -474,6 +485,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     borderWidth: 1,
     borderColor: colors.border.primary,
+  },
+  modalArea: {
+    height: 100,
+    textAlignVertical: 'top',
   },
   modalActions: {
     flexDirection: 'row',

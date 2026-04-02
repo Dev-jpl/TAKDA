@@ -9,13 +9,13 @@ import {
   RefreshControl,
   ScrollView,
 } from 'react-native'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect, DrawerActions } from '@react-navigation/native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { supabase } from '../../services/supabase'
 import { spacesService } from '../../services/spaces'
 import { hubsService } from '../../services/hubs'
 import { colors } from '../../constants/colors'
-import { User, Plus, Sparkle, Calendar, Clock } from 'phosphor-react-native'
+import { User, Plus, Sparkle, Calendar, Clock, List } from 'phosphor-react-native'
 import KalayFAB from '../../components/common/KalayFAB'
 import SpaceIcon from '../../components/common/SpaceIcon'
 import { eventService } from '../../services/events'
@@ -70,7 +70,15 @@ export default function HomeScreen({ navigation }) {
 
       {/* Top bar */}
       <View style={styles.topNav}>
-        <Text style={styles.brand}>TAKDA</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+            style={styles.menuBtn}
+          >
+            <List color={colors.text.secondary} size={20} weight="light" />
+          </TouchableOpacity>
+          <Text style={styles.brand}>TAKDA</Text>
+        </View>
         <TouchableOpacity
           style={styles.avatarBtn}
           onPress={() => navigation.navigate('Profile')}
@@ -258,6 +266,16 @@ const styles = StyleSheet.create({
     letterSpacing: 5,
   },
   avatarBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 0.5,
+    borderColor: colors.border.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuBtn: {
     width: 34,
     height: 34,
     borderRadius: 17,

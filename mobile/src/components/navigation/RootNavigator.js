@@ -39,18 +39,15 @@ export default function RootNavigator() {
     <NavigationContainer>
       <Stack.Navigator 
         screenOptions={{ headerShown: false }}
-        initialRouteName={session ? "Home" : "Login"}
+        initialRouteName={session ? "Main" : "Login"}
       >
         {session ? (
           <>
-            <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Main" component={SidebarNavigator} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
-            <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
             <Stack.Screen name="Kalay" component={KalayScreen} />
             <Stack.Screen name="KalayQuiz" component={KalayQuizScreen} />
             <Stack.Screen name="Calendar" component={CalendarScreen} />
-            <Stack.Screen name="Space" component={SpaceScreen} />
           </>
         ) : (
           <>

@@ -13,6 +13,7 @@ import HubScreen from '../../screens/hubs/HubScreen'
 import CreateHubScreen from '../../screens/hubs/CreateHubScreen'
 import ProfileQuickModal from './ProfileQuickModal'
 import KalayScreen from '../../screens/kalay/KalayScreen'
+import HomeScreen from '../../screens/home/HomeScreen'
 
 const Drawer = createDrawerNavigator()
 
@@ -204,6 +205,7 @@ export default function SidebarNavigator() {
         overlayColor: 'rgba(0,0,0,0.7)',
       }}
     >
+      <Drawer.Screen name="Home" component={HomeScreen} />
       <Drawer.Screen name="Kalay" component={KalayScreen} />
       {spaces.map(space => (
         <Drawer.Screen

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -47,27 +47,36 @@ function CompassDot({ label, active, onPress }) {
 
 // ─── Main Navigator ──────────────────────────────────────────────────────────
 
-export default function CompassNavigator({ space }) {
+export default function CompassNavigator({ hub, space }) {
   const [activeModule, setActiveModule] = useState("track");
   const [compassOpen, setCompassOpen] = useState(false);
+  const hideTimerRef = useRef(null);
 
   const compassOpacity = useSharedValue(0);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
+
+  // Reset compass when space changes
+  useEffect(() => {
+    compassOpacity.value = 0;
+    setCompassOpen(false);
+    setActiveModule("track");
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+  }, [space?.id, hub?.id]);
 
   const navigateTo = (module) => {
     setActiveModule(module);
   };
 
   const showCompass = () => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     setCompassOpen(true);
     compassOpacity.value = withTiming(1, { duration: 180 });
   };
 
   const hideCompass = () => {
     compassOpacity.value = withTiming(0, { duration: 220 });
-    // Delay pointer-events reset until fade finishes
-    setTimeout(() => setCompassOpen(false), 220);
+    hideTimerRef.current = setTimeout(() => setCompassOpen(false), 220);
   };
 
   // Swipe gesture on screen content
@@ -110,7 +119,7 @@ export default function CompassNavigator({ space }) {
       {/* ── Active screen content ── */}
       <GestureDetector gesture={gesture}>
         <Animated.View style={[styles.screen, screenAnimStyle]}>
-          <ActiveScreen space={space} />
+          <ActiveScreen hub={hub} space={space} />
         </Animated.View>
       </GestureDetector>
 
@@ -167,8 +176,9 @@ export default function CompassNavigator({ space }) {
             <Pressable
               key={key}
               onPress={() => navigateTo(key)}
-              onPressIn={showCompass}
+              onLongPress={showCompass}
               onPressOut={hideCompass}
+              delayLongPress={350}
               style={styles.navItem}
             >
               <Text

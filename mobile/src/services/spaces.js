@@ -3,11 +3,11 @@ import { supabase } from "./supabase";
 const API_URL = "http://localhost:8000";
 
 export const spacesService = {
-  // Get all spaces for a user
+  // Get all spaces (categories) for a user
   async getSpaces(userId) {
     const { data, error } = await supabase
       .from("spaces")
-      .select("*, space_modules(*)")
+      .select("*, hubs(count)")
       .eq("user_id", userId)
       .order("order_index");
 
@@ -18,8 +18,8 @@ export const spacesService = {
     return data || [];
   },
 
-  // Create a new space
-  async createSpace({ userId, name, icon, color, description }) {
+  // Create a new space (category)
+  async createSpace({ userId, name, icon, color, category, description }) {
     const response = await fetch(`${API_URL}/spaces/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -28,6 +28,7 @@ export const spacesService = {
         name,
         icon,
         color,
+        category: category || "personal",
         description,
       }),
     });

@@ -5,9 +5,10 @@ import { supabase } from '../../services/supabase'
 
 import LoginScreen from '../../screens/auth/LoginScreen'
 import RegisterScreen from '../../screens/auth/RegisterScreen'
+import SidebarNavigator from './SidebarNavigator'
 import HomeScreen from '../../screens/home/HomeScreen'
+import ProfileScreen from '../../screens/auth/ProfileScreen'
 import CreateSpaceScreen from '../../screens/home/CreateSpaceScreen'
-import SpaceScreen from '../../screens/space/SpaceScreen'
 
 const Stack = createNativeStackNavigator()
 
@@ -21,21 +22,27 @@ export default function RootNavigator() {
       setLoading(false)
     })
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
     })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   if (loading) return null
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator 
+        screenOptions={{ headerShown: false }}
+        initialRouteName={session ? "Home" : "Login"}
+      >
         {session ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="Main" component={SidebarNavigator} />
+            <Stack.Screen name="Profile" component={ProfileScreen} />
             <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
-            <Stack.Screen name="Space" component={SpaceScreen} />
           </>
         ) : (
           <>

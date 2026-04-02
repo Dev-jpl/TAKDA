@@ -8,58 +8,74 @@ import * as DocumentPicker from 'expo-document-picker'
 import { knowledgeService } from '../../services/knowledge'
 import { colors } from '../../constants/colors'
 
-export default function KnowledgeUploadModal({ visible, userId, spaceId, onClose, onUploaded }) {
-  const [tab, setTab] = useState('pdf') // 'pdf' | 'url'
-  const [url, setUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [pickedFile, setPickedFile] = useState(null)
+export default function KnowledgeUploadModal({
+  visible,
+  userId,
+  hubId,
+  onClose,
+  onUploaded,
+}) {
+  const [tab, setTab] = useState("pdf"); // 'pdf' | 'url'
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [pickedFile, setPickedFile] = useState(null);
 
   const handlePickPDF = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: "application/pdf",
         copyToCacheDirectory: true,
-      })
+      });
       if (!result.canceled && result.assets?.[0]) {
-        setPickedFile(result.assets[0])
+        setPickedFile(result.assets[0]);
       }
     } catch (e) {
-      Alert.alert('Error', 'Could not pick file')
+      Alert.alert("Error", "Could not pick file");
     }
-  }
+  };
 
   const handleUploadPDF = async () => {
-    if (!pickedFile) return
-    setLoading(true)
-    console.log('[Upload] Starting PDF upload:', pickedFile.uri, 'spaceId:', spaceId)
+    if (!pickedFile) return;
+    setLoading(true);
+    console.log(
+      "[Upload] Starting PDF upload:",
+      pickedFile.uri,
+      "hubId:",
+      hubId
+    );
     try {
-      await knowledgeService.uploadPDF(userId, spaceId, pickedFile.uri, pickedFile.name)
-      console.log('[Upload] PDF upload success')
-      onUploaded()
-      onClose()
-      setPickedFile(null)
+      await knowledgeService.uploadPDF(
+        userId,
+        hubId,
+        pickedFile.uri,
+        pickedFile.name
+      );
+      console.log("[Upload] PDF upload success");
+      onUploaded();
+      onClose();
+      setPickedFile(null);
     } catch (e) {
-      console.error('[Upload] PDF upload error:', e)
-      Alert.alert('Upload failed', e?.message || String(e))
+      console.error("[Upload] PDF upload error:", e);
+      Alert.alert("Upload failed", e?.message || String(e));
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleUploadURL = async () => {
-    if (!url.trim()) return
-    setLoading(true)
+    if (!url.trim()) return;
+    setLoading(true);
     try {
-      await knowledgeService.uploadURL(userId, spaceId, url.trim())
-      onUploaded()
-      onClose()
-      setUrl('')
+      await knowledgeService.uploadURL(userId, hubId, url.trim());
+      onUploaded();
+      onClose();
+      setUrl("");
     } catch (e) {
-      Alert.alert('Upload failed', e.message)
+      Alert.alert("Upload failed", e.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>

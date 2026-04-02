@@ -1,155 +1,275 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState } from 'react'
 import {
-  View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, ActivityIndicator, Alert,
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native'
-import { supabase } from '../../services/supabase'
-import { spacesService } from '../../services/spaces'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '../../constants/colors'
-import SpaceIcon from '../../components/common/SpaceIcon'
+import { spacesService } from '../../services/spaces'
+import { supabase } from '../../services/supabase'
 import IconPicker from '../../components/common/IconPicker'
+import { CaretLeft, Check } from 'phosphor-react-native'
 
-const COLORS = [
-  '#7F77DD', '#1D9E75', '#378ADD', '#D85A30',
-  '#BA7517', '#E24B4A', '#A855F7', '#EC4899',
+const CATEGORIES = ['Personal', 'Work', 'Finance', 'Growth', 'Social', 'Other']
+const THEME_COLORS = [
+  colors.modules.track,
+  colors.modules.annotate,
+  colors.modules.knowledge,
+  colors.modules.deliver,
+  colors.modules.automate,
+  '#E24B4A', // urgent/red
+  '#EF9F27', // high/orange
+  '#639922', // low/green
 ]
 
 export default function CreateSpaceScreen({ navigation, route }) {
-  const editSpace = route.params?.space ?? null
-  const isEdit = !!editSpace
-
-  const [name, setName] = useState(editSpace?.name ?? '')
-  const [icon, setIcon] = useState(editSpace?.icon ?? 'Folder')
-  const [color, setColor] = useState(editSpace?.color ?? '#7F77DD')
+  const editingSpace = route.params?.space
+  
+  const [name, setName] = useState(editingSpace?.name || '')
+  const [category, setCategory] = useState(editingSpace?.category || 'Personal')
+  const [icon, setIcon] = useState(editingSpace?.icon || 'Folder')
+  const [color, setColor] = useState(editingSpace?.color || colors.modules.track)
+  const [description, setDescription] = useState(editingSpace?.description || '')
   const [loading, setLoading] = useState(false)
-  const [user, setUser] = useState(null)
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user))
-  }, [])
-
-  // Stable callback to avoid IconPicker re-renders from parent
-  const handleIconSelect = useCallback((iconName) => setIcon(iconName), [])
-
-  async function handleSave() {
+  const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert('Name required', 'Please enter a space name.')
+      Alert.alert('Error', 'Please enter a name for your space.')
       return
     }
-    if (!user) return
 
     setLoading(true)
     try {
-      if (isEdit) {
-        await spacesService.updateSpace(editSpace.id, { name: name.trim(), icon, color })
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('No user session')
+
+      if (editingSpace) {
+        await spacesService.updateSpace(editingSpace.id, {
+          name: name.trim(),
+          category,
+          icon,
+          color,
+          description: description.trim(),
+        })
       } else {
-        await spacesService.createSpace({ userId: user.id, name: name.trim(), icon, color })
+        await spacesService.createSpace({
+          userId: user.id,
+          name: name.trim(),
+          category,
+          icon,
+          color,
+          description: description.trim(),
+        })
       }
+
       navigation.goBack()
     } catch (e) {
-      Alert.alert('Error', isEdit ? 'Failed to update space.' : 'Failed to create space.')
+      console.error('Save Space Error:', e)
+      Alert.alert('Error', 'Could not save space.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.inner}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.cancel}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>{isEdit ? 'Edit space' : 'New space'}</Text>
-          <TouchableOpacity onPress={handleSave} disabled={loading}>
-            {loading
-              ? <ActivityIndicator size="small" color={colors.text.secondary} />
-              : <Text style={styles.saveBtn}>{isEdit ? 'Save' : 'Create'}</Text>
-            }
-          </TouchableOpacity>
-        </View>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backBtn} 
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+        >
+          <CaretLeft color={colors.text.secondary} size={24} weight="light" />
+        </TouchableOpacity>
+        <Text style={styles.title}>{editingSpace ? 'Edit Space' : 'New Space'}</Text>
+        <TouchableOpacity 
+          style={styles.saveBtn} 
+          onPress={handleSave}
+          disabled={loading}
+          hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+        >
+          {loading ? (
+            <ActivityIndicator color={colors.text.primary} size="small" />
+          ) : (
+            <Check color={colors.text.primary} size={24} weight="regular" />
+          )}
+        </TouchableOpacity>
+      </View>
 
-        {/* Preview */}
-        <View style={styles.preview}>
-          <SpaceIcon icon={icon} color={color} size={72} iconSize={34} weight="light" />
-        </View>
-
-        {/* Name */}
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Name Input */}
         <View style={styles.section}>
           <Text style={styles.label}>Name</Text>
           <TextInput
             style={styles.input}
             value={name}
             onChangeText={setName}
-            placeholder="e.g. Side project"
+            placeholder="e.g. Personal Finance"
             placeholderTextColor={colors.text.tertiary}
-            autoFocus={!isEdit}
-            maxLength={30}
+            autoFocus={!editingSpace}
           />
         </View>
 
-        {/* Icon picker */}
+        {/* Category Selector */}
         <View style={styles.section}>
-          <Text style={styles.label}>Icon</Text>
-          <IconPicker defaultSelected={icon} color={color} onSelect={handleIconSelect} />
+          <Text style={styles.label}>Category</Text>
+          <View style={styles.categoryGrid}>
+            {CATEGORIES.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.categoryPill,
+                  category === cat && styles.activePill
+                ]}
+                onPress={() => setCategory(cat)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[
+                  styles.categoryText,
+                  category === cat && styles.activePillText
+                ]}>{cat}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
-        {/* Color picker */}
+        {/* Color Selector */}
         <View style={styles.section}>
-          <Text style={styles.label}>Color</Text>
-          <View style={styles.colorRow}>
-            {COLORS.map((c) => (
+          <Text style={styles.label}>Identity Color</Text>
+          <View style={styles.colorGrid}>
+            {THEME_COLORS.map(c => (
               <TouchableOpacity
                 key={c}
-                style={[styles.colorBtn, { backgroundColor: c }, color === c && styles.colorBtnActive]}
+                style={[
+                  styles.colorCircle,
+                  { backgroundColor: c },
+                  color === c && { borderColor: '#fff', borderWidth: 2 }
+                ]}
                 onPress={() => setColor(c)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               />
             ))}
           </View>
         </View>
+
+        {/* Icon Picker */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Icon</Text>
+          <IconPicker 
+            defaultSelected={icon} 
+            color={color} 
+            onSelect={setIcon} 
+          />
+        </View>
+
+        {/* Description */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Description (Optional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="What is this space for?"
+            placeholderTextColor={colors.text.tertiary}
+            multiline
+            numberOfLines={3}
+          />
+        </View>
+        
+        <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background.primary },
-  inner: { paddingHorizontal: 20, paddingBottom: 40 },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+  },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 32,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border.primary,
   },
-  cancel: { fontSize: 15, color: colors.text.tertiary },
-  title: { fontSize: 15, fontWeight: '500', color: colors.text.primary },
-  saveBtn: { fontSize: 15, color: colors.text.secondary, fontWeight: '500' },
-  preview: { alignItems: 'center', marginBottom: 32 },
-  section: { marginBottom: 28, gap: 12 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center' },
+  saveBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-end' },
+  title: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text.primary,
+  },
+  scroll: {
+    padding: 20,
+    gap: 24,
+  },
+  section: {
+    gap: 12,
+  },
   label: {
-    fontSize: 12, color: colors.text.tertiary,
-    letterSpacing: 1, textTransform: 'uppercase',
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   input: {
     backgroundColor: colors.background.secondary,
+    borderRadius: 10,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    padding: 14,
     fontSize: 15,
     color: colors.text.primary,
   },
-  colorRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-  colorBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    borderWidth: 0.5, borderColor: 'transparent',
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
   },
-  colorBtnActive: { borderWidth: 2, borderColor: colors.text.primary },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 0.5,
+    borderColor: colors.border.primary,
+  },
+  activePill: {
+    backgroundColor: colors.background.tertiary,
+    borderColor: colors.text.secondary,
+  },
+  categoryText: {
+    fontSize: 13,
+    color: colors.text.secondary,
+  },
+  activePillText: {
+    color: colors.text.primary,
+    fontWeight: '500',
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  colorCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
 })

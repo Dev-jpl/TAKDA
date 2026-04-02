@@ -1,16 +1,18 @@
 import {
   View, Text, TouchableOpacity,
-  FlatList, StyleSheet, ActivityIndicator,
+  FlatList, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native'
+import { FilePdf, Link, Trash } from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
 
 function DocRow({ doc, onDelete }) {
+  const Icon = doc.source_type === 'url' ? Link : FilePdf
+  const iconColor = doc.source_type === 'url' ? colors.modules.knowledge : colors.modules.track
+
   return (
     <View style={styles.row}>
-      <View style={styles.rowIcon}>
-        <Text style={styles.rowIconText}>
-          {doc.source_type === 'url' ? '🔗' : '📄'}
-        </Text>
+      <View style={[styles.rowIcon, { backgroundColor: iconColor + '15' }]}>
+        <Icon color={iconColor} size={20} weight="light" />
       </View>
       <View style={styles.rowInfo}>
         <Text style={styles.rowName} numberOfLines={1}>{doc.title || doc.source_url || 'Untitled'}</Text>
@@ -18,8 +20,12 @@ function DocRow({ doc, onDelete }) {
           {doc.chunk_count ?? 0} chunks · {doc.source_type?.toUpperCase()}
         </Text>
       </View>
-      <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(doc.id)}>
-        <Text style={styles.deleteText}>✕</Text>
+      <TouchableOpacity 
+        style={styles.deleteBtn} 
+        onPress={() => onDelete(doc.id)}
+        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+      >
+        <Trash color={colors.text.tertiary} size={16} weight="light" />
       </TouchableOpacity>
     </View>
   )

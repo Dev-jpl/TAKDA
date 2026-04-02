@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity,
-  StyleSheet,
+  StyleSheet, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
@@ -14,50 +14,63 @@ import KnowledgeUploadModal from './KnowledgeUploadModal'
 
 const TABS = ['chat', 'docs']
 
-export default function KnowledgeScreen({ space }) {
-  const [activeTab, setActiveTab] = useState('chat')
-  const [docs, setDocs] = useState([])
-  const [docsLoading, setDocsLoading] = useState(false)
-  const [uploadVisible, setUploadVisible] = useState(false)
-  const [userId, setUserId] = useState(null)
+export default function KnowledgeScreen({ hub, space }) {
+  const [activeTab, setActiveTab] = useState("chat");
+  const [docs, setDocs] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploadVisible, setUploadVisible] = useState(false);
+  const [userId, setUserId] = useState(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      setUserId(user?.id)
-    })
-  }, [])
+      setUserId(user?.id);
+    });
+  }, []);
 
   useEffect(() => {
-    if (userId) loadDocs()
-  }, [userId])
+    if (userId) loadDocs();
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
-      if (userId) loadDocs()
+      if (userId) loadDocs();
     }, [userId])
-  )
+  );
 
   const loadDocs = async () => {
-    if (!userId) return
-    setDocsLoading(true)
+    if (!userId) return;
+    setDocsLoading(true);
     try {
-      const data = await knowledgeService.getDocuments(userId, space?.id)
-      setDocs(data)
+      const data = await knowledgeService.getDocuments(userId, hub?.id);
+      setDocs(data);
     } catch (e) {
-      console.warn('loadDocs error:', e)
+      console.warn("loadDocs error:", e);
     } finally {
-      setDocsLoading(false)
+      setDocsLoading(false);
     }
-  }
+  };
 
   const handleDelete = async (docId) => {
-    try {
-      await knowledgeService.deleteDocument(docId)
-      setDocs(prev => prev.filter(d => d.id !== docId))
-    } catch (e) {
-      console.warn('delete error:', e)
-    }
-  }
+    Alert.alert(
+      'Delete Document',
+      'Are you sure you want to permanently delete this document and its trained data? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              await knowledgeService.deleteDocument(docId);
+              setDocs((prev) => prev.filter((d) => d.id !== docId));
+            } catch (e) {
+              console.warn("delete error:", e);
+            }
+          } 
+        },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -82,13 +95,18 @@ export default function KnowledgeScreen({ space }) {
 
       {/* Tabs */}
       <View style={styles.tabs}>
-        {TABS.map(tab => (
+        {TABS.map((tab) => (
           <TouchableOpacity
             key={tab}
             style={styles.tab}
             onPress={() => setActiveTab(tab)}
           >
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === tab && styles.tabTextActive,
+              ]}
+            >
               {tab.toUpperCase()}
             </Text>
             {activeTab === tab && <View style={styles.tabUnderline} />}
@@ -98,10 +116,10 @@ export default function KnowledgeScreen({ space }) {
 
       {/* Content */}
       <View style={styles.content}>
-        {activeTab === 'chat' && (
-          <KnowledgeChatTab userId={userId} spaceId={space?.id} docs={docs} />
+        {activeTab === "chat" && (
+          <KnowledgeChatTab userId={userId} hubId={hub?.id} docs={docs} />
         )}
-        {activeTab === 'docs' && (
+        {activeTab === "docs" && (
           <KnowledgeDocsTab
             docs={docs}
             loading={docsLoading}
@@ -115,12 +133,12 @@ export default function KnowledgeScreen({ space }) {
       <KnowledgeUploadModal
         visible={uploadVisible}
         userId={userId}
-        spaceId={space?.id}
+        hubId={hub?.id}
         onClose={() => setUploadVisible(false)}
         onUploaded={loadDocs}
       />
     </SafeAreaView>
-  )
+  );
 }
 
 const styles = StyleSheet.create({

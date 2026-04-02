@@ -62,19 +62,29 @@ function TypingIndicator() {
 
   useEffect(() => {
     const timer = setInterval(() => setElapsed(s => s + 1), 1000)
-    const pulse = (dot, delay) =>
-      Animated.loop(
+    const pulse = (dot, delay) => {
+      const anim = Animated.loop(
         Animated.sequence([
           Animated.delay(delay),
           Animated.timing(dot, { toValue: 1, duration: 300, useNativeDriver: true }),
           Animated.timing(dot, { toValue: 0, duration: 300, useNativeDriver: true }),
           Animated.delay(600 - delay),
         ])
-      ).start()
-    pulse(dot1, 0)
-    pulse(dot2, 200)
-    pulse(dot3, 400)
-    return () => clearInterval(timer)
+      )
+      anim.start()
+      return anim
+    }
+
+    const a1 = pulse(dot1, 0)
+    const a2 = pulse(dot2, 200)
+    const a3 = pulse(dot3, 400)
+
+    return () => {
+      clearInterval(timer)
+      a1.stop()
+      a2.stop()
+      a3.stop()
+    }
   }, [])
 
   const dotStyle = (anim) => ({
@@ -109,7 +119,7 @@ const typingStyles = StyleSheet.create({
   timer: { fontSize: 11, color: colors.text.tertiary, marginLeft: 6 },
 })
 
-export default function KnowledgeChatTab({ userId, spaceId, docs }) {
+export default function KnowledgeChatTab({ userId, hubId, docs }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -127,7 +137,7 @@ export default function KnowledgeChatTab({ userId, spaceId, docs }) {
     setLoading(true)
 
     try {
-      const response = await knowledgeService.chat(userId, spaceId, newMessages)
+      const response = await knowledgeService.chatWithDocs(userId, hubId, newMessages)
       const aiMsg = {
         role: 'assistant',
         content: response.answer,

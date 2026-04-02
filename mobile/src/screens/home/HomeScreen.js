@@ -62,7 +62,7 @@ export default function HomeScreen({ navigation }) {
   }
 
   const handleSpacePress = (space) => {
-    navigation.navigate('Space', { space })
+    navigation.navigate(space.id, { space })
   }
 
   const renderHeader = () => (

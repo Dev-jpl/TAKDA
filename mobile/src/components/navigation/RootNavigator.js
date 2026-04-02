@@ -9,6 +9,9 @@ import SidebarNavigator from './SidebarNavigator'
 import HomeScreen from '../../screens/home/HomeScreen'
 import ProfileScreen from '../../screens/auth/ProfileScreen'
 import CreateSpaceScreen from '../../screens/home/CreateSpaceScreen'
+import KalayScreen from '../../screens/kalay/KalayScreen'
+import KalayQuizScreen from '../../screens/kalay/KalayQuizScreen'
+import CalendarScreen from '../../screens/calendar/CalendarScreen'
 
 const Stack = createNativeStackNavigator()
 
@@ -43,6 +46,9 @@ export default function RootNavigator() {
             <Stack.Screen name="Main" component={SidebarNavigator} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
             <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
+            <Stack.Screen name="Kalay" component={KalayScreen} />
+            <Stack.Screen name="KalayQuiz" component={KalayQuizScreen} />
+            <Stack.Screen name="Calendar" component={CalendarScreen} />
           </>
         ) : (
           <>

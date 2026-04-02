@@ -6,12 +6,13 @@ import { supabase } from '../../services/supabase'
 import { spacesService } from '../../services/spaces'
 import { colors } from '../../constants/colors'
 import SpaceIcon from '../common/SpaceIcon'
-import { House, User, Plus } from 'phosphor-react-native'
+import { House, User, Plus, Sparkle, Calendar } from 'phosphor-react-native'
 
 import HubsScreen from '../../screens/hubs/HubsScreen'
 import HubScreen from '../../screens/hubs/HubScreen'
 import CreateHubScreen from '../../screens/hubs/CreateHubScreen'
 import ProfileQuickModal from './ProfileQuickModal'
+import KalayScreen from '../../screens/kalay/KalayScreen'
 
 const Drawer = createDrawerNavigator()
 
@@ -26,11 +27,21 @@ function CustomSidebar(props) {
       setUser(user)
       if (user) loadSpaces(user.id)
     })
-  }, [])
+
+    // Refresh spaces when the sidebar might have been affected by a navigation back
+    const unsubscribe = navigation.addListener('state', () => {
+      if (user) loadSpaces(user.id)
+    })
+    return unsubscribe
+  }, [user?.id, navigation])
 
   const loadSpaces = async (userId) => {
-    const data = await spacesService.getSpaces(userId)
-    setSpaces(data)
+    try {
+      const data = await spacesService.getSpaces(userId)
+      setSpaces(data)
+    } catch (e) {
+      console.warn('Sidebar loadSpaces error:', e)
+    }
   }
 
   const activeIndex = state.index
@@ -101,6 +112,34 @@ function CustomSidebar(props) {
               </TouchableOpacity>
             )
           })}
+
+          {/* Kalay Global Trigger */}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => {
+              navigation.closeDrawer()
+              navigation.navigate('Kalay')
+            }}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: colors.modules.kalay + '15' }]}>
+              <Sparkle color={colors.modules.kalay} size={20} weight="fill" />
+            </View>
+            <Text style={[styles.navLabel, { color: colors.modules.kalay }]}>Ask Kalay</Text>
+          </TouchableOpacity>
+
+          {/* Calendar Link */}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => {
+              navigation.closeDrawer()
+              navigation.navigate('Calendar')
+            }}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: colors.modules.track + '15' }]}>
+              <Calendar color={colors.modules.track} size={20} weight="light" />
+            </View>
+            <Text style={styles.navLabel}>Calendar</Text>
+          </TouchableOpacity>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -165,6 +204,7 @@ export default function SidebarNavigator() {
         overlayColor: 'rgba(0,0,0,0.7)',
       }}
     >
+      <Drawer.Screen name="Kalay" component={KalayScreen} />
       {spaces.map(space => (
         <Drawer.Screen
           key={space.id}

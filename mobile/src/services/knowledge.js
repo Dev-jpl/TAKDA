@@ -19,7 +19,7 @@ export const knowledgeService = {
       type: 'application/pdf',
     })
     formData.append('user_id', userId)
-    if (hubId) formData.append('hub_id', hubId)
+    formData.append('hub_id', hubId || '')
 
     const res = await fetch(`${API_URL}/knowledge/upload/pdf`, {
       method: 'POST',

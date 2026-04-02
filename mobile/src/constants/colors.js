@@ -19,6 +19,7 @@ export const colors = {
     knowledge: '#378ADD',  // blue
     deliver: '#D85A30',    // coral
     automate: '#BA7517',   // amber
+    kalay: '#BA7517',      // amber
   },
   status: {
     urgent: '#E24B4A',

@@ -72,6 +72,34 @@ function CustomSidebar(props) {
             <Text style={styles.navLabel}>Home</Text>
           </TouchableOpacity>
 
+          {/* Calendar Link */}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => {
+              navigation.closeDrawer()
+              navigation.navigate('Calendar')
+            }}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: colors.modules.track + '15' }]}>
+              <Calendar color={colors.modules.track} size={20} weight="light" />
+            </View>
+            <Text style={styles.navLabel}>Calendar</Text>
+          </TouchableOpacity>
+
+          {/* Kalay Global Trigger */}
+          <TouchableOpacity
+            style={styles.navItem}
+            onPress={() => {
+              navigation.closeDrawer()
+              navigation.navigate('Kalay')
+            }}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: colors.modules.kalay + '15' }]}>
+              <Sparkle color={colors.modules.kalay} size={20} weight="fill" />
+            </View>
+            <Text style={[styles.navLabel, { color: colors.modules.kalay }]}>Ask Kalay</Text>
+          </TouchableOpacity>
+
           <View style={styles.divider} />
 
           {/* Spaces Section Header & New Space */}
@@ -113,34 +141,6 @@ function CustomSidebar(props) {
               </TouchableOpacity>
             )
           })}
-
-          {/* Kalay Global Trigger */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => {
-              navigation.closeDrawer()
-              navigation.navigate('Kalay')
-            }}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: colors.modules.kalay + '15' }]}>
-              <Sparkle color={colors.modules.kalay} size={20} weight="fill" />
-            </View>
-            <Text style={[styles.navLabel, { color: colors.modules.kalay }]}>Ask Kalay</Text>
-          </TouchableOpacity>
-
-          {/* Calendar Link */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => {
-              navigation.closeDrawer()
-              navigation.navigate('Calendar')
-            }}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: colors.modules.track + '15' }]}>
-              <Calendar color={colors.modules.track} size={20} weight="light" />
-            </View>
-            <Text style={styles.navLabel}>Calendar</Text>
-          </TouchableOpacity>
         </ScrollView>
 
         <View style={styles.footer}>

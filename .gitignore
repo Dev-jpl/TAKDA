@@ -45,3 +45,4 @@ backend/*.egg-info/
 backend/.pytest_cache/
 backend/htmlcov/
 backend/.coverage
+*.swp

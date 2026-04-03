@@ -5,6 +5,18 @@
     "version": "1.0.0",
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "android": {
+      "package": "com.patrick.takda",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b4cb072c-c2be-4953-bc18-597c62d1fc4c"
+      }
+    }
   }
 }

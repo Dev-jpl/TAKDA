@@ -29,20 +29,20 @@ export default function HubScreen({ route, navigation }) {
           onPress={() => setSwitcherVisible(true)}
           activeOpacity={0.7}
         >
-          <SpaceIcon
-            icon={hub.icon || "Circle"}
-            color={hub.color}
-            size={32}
-            iconSize={16}
-            weight="light"
-          />
-          <View style={styles.hubTitleWrapper}>
-            <View style={styles.hubNameRow}>
-              <Text style={styles.hubName} numberOfLines={1}>{hub.name}</Text>
-              <CaretDown color={colors.text.tertiary} size={14} weight="bold" />
+            <SpaceIcon
+              icon={hub?.icon || "Circle"}
+              color={hub?.color}
+              size={32}
+              iconSize={16}
+              weight="light"
+            />
+            <View style={styles.hubTitleWrapper}>
+              <View style={styles.hubNameRow}>
+                <Text style={styles.hubName} numberOfLines={1}>{hub?.name || 'Unnamed Hub'}</Text>
+                <CaretDown color={colors.text.tertiary} size={14} weight="bold" />
+              </View>
+              <Text style={styles.spaceName}>{space?.name?.toUpperCase() || 'MISSION ZONE'}</Text>
             </View>
-            <Text style={styles.spaceName}>{space.name.toUpperCase()}</Text>
-          </View>
         </TouchableOpacity>
 
         <TouchableOpacity

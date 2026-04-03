@@ -1,13 +1,13 @@
 import { supabase } from "./supabase";
 
-const API_URL = "http://localhost:8000";
+import { API_URL } from './apiConfig';
 
 export const spacesService = {
   // Get all spaces (categories) for a user
   async getSpaces(userId) {
     const { data, error } = await supabase
       .from("spaces")
-      .select("*, hubs(count)")
+      .select("*, hubs(*)")
       .eq("user_id", userId)
       .order("order_index");
 

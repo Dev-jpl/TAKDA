@@ -7,12 +7,13 @@ import { spacesService } from '../../services/spaces'
 import { colors } from '../../constants/colors'
 import SpaceIcon from '../common/SpaceIcon'
 import { House, User, Plus, Sparkle, Calendar } from 'phosphor-react-native'
+import { ASSISTANT_NAME } from '../../constants/brand'
 
 import HubsScreen from '../../screens/hubs/HubsScreen'
 import HubScreen from '../../screens/hubs/HubScreen'
 import CreateHubScreen from '../../screens/hubs/CreateHubScreen'
 import ProfileQuickModal from './ProfileQuickModal'
-import KalayScreen from '../../screens/kalay/KalayScreen'
+import CoordinatorScreen from '../../screens/coordinator/CoordinatorScreen'
 import HomeScreen from '../../screens/home/HomeScreen'
 
 const Drawer = createDrawerNavigator()
@@ -86,18 +87,18 @@ function CustomSidebar(props) {
             <Text style={styles.navLabel}>Calendar</Text>
           </TouchableOpacity>
 
-          {/* Kalay Global Trigger */}
+          {/* Aly Global Trigger */}
           <TouchableOpacity
             style={styles.navItem}
             onPress={() => {
               navigation.closeDrawer()
-              navigation.navigate('Kalay')
+              navigation.navigate('Coordinator')
             }}
           >
-            <View style={[styles.iconCircle, { backgroundColor: colors.modules.kalay + '15' }]}>
-              <Sparkle color={colors.modules.kalay} size={20} weight="fill" />
+            <View style={[styles.iconCircle, { backgroundColor: colors.modules.aly + '15' }]}>
+              <Sparkle color={colors.modules.aly} size={20} weight="fill" />
             </View>
-            <Text style={[styles.navLabel, { color: colors.modules.kalay }]}>Ask Kalay</Text>
+            <Text style={[styles.navLabel, { color: colors.modules.aly }]}>Ask {ASSISTANT_NAME}</Text>
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -206,7 +207,7 @@ export default function SidebarNavigator() {
       }}
     >
       <Drawer.Screen name="Home" component={HomeScreen} />
-      <Drawer.Screen name="Kalay" component={KalayScreen} />
+      <Drawer.Screen name="Coordinator" component={CoordinatorScreen} />
       {spaces.map(space => (
         <Drawer.Screen
           key={space.id}

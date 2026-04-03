@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-const API_URL = "http://localhost:8000";
+import { API_URL } from './apiConfig';
 
 export const hubsService = {
   // Get all hubs for a space

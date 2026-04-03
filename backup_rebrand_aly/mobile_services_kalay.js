@@ -59,6 +59,16 @@ export const kalayService = {
     return res.json()
   },
 
+  async updateSession(sessionId, title) {
+    const res = await fetch(`${API_URL}/kalay/sessions/${sessionId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    })
+    if (!res.ok) throw new Error('Update session failed')
+    return res.json()
+  },
+
   async getOutputs(userId) {
     const res = await fetch(`${API_URL}/kalay/outputs/${userId}`)
     if (!res.ok) throw new Error('Failed to fetch Kalay outputs')

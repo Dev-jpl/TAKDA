@@ -9,8 +9,8 @@ import SidebarNavigator from './SidebarNavigator'
 import HomeScreen from '../../screens/home/HomeScreen'
 import ProfileScreen from '../../screens/auth/ProfileScreen'
 import CreateSpaceScreen from '../../screens/home/CreateSpaceScreen'
-import KalayScreen from '../../screens/kalay/KalayScreen'
-import KalayQuizScreen from '../../screens/kalay/KalayQuizScreen'
+import CoordinatorScreen from '../../screens/coordinator/CoordinatorScreen'
+import AssistantQuiz from '../../screens/coordinator/QuizScreen'
 import CalendarScreen from '../../screens/calendar/CalendarScreen'
 import SpaceScreen from '../../screens/space/SpaceScreen'
 
@@ -46,8 +46,8 @@ export default function RootNavigator() {
             <Stack.Screen name="Main" component={SidebarNavigator} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
             <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
-            <Stack.Screen name="Kalay" component={KalayScreen} />
-            <Stack.Screen name="KalayQuiz" component={KalayQuizScreen} />
+            <Stack.Screen name="Coordinator" component={CoordinatorScreen} />
+            <Stack.Screen name="AssistantQuiz" component={AssistantQuiz} />
             <Stack.Screen name="Calendar" component={CalendarScreen} />
           </>
         ) : (

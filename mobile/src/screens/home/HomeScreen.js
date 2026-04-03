@@ -16,7 +16,7 @@ import { spacesService } from '../../services/spaces'
 import { hubsService } from '../../services/hubs'
 import { colors } from '../../constants/colors'
 import { User, Plus, Sparkle, Calendar, Clock, List } from 'phosphor-react-native'
-import KalayFAB from '../../components/common/KalayFAB'
+import AssistantFAB from '../../components/common/AssistantFAB'
 import SpaceIcon from '../../components/common/SpaceIcon'
 import { eventService } from '../../services/events'
 
@@ -133,7 +133,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.eventList}>
             {upcomingEvents.map((event) => (
               <TouchableOpacity key={event.id} style={styles.eventRow} activeOpacity={0.7}>
-                <View style={[styles.eventAccent, { backgroundColor: event.color || colors.modules.kalay }]} />
+                <View style={[styles.eventAccent, { backgroundColor: event.color || colors.modules.aly }]} />
                 <View style={styles.eventInfo}>
                   <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
                   <View style={styles.eventMeta}>
@@ -220,7 +220,7 @@ export default function HomeScreen({ navigation }) {
           />
         }
       />
-      <KalayFAB />
+      <AssistantFAB />
     </SafeAreaView>
   )
 }
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   },
   sectionLink: {
     fontSize: 11,
-    color: colors.modules.kalay,
+    color: colors.modules.aly,
     fontWeight: '600',
     letterSpacing: 0.5,
   },

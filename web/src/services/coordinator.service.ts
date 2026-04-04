@@ -1,6 +1,6 @@
 import { API_URL } from './apiConfig';
 
-export interface ChatMessage {
+export interface CoordinatorMessage {
   id: string;
   session_id: string;
   role: 'user' | 'assistant';
@@ -15,12 +15,17 @@ export interface AIProposal {
   status: 'pending' | 'executed' | 'rejected';
 }
 
-export interface ChatSession {
+export interface CoordinatorSession {
   id: string;
   user_id: string;
   title: string;
   created_at: string;
+  updated_at: string;
 }
+
+// Aliases for compatibility
+export type ChatMessage = CoordinatorMessage;
+export type ChatSession = CoordinatorSession;
 
 export const coordinatorService = {
   async chat({ 
@@ -64,13 +69,44 @@ export const coordinatorService = {
     }
   },
 
-  async getSessions(userId: string): Promise<ChatSession[]> {
+  async *streamChat(userId: string, message: string, sessionId?: string): AsyncIterableIterator<string> {
+    const response = await fetch(`${API_URL}/coordinator/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        session_id: sessionId || `session_${Date.now()}`,
+        message,
+        space_ids: [],
+        hub_ids: [],
+      }),
+    });
+
+    if (!response.ok) throw new Error('Registry Error: Chat protocol failure.');
+    if (!response.body) throw new Error('Registry Error: Empty intelligence stream.');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk) yield chunk;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  },
+
+  async getSessions(userId: string): Promise<CoordinatorSession[]> {
     const res = await fetch(`${API_URL}/coordinator/sessions/${userId}`);
     if (!res.ok) throw new Error('Registry Error: Failed to fetch sessions.');
     return res.json();
   },
 
-  async getMessages(sessionId: string): Promise<ChatMessage[]> {
+  async getMessages(sessionId: string): Promise<CoordinatorMessage[]> {
     const res = await fetch(`${API_URL}/coordinator/sessions/${sessionId}/messages`);
     if (!res.ok) throw new Error('Registry Error: Failed to fetch mission logs.');
     return res.json();

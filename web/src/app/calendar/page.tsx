@@ -9,10 +9,12 @@ import {
   Plus, 
   Clock, 
   FileText,
-  Sparkle
+  Sparkle,
+  ArrowsClockwise
 } from '@phosphor-icons/react';
 import { supabase } from '@/services/supabase';
 import { eventsService, CalendarEvent } from '@/services/events.service';
+import { integrationsService } from '@/services/integrations.service';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
@@ -24,6 +26,7 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     loadEvents();
@@ -41,6 +44,21 @@ export default function CalendarPage() {
       console.error('Calendar sync failed:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await integrationsService.syncGoogleCalendar(user.id);
+        await loadEvents();
+      }
+    } catch (error) {
+      console.error('Manual sync failed:', error);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -87,10 +105,20 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <button className="flex items-center gap-2 bg-modules-track text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-xl shadow-modules-track/20 hover:scale-[1.02] transition-all">
-          <Plus size={16} weight="bold" />
-          <span>New Mission</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleSync}
+            disabled={syncing}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition-all border border-border-primary hover:bg-background-tertiary ${syncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <ArrowsClockwise size={16} weight="bold" className={syncing ? 'animate-spin' : ''} />
+            <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
+          <button className="flex items-center gap-2 bg-modules-track text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-xl shadow-modules-track/20 hover:scale-[1.02] transition-all">
+            <Plus size={16} weight="bold" />
+            <span>New Mission</span>
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">

@@ -1,12 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   PaperPlaneRight, 
   Sparkle, 
-  ArrowLeft, 
-  Trash,
   DotsThreeVertical,
   Plus
 } from '@phosphor-icons/react';
@@ -26,34 +24,36 @@ export default function CoordinatorPage() {
   const [userId, setUserId] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-
+  
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null));
   }, []);
 
-  useEffect(() => {
-    if (userId) loadSessions();
-  }, [userId]);
-
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     if (!userId) return;
     const data = await coordinatorService.getSessions(userId);
     setSessions(data);
-  };
+  }, [userId]);
 
-  const loadMessages = async (sessionId: string) => {
+  const loadMessages = useCallback(async (sessionId: string) => {
     setCurrentSessionId(sessionId);
     const data = await coordinatorService.getMessages(sessionId);
     setMessages(data);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (userId) loadSessions();
+  }, [userId, loadSessions]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || !userId || isStreaming) return;
 
     const userMessage: CoordinatorMessage = {
       id: Date.now().toString(),
+      session_id: currentSessionId || 'new',
       role: 'user',
       content: inputValue,
+      created_at: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -63,7 +63,13 @@ export default function CoordinatorPage() {
     let assistantContent = '';
     const assistantId = (Date.now() + 1).toString();
 
-    setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
+    setMessages(prev => [...prev, { 
+      id: assistantId, 
+      session_id: currentSessionId || 'new',
+      role: 'assistant', 
+      content: '',
+      created_at: new Date().toISOString(),
+    }]);
 
     try {
       const stream = coordinatorService.streamChat(userId, userMessage.content, currentSessionId || undefined);

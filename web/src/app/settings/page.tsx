@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -18,32 +18,20 @@ import {
   Plug,
   EnvelopeOpen,
   FolderOpen,
+  IconProps,
 } from "@phosphor-icons/react";
+import { integrationsService, UserIntegration } from "@/services/integrations.service";
+import { supabase } from "@/services/supabase";
 
 interface SettingItemProps {
-  icon: React.ComponentType<{ size: number; weight: string }>;
+  icon: React.ElementType<IconProps>;
   label: string;
   description: string;
   value?: string | boolean;
   onClick?: () => void;
 }
 
-interface ConnectedCalendar {
-  id: string;
-  name: string;
-  provider: "Google" | "Apple" | "Microsoft" | "Outlook";
-  email?: string;
-  enabled: boolean;
-}
 
-interface Integration {
-  id: string;
-  name: string;
-  provider: string;
-  email?: string;
-  enabled: boolean;
-  lastSynced?: string;
-}
 
 type SettingsTab = "integrations" | "notifications" | "display" | "security" | "advanced";
 
@@ -85,82 +73,15 @@ const SettingItem: React.FC<SettingItemProps> = ({
   </motion.button>
 );
 
-interface CalendarItemProps {
-  calendar: ConnectedCalendar;
-  onToggle: (id: string) => void;
-  onRemove: (id: string) => void;
+
+interface TabButtonProps {
+  label: string;
+  icon: React.ElementType<IconProps>;
+  isActive: boolean;
+  onClick: () => void;
 }
 
-const CalendarItem: React.FC<CalendarItemProps> = ({
-  calendar,
-  onToggle,
-  onRemove,
-}) => {
-  const providerColors: Record<string, string> = {
-    Google: "bg-red-500/10 text-red-400 border-red-500/20",
-    Apple: "bg-gray-500/10 text-gray-400 border-gray-500/20",
-    Microsoft: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    Outlook: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  };
-
-  return (
-    <motion.div
-      whileHover={{ backgroundColor: "rgba(255,255,255,0.01)" }}
-      className="w-full flex items-center justify-between px-6 py-4 rounded-lg border border-border-primary bg-background-tertiary/20 hover:bg-background-tertiary/40 transition-all group"
-    >
-      <div className="flex items-center gap-4 flex-1">
-        <Calendar
-          size={20}
-          weight="light"
-          className="text-modules-knowledge flex-shrink-0"
-        />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-text-primary truncate">
-            {calendar.name}
-          </p>
-          <div className="flex items-center gap-2 mt-1">
-            <span
-              className={`inline-block px-2 py-1 rounded text-xs font-medium border ${
-                providerColors[calendar.provider]
-              }`}
-            >
-              {calendar.provider}
-            </span>
-            {calendar.email && (
-              <span className="text-xs text-text-tertiary">{calendar.email}</span>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        {/* Enable/Disable Toggle */}
-        <button
-          onClick={() => onToggle(calendar.id)}
-          className={`relative inline-flex w-12 h-6 rounded-full transition-colors ${
-            calendar.enabled ? "bg-modules-aly" : "bg-background-tertiary"
-          }`}
-        >
-          <motion.span
-            layout
-            className={`inline-block w-5 h-5 bg-white rounded-full absolute top-0.5 ${
-              calendar.enabled ? "right-0.5" : "left-0.5"
-            } transition-all`}
-          />
-        </button>
-        {/* Remove Button */}
-        <button
-          onClick={() => onRemove(calendar.id)}
-          className="p-2 text-text-tertiary hover:text-status-high hover:bg-status-high/10 rounded-lg transition-colors"
-          title="Remove calendar"
-        >
-          <Trash size={18} weight="light" />
-        </button>
-      </div>
-    </motion.div>
-  );
-};
-
-const TabButton = ({ tab, label, icon: Icon, isActive, onClick }: any) => (
+const TabButton: React.FC<TabButtonProps> = ({ label, icon: Icon, isActive, onClick }) => (
   <motion.button
     onClick={onClick}
     className={`w-full px-4 py-2.5 text-left text-xs font-medium transition-colors flex items-center gap-3 ${
@@ -175,14 +96,23 @@ const TabButton = ({ tab, label, icon: Icon, isActive, onClick }: any) => (
   </motion.button>
 );
 
-const IntegrationItem = ({
+interface IntegrationItemProps {
+  name: string;
+  provider: string;
+  email?: string;
+  enabled: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+}
+
+const IntegrationItem: React.FC<IntegrationItemProps> = ({
   name,
   provider,
   email,
   enabled,
   onToggle,
   onRemove,
-}: any) => {
+}) => {
   const getProviderColor = (provider: string) => {
     const colors: { [key: string]: string } = {
       Google: "bg-status-high text-white",
@@ -243,46 +173,29 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("integrations");
 
   // Integration States
-  const [calendars, setCalendars] = useState<Integration[]>([
-    {
-      id: "1",
-      name: "John's Calendar",
-      provider: "Google",
-      email: "john@gmail.com",
-      enabled: true,
-      lastSynced: "2024-01-15T10:30:00",
-    },
-    {
-      id: "2",
-      name: "Work Calendar",
-      provider: "Microsoft",
-      email: "john@company.com",
-      enabled: true,
-      lastSynced: "2024-01-15T09:15:00",
-    },
-  ]);
+  const [activeIntegrations, setActiveIntegrations] = useState<UserIntegration[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const [gmailIntegrations, setGmailIntegrations] = useState<Integration[]>([
-    {
-      id: "g1",
-      name: "Personal Gmail",
-      provider: "Gmail",
-      email: "john.doe@gmail.com",
-      enabled: true,
-      lastSynced: "2024-01-15T11:00:00",
-    },
-  ]);
+  const fetchIntegrations = useCallback(async () => {
+    const data = await integrationsService.getIntegrations();
+    setActiveIntegrations(data);
+  }, []);
 
-  const [driveIntegrations, setDriveIntegrations] = useState<Integration[]>([
-    {
-      id: "d1",
-      name: "Google Drive",
-      provider: "Drive",
-      email: "john.doe@gmail.com",
-      enabled: true,
-      lastSynced: "2024-01-15T10:45:00",
-    },
-  ]);
+  const handleAddCalendar = async () => {
+    if (!userId) return;
+    await integrationsService.initiateGoogleAuth(userId);
+  };
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id || null);
+    });
+    
+    const init = async () => {
+      await fetchIntegrations();
+    };
+    init();
+  }, [fetchIntegrations]);
 
   // Settings States
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -291,44 +204,6 @@ export default function SettingsPage() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [twoFactorAuth, setTwoFactorAuth] = useState(true);
   const [dataCollection, setDataCollection] = useState(false);
-
-  // Integration Handlers
-  const removeCalendar = (id: string) => {
-    setCalendars(calendars.filter((cal) => cal.id !== id));
-  };
-
-  const toggleCalendar = (id: string) => {
-    setCalendars(
-      calendars.map((cal) =>
-        cal.id === id ? { ...cal, enabled: !cal.enabled } : cal
-      )
-    );
-  };
-
-  const removeGmail = (id: string) => {
-    setGmailIntegrations(gmailIntegrations.filter((g) => g.id !== id));
-  };
-
-  const toggleGmail = (id: string) => {
-    setGmailIntegrations(
-      gmailIntegrations.map((g) =>
-        g.id === id ? { ...g, enabled: !g.enabled } : g
-      )
-    );
-  };
-
-  const removeDrive = (id: string) => {
-    setDriveIntegrations(driveIntegrations.filter((d) => d.id !== id));
-  };
-
-  const toggleDrive = (id: string) => {
-    setDriveIntegrations(
-      driveIntegrations.map((d) =>
-        d.id === id ? { ...d, enabled: !d.enabled } : d
-      )
-    );
-  };
-
   return (
     <div className="min-h-screen bg-background-primary">
       {/* Header */}
@@ -365,35 +240,30 @@ export default function SettingsPage() {
           >
             <div className="rounded-lg border border-border-secondary bg-background-secondary overflow-hidden">
               <TabButton
-                tab="integrations"
                 label="Integrations"
                 icon={Plug}
                 isActive={activeTab === "integrations"}
                 onClick={() => setActiveTab("integrations")}
               />
               <TabButton
-                tab="notifications"
                 label="Notifications"
                 icon={Bell}
                 isActive={activeTab === "notifications"}
                 onClick={() => setActiveTab("notifications")}
               />
               <TabButton
-                tab="display"
                 label="Display"
                 icon={Palette}
                 isActive={activeTab === "display"}
                 onClick={() => setActiveTab("display")}
               />
               <TabButton
-                tab="security"
                 label="Security"
                 icon={ShieldCheck}
                 isActive={activeTab === "security"}
                 onClick={() => setActiveTab("security")}
               />
               <TabButton
-                tab="advanced"
                 label="Advanced"
                 icon={Database}
                 isActive={activeTab === "advanced"}
@@ -425,25 +295,25 @@ export default function SettingsPage() {
                     </h2>
                   </div>
                   <div className="space-y-3">
-                    {calendars.map((cal) => (
+                    {activeIntegrations.filter(i => i.provider === 'google').map((integration) => (
                       <IntegrationItem
-                        key={cal.id}
-                        name={cal.name}
-                        provider={cal.provider}
-                        email={cal.email}
-                        enabled={cal.enabled}
-                        onToggle={() => toggleCalendar(cal.id)}
-                        onRemove={() => removeCalendar(cal.id)}
+                        key={integration.id}
+                        name="Google Calendar"
+                        provider="Google"
+                        email={integration.metadata?.email as string | undefined}
+                        enabled={true}
+                        onToggle={() => {}}
+                        onRemove={() => integrationsService.removeIntegration(integration.id).then(fetchIntegrations)}
                       />
                     ))}
                     <motion.button
                       whileHover={{ backgroundColor: "rgba(255,255,255,0.03)" }}
-                      onClick={() => console.log("Add calendar")}
+                      onClick={handleAddCalendar}
                       className="w-full flex items-center justify-center gap-2 px-6 py-2 rounded-lg border border-dashed border-modules-knowledge/40 bg-modules-knowledge/5 hover:bg-modules-knowledge/10 transition-all"
                     >
                       <Plus size={16} className="text-modules-knowledge" />
                       <span className="text-xs font-medium text-modules-knowledge">
-                        Add Calendar
+                        Add Google Calendar
                       </span>
                     </motion.button>
                   </div>
@@ -463,20 +333,20 @@ export default function SettingsPage() {
                     </h2>
                   </div>
                   <div className="space-y-3">
-                    {gmailIntegrations.map((gmail) => (
+                    {activeIntegrations.filter(i => i.provider === 'google').map((integration) => (
                       <IntegrationItem
-                        key={gmail.id}
-                        name={gmail.name}
-                        provider={gmail.provider}
-                        email={gmail.email}
-                        enabled={gmail.enabled}
-                        onToggle={() => toggleGmail(gmail.id)}
-                        onRemove={() => removeGmail(gmail.id)}
+                        key={integration.id}
+                        name="Gmail Inbox"
+                        provider="Gmail"
+                        email={integration.metadata?.email as string | undefined}
+                        enabled={true}
+                        onToggle={() => {}}
+                        onRemove={() => integrationsService.removeIntegration(integration.id).then(fetchIntegrations)}
                       />
                     ))}
                     <motion.button
                       whileHover={{ backgroundColor: "rgba(255,255,255,0.03)" }}
-                      onClick={() => console.log("Add gmail")}
+                      onClick={handleAddCalendar}
                       className="w-full flex items-center justify-center gap-2 px-6 py-2 rounded-lg border border-dashed border-status-high/40 bg-status-high/5 hover:bg-status-high/10 transition-all"
                     >
                       <Plus size={16} className="text-status-high" />
@@ -501,15 +371,15 @@ export default function SettingsPage() {
                     </h2>
                   </div>
                   <div className="space-y-3">
-                    {driveIntegrations.map((drive) => (
+                    {activeIntegrations.filter(i => i.provider === 'google').map((integration) => (
                       <IntegrationItem
-                        key={drive.id}
-                        name={drive.name}
-                        provider={drive.provider}
-                        email={drive.email}
-                        enabled={drive.enabled}
-                        onToggle={() => toggleDrive(drive.id)}
-                        onRemove={() => removeDrive(drive.id)}
+                        key={integration.id}
+                        name="Google Drive"
+                        provider="Drive"
+                        email={integration.metadata?.email as string | undefined}
+                        enabled={true}
+                        onToggle={() => {}}
+                        onRemove={() => integrationsService.removeIntegration(integration.id).then(fetchIntegrations)}
                       />
                     ))}
                     <motion.button

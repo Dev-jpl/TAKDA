@@ -7,7 +7,6 @@ import { spacesService } from "@/services/spaces.service";
 import { hubsService } from "@/services/hubs.service";
 import { useRouter } from "next/navigation";
 import {
-  User,
   SignOut,
   Bell,
   ShieldCheck,
@@ -15,6 +14,7 @@ import {
   Key,
   IdentificationCard,
   ArrowRight,
+  IconProps,
 } from "@phosphor-icons/react";
 
 interface Stats {
@@ -53,7 +53,7 @@ export default function ProfilePage() {
           const spacesData = await spacesService.getSpaces(user.id);
           let hubCount = 0;
           for (const space of spacesData) {
-            const hubs = await hubsService.getHubs(space.id);
+            const hubs = await hubsService.getHubsBySpace(space.id);
             hubCount += hubs.length;
           }
           setStats({ spaces: spacesData.length, hubs: hubCount });
@@ -287,7 +287,7 @@ export default function ProfilePage() {
 }
 
 interface MenuLinkProps {
-  icon: React.ComponentType<{ size: number; weight: string }>;
+  icon: React.ElementType<IconProps>;
   label: string;
 }
 

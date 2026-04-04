@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar as CalendarIcon, 
   CaretLeft, 
@@ -10,7 +10,8 @@ import {
   Clock, 
   FileText,
   Sparkle,
-  ArrowsClockwise
+  ArrowsClockwise,
+  X
 } from '@phosphor-icons/react';
 import { supabase } from '@/services/supabase';
 import { eventsService, CalendarEvent } from '@/services/events.service';
@@ -27,13 +28,35 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [newEvent, setNewEvent] = useState({
+    title: '',
+    start_time: new Date().toISOString().slice(0, 16),
+    end_time: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
+    description: ''
+  });
 
   useEffect(() => {
-    loadEvents();
+    const initCalendar = async () => {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Silent sync on load
+        try {
+          await integrationsService.syncGoogleCalendar(user.id);
+        } catch (e) {
+          console.error('Initial sync failed:', e);
+        }
+        await loadEvents();
+      }
+      setLoading(false);
+    };
+
+    initCalendar();
   }, []);
 
   const loadEvents = async () => {
-    setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -42,8 +65,6 @@ export default function CalendarPage() {
       }
     } catch (error) {
       console.error('Calendar sync failed:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -62,6 +83,32 @@ export default function CalendarPage() {
     }
   };
 
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      await eventsService.createEvent({
+        ...newEvent,
+        user_id: user.id
+      });
+      setShowNewModal(false);
+      setNewEvent({
+        title: '',
+        start_time: new Date().toISOString().slice(0, 16),
+        end_time: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
+        description: ''
+      });
+      await loadEvents();
+    } catch (error) {
+      console.error('Failed to create event:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const calendarDays = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -69,17 +116,14 @@ export default function CalendarPage() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     
     const days = [];
-    // Padding for previous month
     for (let i = 0; i < firstDay; i++) days.push(null);
-    // Current month days
     for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
     
     return days;
   }, [currentDate]);
 
   const changeMonth = (offset: number) => {
-    const nextDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1);
-    setCurrentDate(nextDate);
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
   };
 
   const getEventsForDay = (day: Date | null) => {
@@ -92,6 +136,93 @@ export default function CalendarPage() {
 
   return (
     <main className="p-6 lg:p-12 max-w-7xl mx-auto">
+      {/* New Event Modal Overlay */}
+      <AnimatePresence>
+        {showNewModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background-primary/80 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-background-secondary border border-border-primary rounded-3xl p-8 w-full max-w-md shadow-2xl relative"
+            >
+              <button 
+                onClick={() => setShowNewModal(false)}
+                className="absolute top-6 right-6 text-text-tertiary hover:text-text-primary transition-colors"
+              >
+                <X size={20} weight="bold" />
+              </button>
+
+              <h2 className="text-xl font-bold text-text-primary mb-6">Initiate New Mission</h2>
+              
+              <form onSubmit={handleCreateEvent} className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest block mb-2">Objective</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newEvent.title}
+                    onChange={e => setNewEvent({...newEvent, title: e.target.value})}
+                    className="w-full bg-background-tertiary border border-border-primary rounded-xl px-4 py-3 text-sm text-text-primary focus:border-modules-track outline-none transition-all placeholder:text-text-tertiary/30"
+                    placeholder="Mission command..."
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest block mb-2">Commencement</label>
+                    <input 
+                      type="datetime-local" 
+                      required
+                      value={newEvent.start_time}
+                      onChange={e => setNewEvent({...newEvent, start_time: e.target.value})}
+                      className="w-full bg-background-tertiary border border-border-primary rounded-xl px-4 py-3 text-xs text-text-primary focus:border-modules-track outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest block mb-2">Conclusion</label>
+                    <input 
+                      type="datetime-local" 
+                      required
+                      value={newEvent.end_time}
+                      onChange={e => setNewEvent({...newEvent, end_time: e.target.value})}
+                      className="w-full bg-background-tertiary border border-border-primary rounded-xl px-4 py-3 text-xs text-text-primary focus:border-modules-track outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest block mb-2">Intelligence</label>
+                  <textarea 
+                    value={newEvent.description}
+                    onChange={e => setNewEvent({...newEvent, description: e.target.value})}
+                    className="w-full bg-background-tertiary border border-border-primary rounded-xl px-4 py-3 text-sm text-text-primary focus:border-modules-track outline-none transition-all h-24 resize-none placeholder:text-text-tertiary/30"
+                    placeholder="Enter mission parameters..."
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setShowNewModal(false)}
+                    className="flex-1 px-6 py-3 rounded-xl font-bold text-xs bg-background-tertiary text-text-tertiary border border-border-primary hover:text-text-primary transition-all"
+                  >
+                    Abort
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 px-6 py-3 rounded-xl font-bold text-xs bg-modules-track text-white shadow-lg shadow-modules-track/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {loading ? 'Processing...' : 'Deploy Sync'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <header className="flex items-center justify-between mb-12">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-modules-track/20 border border-modules-track/30 flex items-center justify-center shadow-lg shadow-modules-track/10">
@@ -109,12 +240,15 @@ export default function CalendarPage() {
           <button 
             onClick={handleSync}
             disabled={syncing}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition-all border border-border-primary hover:bg-background-tertiary ${syncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition-all border border-border-primary hover:bg-background-tertiary ${syncing ? 'opacity-50' : ''}`}
           >
             <ArrowsClockwise size={16} weight="bold" className={syncing ? 'animate-spin' : ''} />
             <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
           </button>
-          <button className="flex items-center gap-2 bg-modules-track text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-xl shadow-modules-track/20 hover:scale-[1.02] transition-all">
+          <button 
+            onClick={() => setShowNewModal(true)}
+            className="flex items-center gap-2 bg-modules-track text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-xl shadow-modules-track/20 hover:scale-[1.02] transition-all"
+          >
             <Plus size={16} weight="bold" />
             <span>New Mission</span>
           </button>
@@ -122,7 +256,6 @@ export default function CalendarPage() {
       </header>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Calendar Grid */}
         <div className="xl:col-span-2 space-y-6">
           <div className="bg-background-secondary border border-border-primary rounded-3xl p-8 shadow-sm">
             <div className="flex items-center justify-between mb-10">
@@ -187,7 +320,6 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Agenda Column */}
         <div className="space-y-6">
           <section className="bg-background-secondary border border-border-primary rounded-3xl p-6 shadow-sm flex-1 h-fit">
             <h2 className="text-xs font-black text-text-tertiary uppercase tracking-widest mb-6 flex items-center gap-2">

@@ -323,7 +323,7 @@ export default function LandingPage() {
                   transition={{ duration: 1.8, ease: "easeOut" }}
                   className="relative mb-8"
                 >
-                  <h1 className="text-[84px] md:text-[150px] font-black leading-none tracking-tighter text-text-primary drop-shadow-[0_0_30px_rgba(186,117,23,0.1)]">
+                  <h1 className="text-[64px] sm:text-[84px] md:text-[150px] font-black leading-none tracking-tighter text-text-primary drop-shadow-[0_0_30px_rgba(186,117,23,0.1)]">
                     TAKDA<span className="text-modules-aly">.</span>
                   </h1>
                 </motion.div>
@@ -358,12 +358,12 @@ export default function LandingPage() {
                 </motion.p>
                 
                 {/* Initiation Progress Scannline */}
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: "240px" }}
-                  transition={{ delay: 0.2, duration: 4.8, ease: "linear" }}
-                  className="h-[1px] bg-modules-aly/50 mt-16 relative"
-                >
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: "min(240px, 60vw)" }}
+                    transition={{ delay: 0.2, duration: 4.8, ease: "linear" }}
+                    className="h-[1px] bg-modules-aly/50 mt-12 md:mt-16 relative"
+                  >
                   <motion.div 
                     animate={{ left: ["0%", "100%"] }}
                     transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
@@ -382,11 +382,11 @@ export default function LandingPage() {
                   <Sparkle size={16} weight="fill" />
                   <span>Next Gen Life OS Coordination</span>
                 </div>
-                <h2 className="text-7xl md:text-[100px] font-black leading-[0.95] tracking-tighter mb-10">
+                <h2 className="text-4xl sm:text-6xl md:text-7xl lg:text-[100px] font-black leading-[0.95] tracking-tighter mb-8 md:mb-10">
                   Work Smart. Live Well. <br />
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-text-primary via-text-secondary to-text-tertiary">Stay Connected.</span>
                 </h2>
-                <p className="max-w-2xl mx-auto text-text-tertiary text-xl md:text-2xl font-medium leading-[1.6] mb-14 opacity-80">
+                <p className="max-w-2xl mx-auto text-text-tertiary text-base sm:text-xl md:text-2xl font-medium leading-[1.6] mb-10 md:mb-14 opacity-80 px-4 md:px-0">
                   TAKDA is your AI‑powered Life OS, blending productivity with personal care. 
                   It organizes tasks, tracks projects, and even remembers the little things that make life meaningful.
                 </p>
@@ -417,17 +417,17 @@ export default function LandingPage() {
       </section>
 
       {/* Module Showcase Interaction */}
-      <section id="intelligence" className="min-h-screen flex items-center justify-center py-20 px-6">
+      <section id="intelligence" className="min-h-screen flex items-center justify-center py-12 md:py-20 px-4 md:px-6">
         <ModuleShowcase />
       </section>
 
       {/* Social Proof Success Log */}
-      <section id="social" className="min-h-screen flex items-center justify-center py-24 px-6 bg-background-secondary/30">
+      <section id="social" className="min-h-screen flex items-center justify-center py-16 md:py-24 px-4 md:px-6 bg-background-secondary/30">
         <SocialProofRegistry />
       </section>
 
       {/* Features Grid */}
-      <section id="features" className="min-h-screen flex items-center justify-center py-16 px-6 bg-background-primary/30 relative overflow-hidden">
+      <section id="features" className="min-h-screen flex items-center justify-center py-12 md:py-16 px-4 md:px-6 bg-background-primary/30 relative overflow-hidden">
          {/* Subtle Background Accent */}
         <div className="absolute top-0 right-0 w-1/3 h-1/3 bg-modules-aly/5 blur-[120px] rounded-full pointer-events-none" />
         
@@ -489,12 +489,12 @@ export default function LandingPage() {
       </section>
 
       {/* Final Access Enrollment */}
-      <section id="access" className="min-h-screen flex items-center justify-center py-32 px-6">
+      <section id="access" className="min-h-screen flex items-center justify-center py-20 md:py-32 px-4 md:px-6">
         <AccessRegistry />
       </section>
 
       {/* Footer Branding */}
-      <footer className="py-20 border-t border-border-primary px-6">
+      <footer className="py-12 md:py-20 border-t border-border-primary px-4 md:px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
           <div className="flex items-center gap-3 opacity-50">
             <Sparkle size={20} color="var(--text-tertiary)" weight="fill" />

@@ -45,19 +45,19 @@ export const ModuleShowcase = () => {
   const activeModule = allModules.find(m => m.id === activeTab) || allModules[0];
 
   return (
-    <section id="intelligence" className="py-32 px-6 bg-background-primary relative">
+    <section id="intelligence" className="py-16 md:py-32 px-4 md:px-6 bg-background-primary relative">
         <div className="max-w-7xl mx-auto">
-            <header className="mb-16 text-center max-w-2xl mx-auto">
+            <header className="mb-10 md:mb-16 text-center max-w-2xl mx-auto">
                 <h2 className="text-xs font-black text-modules-aly uppercase tracking-[0.4em] mb-4">Glimpse into the Registry</h2>
-                <h3 className="text-4xl md:text-5xl font-black tracking-tight text-text-primary mb-6">Interactive OS Oversight</h3>
-                <p className="text-text-tertiary font-medium leading-relaxed">
+                <h3 className="text-3xl md:text-5xl font-black tracking-tight text-text-primary mb-6">Interactive OS Oversight</h3>
+                <p className="text-text-tertiary font-medium leading-relaxed text-sm md:text-base">
                     Identify and coordinate your mission-critical live intelligence through Takda&apos;s professional high-fidelity modules.
                 </p>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
                 {/* Module Selector Sidebar */}
-                <aside className="lg:col-span-4 space-y-8 h-[600px] overflow-y-auto pr-4 custom-scrollbar">
+                <aside className="lg:col-span-4 space-y-4 md:space-y-8 h-[350px] md:h-[600px] overflow-y-auto pr-2 md:pr-4 custom-scrollbar">
                     <div className="space-y-3">
                         <h5 className="text-[10px] font-black text-text-tertiary uppercase tracking-[0.3em] px-4 opacity-50">Core OS Registry</h5>
                         {coreModules.map((m) => (
@@ -147,7 +147,7 @@ export const ModuleShowcase = () => {
                 <main className="lg:col-span-8">
                     <div className="relative group">
                         {/* Terminal Frame Aesthetic */}
-                        <div className="bg-background-tertiary border border-border-primary rounded-3xl shadow-2xl overflow-hidden min-h-[400px] flex flex-col">
+                        <div className="bg-background-tertiary border border-border-primary rounded-3xl shadow-2xl overflow-hidden min-h-[300px] md:min-h-[400px] flex flex-col">
                             {/* Window Header */}
                             <header className="px-6 h-12 bg-background-secondary border-b border-border-primary flex items-center justify-between">
                                 <div className="flex gap-2">

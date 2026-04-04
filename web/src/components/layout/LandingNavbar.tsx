@@ -30,7 +30,7 @@ export function LandingNavbar({ activeSection }: LandingNavbarProps) {
       />
       
       {/* Layer 1: Interactive Content (Strictly In Front) */}
-      <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between relative z-10 pointer-events-auto transform-gpu">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 h-20 flex items-center justify-between relative z-10 pointer-events-auto transform-gpu">
         <Link href="/" className="flex items-center gap-3 group cursor-pointer">
           <motion.div 
             whileHover={{ scale: 1.02 }}

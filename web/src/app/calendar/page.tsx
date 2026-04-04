@@ -11,7 +11,8 @@ import {
   FileText,
   Sparkle,
   ArrowsClockwise,
-  X
+  X,
+  Layout
 } from '@phosphor-icons/react';
 import { supabase } from '@/services/supabase';
 import { eventsService, CalendarEvent } from '@/services/events.service';
@@ -28,6 +29,17 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  
+  const [showAgenda, setShowAgenda] = useState(true);
+  const [popoverState, setPopoverState] = useState<{ 
+    isOpen: boolean; 
+    date: Date | null; 
+    position: { x: number; y: number } | null 
+  }>({
+    isOpen: false,
+    date: null,
+    position: null
+  });
   
   const [showNewModal, setShowNewModal] = useState(false);
   const [newEvent, setNewEvent] = useState({
@@ -109,6 +121,31 @@ export default function CalendarPage() {
     }
   };
 
+  const handleDateClick = (e: React.MouseEvent, day: Date | null) => {
+    if (!day) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scrollY = window.scrollY;
+    
+    // Position logic: prefer right of cell, but switch to left if near edge
+    const isNearRightEdge = rect.left + 350 > window.innerWidth;
+    
+    setPopoverState({
+      isOpen: true,
+      date: day,
+      position: {
+        x: isNearRightEdge ? rect.left - 330 : rect.right + 10,
+        y: rect.top + scrollY
+      }
+    });
+
+    setNewEvent({
+      ...newEvent,
+      start_time: day.toISOString().slice(0, 10) + 'T09:00',
+      end_time: day.toISOString().slice(0, 10) + 'T10:00'
+    });
+  };
+
   const calendarDays = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -136,6 +173,77 @@ export default function CalendarPage() {
 
   return (
     <main className="p-6 lg:p-12 max-w-7xl mx-auto">
+      {/* Quick Create Popover */}
+      <AnimatePresence>
+        {popoverState.isOpen && (
+          <>
+            <div 
+              className="fixed inset-0 z-[80]" 
+              onClick={() => setPopoverState({ ...popoverState, isOpen: false })}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              style={{ 
+                position: 'absolute', 
+                left: popoverState.position?.x, 
+                top: popoverState.position?.y,
+                zIndex: 90
+              }}
+              className="w-[320px] bg-background-secondary border border-modules-track/30 rounded-2xl p-6 shadow-2xl shadow-modules-track/10"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-black text-modules-track uppercase tracking-[0.2em]">Quick Initiate</span>
+                <button 
+                  onClick={() => setPopoverState({ ...popoverState, isOpen: false })}
+                  className="text-text-tertiary hover:text-text-primary transition-colors"
+                >
+                  <X size={14} weight="bold" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateEvent} className="space-y-4">
+                <input 
+                  type="text" 
+                  autoFocus
+                  required
+                  placeholder="Mission name..."
+                  value={newEvent.title}
+                  onChange={e => setNewEvent({...newEvent, title: e.target.value})}
+                  className="w-full bg-background-tertiary border border-border-primary rounded-xl px-4 py-2.5 text-sm text-text-primary focus:border-modules-track outline-none transition-all"
+                />
+                
+                <div className="flex items-center gap-2 text-[10px] font-bold text-text-tertiary">
+                  <Clock size={14} />
+                  <span>{popoverState.date?.toLocaleDateString([], { month: 'long', day: 'numeric' })}</span>
+                </div>
+
+                <div className="flex gap-2">
+                  <button 
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 bg-modules-track text-white py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest shadow-lg shadow-modules-track/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  >
+                    {loading ? 'Initiating...' : 'Deploy'}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setPopoverState({ ...popoverState, isOpen: false });
+                      setShowNewModal(true);
+                    }}
+                    className="flex-1 bg-background-tertiary text-text-tertiary py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest border border-border-primary hover:text-text-primary transition-all"
+                  >
+                    Full Decrypt
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* New Event Modal Overlay */}
       <AnimatePresence>
         {showNewModal && (
@@ -238,6 +346,16 @@ export default function CalendarPage() {
 
         <div className="flex items-center gap-3">
           <button 
+            onClick={() => setShowAgenda(!showAgenda)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all border border-border-primary hover:bg-background-tertiary ${!showAgenda ? 'bg-modules-track text-white border-modules-track' : 'text-text-tertiary'}`}
+            title={showAgenda ? "Hide Agenda" : "Show Agenda"}
+          >
+            <Layout size={18} weight={showAgenda ? "regular" : "fill"} />
+          </button>
+          
+          <div className="w-px h-6 bg-border-primary mx-1" />
+
+          <button 
             onClick={handleSync}
             disabled={syncing}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition-all border border-border-primary hover:bg-background-tertiary ${syncing ? 'opacity-50' : ''}`}
@@ -255,8 +373,8 @@ export default function CalendarPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 space-y-6">
+      <div className={`grid gap-8 transition-all duration-500 ease-in-out ${showAgenda ? 'grid-cols-1 xl:grid-cols-3' : 'grid-cols-1'}`}>
+        <div className={`${showAgenda ? 'xl:col-span-2' : ''} space-y-6`}>
           <div className="bg-background-secondary border border-border-primary rounded-3xl p-8 shadow-sm">
             <div className="flex items-center justify-between mb-10">
               <h2 className="text-xl font-bold text-text-primary">
@@ -296,21 +414,43 @@ export default function CalendarPage() {
                 const isToday = day?.toDateString() === new Date().toDateString();
                 
                 return (
-                  <div key={idx} className="aspect-square relative flex flex-col items-center justify-center group cursor-pointer">
+                  <div 
+                    key={idx} 
+                    onClick={(e) => handleDateClick(e, day)}
+                    className={`
+                      min-h-[120px] relative border-b border-r border-border-primary/30 p-2 group cursor-pointer transition-all
+                      ${!day ? 'bg-background-tertiary/20' : 'hover:bg-background-tertiary/40'}
+                    `}
+                  >
                     {day && (
-                      <div className={`
-                        w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all relative z-10
-                        ${isToday ? 'bg-modules-track text-white font-bold shadow-lg shadow-modules-track/30' : 'text-text-primary hover:bg-background-tertiary'}
-                      `}>
-                        {day.getDate()}
-                      </div>
-                    )}
-                    
-                    {dayEvents.length > 0 && (
-                      <div className="absolute bottom-1 flex gap-0.5">
-                        {dayEvents.slice(0, 3).map((_, i) => (
-                          <div key={i} className="w-1 h-1 rounded-full bg-modules-track" />
-                        ))}
+                      <div className="flex flex-col h-full">
+                        <div className="flex justify-end mb-2">
+                          <span className={`
+                            w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black transition-all
+                            ${isToday ? 'bg-modules-track text-white shadow-lg shadow-modules-track/30' : 'text-text-tertiary group-hover:text-text-primary'}
+                          `}>
+                            {day.getDate()}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-1 overflow-hidden">
+                          {dayEvents.slice(0, 3).map(event => (
+                            <motion.div 
+                              key={event.id}
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="px-2 py-1 rounded-md bg-modules-track/10 border border-modules-track/20 text-modules-track text-[9px] font-bold truncate hover:bg-modules-track/20 transition-all"
+                              title={event.title}
+                            >
+                              {event.title}
+                            </motion.div>
+                          ))}
+                          {dayEvents.length > 3 && (
+                            <div className="text-[9px] font-black text-text-tertiary uppercase tracking-widest pl-1">
+                              + {dayEvents.length - 3} more
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -320,44 +460,53 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className="space-y-6">
-          <section className="bg-background-secondary border border-border-primary rounded-3xl p-6 shadow-sm flex-1 h-fit">
-            <h2 className="text-xs font-black text-text-tertiary uppercase tracking-widest mb-6 flex items-center gap-2">
-              <Clock size={16} />
-              Mission Agenda
-            </h2>
+        <AnimatePresence>
+          {showAgenda && (
+            <motion.div 
+              initial={{ opacity: 0, x: 20, width: 0 }}
+              animate={{ opacity: 1, x: 0, width: 'auto' }}
+              exit={{ opacity: 0, x: 20, width: 0 }}
+              className="space-y-6 overflow-hidden"
+            >
+              <section className="bg-background-secondary border border-border-primary rounded-3xl p-6 shadow-sm flex-1 h-fit sticky top-6">
+                <h2 className="text-xs font-black text-text-tertiary uppercase tracking-widest mb-6 flex items-center gap-2">
+                  <Clock size={16} />
+                  Mission Agenda
+                </h2>
 
-            <div className="space-y-4">
-              {loading ? (
-                [1, 2, 3].map(i => (
-                  <div key={i} className="h-16 rounded-2xl bg-background-tertiary animate-pulse border border-border-primary" />
-                ))
-              ) : events.length > 0 ? (
-                events.slice(0, 5).map(event => (
-                  <motion.div 
-                    key={event.id}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="p-4 rounded-2xl bg-background-tertiary border border-border-primary hover:border-modules-track/40 transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-modules-track uppercase tracking-[0.15em]">
-                        {new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <FileText size={14} className="text-text-tertiary group-hover:text-modules-track transition-colors" />
+                <div className="space-y-4">
+                  {loading ? (
+                    [1, 2, 3].map(i => (
+                      <div key={i} className="h-16 rounded-2xl bg-background-tertiary animate-pulse border border-border-primary" />
+                    ))
+                  ) : events.length > 0 ? (
+                    events.slice(0, 5).map(event => (
+                      <motion.div 
+                        key={event.id}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="p-4 rounded-2xl bg-background-tertiary border border-border-primary hover:border-modules-track/40 transition-all cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold text-modules-track uppercase tracking-[0.15em]">
+                            {new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <FileText size={14} className="text-text-tertiary group-hover:text-modules-track transition-colors" />
+                        </div>
+                        <h3 className="text-sm font-bold text-text-primary line-clamp-1">{event.title}</h3>
+                      </motion.div>
+                    ))
+                  ) : (
+                    <div className="py-20 text-center">
+                      <Sparkle size={32} className="mx-auto text-text-tertiary/20 mb-4" />
+                      <p className="text-text-tertiary text-[10px] font-bold uppercase tracking-widest">Registry Clear</p>
                     </div>
-                    <h3 className="text-sm font-bold text-text-primary line-clamp-1">{event.title}</h3>
-                  </motion.div>
-                ))
-              ) : (
-                <div className="py-20 text-center">
-                  <Sparkle size={32} className="mx-auto text-text-tertiary/20 mb-4" />
-                  <p className="text-text-tertiary text-[10px] font-bold uppercase tracking-widest">Registry Clear</p>
+                  )}
                 </div>
-              )}
-            </div>
-          </section>
-        </div>
+              </section>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </main>
   );

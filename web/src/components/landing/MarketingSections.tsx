@@ -38,11 +38,11 @@ export const SocialProofRegistry = () => {
     ];
 
     return (
-        <section className="py-32 px-6 border-y border-border-primary/20 bg-background-primary relative overflow-hidden">
+        <section className="py-16 md:py-32 px-4 md:px-6 border-y border-border-primary/20 bg-background-primary relative overflow-hidden">
             <div className="max-w-7xl mx-auto relative z-10">
-                <header className="mb-20 text-center">
+                <header className="mb-12 md:mb-20 text-center">
                     <h2 className="text-xs font-black text-modules-track uppercase tracking-[0.4em] mb-4">Intelligence Syncs</h2>
-                    <h3 className="text-4xl md:text-5xl font-black tracking-tight text-text-primary mb-8">Registry Success Protocols</h3>
+                    <h3 className="text-3xl md:text-5xl font-black tracking-tight text-text-primary mb-8">Registry Success Protocols</h3>
                 </header>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -95,12 +95,12 @@ export const SocialProofRegistry = () => {
 // Access Registry (Pricing/Waitlist)
 export const AccessRegistry = () => {
     return (
-        <section className="py-32 px-6 relative bg-background-primary overflow-hidden">
+        <section className="py-16 md:py-32 px-4 md:px-6 relative bg-background-primary overflow-hidden">
             <div className="max-w-7xl mx-auto">
-                <header className="mb-20 text-center max-w-2xl mx-auto">
+                <header className="mb-12 md:mb-20 text-center max-w-2xl mx-auto">
                     <h2 className="text-xs font-black text-modules-aly uppercase tracking-[0.4em] mb-4">Registry Enrollment</h2>
-                    <h3 className="text-4xl md:text-5xl font-black tracking-tight text-text-primary mb-8">Initiate Access Profile</h3>
-                    <p className="text-text-tertiary font-medium leading-relaxed">
+                    <h3 className="text-3xl md:text-5xl font-black tracking-tight text-text-primary mb-8">Initiate Access Profile</h3>
+                    <p className="text-text-tertiary font-medium leading-relaxed text-sm md:text-base">
                         Join the high-fidelity coordination mission. Secure your exactly required OS terminal today.
                     </p>
                 </header>

@@ -1,7 +1,7 @@
 // Check if we are in local environment
-const isLocal = process.env.NEXT_PUBLIC_ENVIRONMENT === 'local' || 
-                process.env.ENVIRONMENT === 'local' ||
-                process.env.NODE_ENV === 'development';
+const isLocal = typeof window !== 'undefined' 
+  ? (window.location.hostname === 'localhost' || process.env.NEXT_PUBLIC_ENVIRONMENT === 'local')
+  : (process.env.ENVIRONMENT === 'local' || process.env.NODE_ENV === 'development');
 
 export const API_URL = isLocal 
   ? "http://localhost:8000" 

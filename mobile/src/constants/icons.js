@@ -1,0 +1,77 @@
+import {
+  IconBriefcase,
+  IconBarbell,
+  IconCoin,
+  IconUser,
+  IconPalette,
+  IconBook,
+  IconCode,
+  IconMusic,
+  IconPlane,
+  IconHome,
+  IconHeart,
+  IconFlask,
+  IconCamera,
+  IconRocket,
+  IconLeaf,
+  IconStar,
+  IconBrain,
+  IconRun,
+  IconChartBar,
+  IconPencil,
+  IconFolder,
+  IconWorld,
+  IconDeviceGamepad2,
+  IconDumbbell,
+} from '@tabler/icons-react-native'
+
+// Space icons — name maps to Tabler component
+export const SPACE_ICONS = {
+  briefcase: IconBriefcase,
+  barbell: IconBarbell,
+  coin: IconCoin,
+  user: IconUser,
+  palette: IconPalette,
+  book: IconBook,
+  code: IconCode,
+  music: IconMusic,
+  plane: IconPlane,
+  home: IconHome,
+  heart: IconHeart,
+  flask: IconFlask,
+  camera: IconCamera,
+  rocket: IconRocket,
+  leaf: IconLeaf,
+  star: IconStar,
+  brain: IconBrain,
+  run: IconRun,
+  chart: IconChartBar,
+  pencil: IconPencil,
+  folder: IconFolder,
+  world: IconWorld,
+  game: IconDeviceGamepad2,
+  dumbbell: IconDumbbell,
+}
+
+// Default icon per space name
+export const DEFAULT_SPACE_ICONS = {
+  Work: 'briefcase',
+  Fitness: 'barbell',
+  Finance: 'coin',
+  Personal: 'user',
+  Hobbies: 'palette',
+  Learning: 'book',
+  Creative: 'palette',
+  Sports: 'run',
+  Health: 'heart',
+  Travel: 'plane',
+}
+
+// TAKDA module icons
+export {
+  IconList as IconTrack,
+  IconHighlight as IconAnnotate,
+  IconBrain as IconKnowledge,
+  IconSend as IconDeliver,
+  IconRobot as IconAutomate,
+} from '@tabler/icons-react-native'

@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  /* TAKDA Background Matrix */
+  --background-primary: #0A0A0A;
+  --background-secondary: #141414;
+  --background-tertiary: #1A1A1A;
+
+  /* TAKDA Text Matrix */
+  --text-primary: #F0F0F0;
+  --text-secondary: #A0A0A0;
+  --text-tertiary: #606060;
+
+  /* TAKDA Border Matrix */
+  --border-primary: #2A2A2A;
+  --border-secondary: #222222;
+
+  /* TAKDA Module Coordination */
+  --modules-track: #7F77DD;
+  --modules-annotate: #1D9E75;
+  --modules-knowledge: #378ADD;
+  --modules-deliver: #D85A30;
+  --modules-automate: #BA7517;
+  --modules-aly: #BA7517;
+
+  /* TAKDA Status Protocols */
+  --status-urgent: #E24B4A;
+  --status-high: #EF9F27;
+  --status-low: #639922;
+  --status-success: #1D9E75;
+  --status-info: #378ADD;
+
+  /* Next.js Defaults Mirror */
+  --background: var(--background-primary);
+  --foreground: var(--text-primary);
+}
+
+@theme inline {
+  --color-background-primary: var(--background-primary);
+  --color-background-secondary: var(--background-secondary);
+  --color-background-tertiary: var(--background-tertiary);
+  
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  
+  --color-border-primary: var(--border-primary);
+  --color-border-secondary: var(--border-secondary);
+  
+  --color-modules-track: var(--modules-track);
+  --color-modules-annotate: var(--modules-annotate);
+  --color-modules-knowledge: var(--modules-knowledge);
+  --color-modules-deliver: var(--modules-deliver);
+  --color-modules-automate: var(--modules-automate);
+  --color-modules-aly: var(--modules-aly);
+
+  --color-urgent: var(--status-urgent);
+  --color-high: var(--status-high);
+  --color-low: var(--status-low);
+  --color-success: var(--status-success);
+  
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar for OS Aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}

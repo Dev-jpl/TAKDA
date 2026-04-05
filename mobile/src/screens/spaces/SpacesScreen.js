@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
@@ -7,223 +7,183 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Dimensions,
-  Platform,
   Alert,
   Modal,
   TextInput,
-} from 'react-native';
-import { useFocusEffect, DrawerActions } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { List, Plus, Binoculars, ChartLineUp, Database, Sparkle, MagnifyingGlass } from 'phosphor-react-native';
-import { colors } from '../../constants/colors';
-import { spacesService } from '../../services/spaces';
-import { hubsService } from '../../services/hubs';
-import { eventService } from '../../services/events';
-import SpaceIcon from '../../components/common/SpaceIcon';
-import AssistantFAB from '../../components/common/AssistantFAB';
-
-const { width } = Dimensions.get('window');
-const COLUMN_WIDTH = (width - 48) / 2;
-
-function StatCard({ label, value, icon: Icon, color }) {
-  return (
-    <View style={styles.statCard}>
-      <Icon size={12} color={color} weight="duotone" style={{ marginRight: 4 }} />
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
+} from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Plus, MagnifyingGlass, CaretLeft } from 'phosphor-react-native'
+import { colors } from '../../constants/colors'
+import { spacesService } from '../../services/spaces'
+import { supabase } from '../../services/supabase'
+import SpaceIcon from '../../components/common/SpaceIcon'
 
 export default function SpacesScreen({ navigation }) {
-  const [spaces, setSpaces] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [user, setUser] = useState(null);
-  const [stats, setStats] = useState({
-    domains: 0,
-    hubs: 0,
-    iq: 0,
-    velocity: 0
-  });
-
-  // High-Fidelity Management State
+  const [spaces, setSpaces] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [userId, setUserId] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const [editingSpace, setEditingSpace] = useState(null)
   const [newSpaceName, setNewSpaceName] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
-
-  const loadData = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-
-    try {
-      const u = (await import('../../services/supabase')).supabase.auth.getUser();
-      const userData = (await u).data.user;
-      if (!userData) return;
-
-      const spacesData = await spacesService.getSpaces(userData.id);
-      setSpaces(spacesData);
-
-      // Aggregate high-fidelity stats
-      const totalHubs = spacesData.reduce((acc, s) => acc + (s.hubs?.length || 0), 0);
-      const eventsData = await eventService.getEvents(userData.id);
-      const upcoming = eventsData.filter(e => new Date(e.start_time) > new Date()).length;
-
-      setStats({
-        domains: spacesData.length,
-        hubs: totalHubs,
-        iq: totalHubs * 12 + spacesData.length * 5, // Representational IQ based on structure
-        velocity: upcoming
-      });
-    } catch (e) {
-      console.warn('SpacesScreen loadData error:', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          setUserId(user.id)
+          loadSpaces(user.id)
+        }
+      })
     }, [])
-  );
+  )
 
-  const handleSpaceLongPress = (space) => {
-    Alert.alert(
-      'Space Options',
-      `Manage "${space.name}"`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Rename', onPress: () => {
-          setEditingSpace(space)
-          setNewSpaceName(space.name)
-        }},
-        { text: 'Delete', style: 'destructive', onPress: () => confirmDeleteSpace(space) },
-      ]
-    )
+  const loadSpaces = async (uid, isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    else setLoading(true)
+    try {
+      const data = await spacesService.getSpaces(uid)
+      setSpaces(data)
+    } catch (e) {
+      console.warn('SpacesScreen loadSpaces error:', e)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
   }
 
-  const confirmDeleteSpace = (space) => {
-    Alert.alert(
-      'Delete Space',
-      'This will also delete ALL mission-critical hubs inside. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: async () => {
+  const handleSpacePress = (space) => {
+    navigation.navigate('Main', {
+      screen: space.id,
+      params: { space },
+    })
+  }
+
+  const handleSpaceLongPress = (space) => {
+    Alert.alert('Space Options', `"${space.name}"`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Rename', onPress: () => { setEditingSpace(space); setNewSpaceName(space.name) } },
+      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(space) },
+    ])
+  }
+
+  const confirmDelete = (space) => {
+    Alert.alert('Delete Space', 'This will also delete all hubs inside. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
           try {
-            await (import('../../services/spaces')).spacesService.deleteSpace(space.id)
+            await spacesService.deleteSpace(space.id)
             setSpaces(prev => prev.filter(s => s.id !== space.id))
-          } catch (err) {
-            Alert.alert('Error', 'Registry could not be cleared.')
+          } catch {
+            Alert.alert('Error', 'Could not delete space.')
           }
-        }},
-      ]
-    )
+        },
+      },
+    ])
   }
 
   const submitRename = async () => {
     if (!newSpaceName.trim() || !editingSpace) return
     try {
-      await (import('../../services/spaces')).spacesService.updateSpace(editingSpace.id, { name: newSpaceName.trim() })
-      setSpaces(prev => prev.map(s => s.id === editingSpace.id ? { ...s, name: newSpaceName.trim() } : s))
+      await spacesService.updateSpace(editingSpace.id, { name: newSpaceName.trim() })
+      setSpaces(prev => prev.map(s =>
+        s.id === editingSpace.id ? { ...s, name: newSpaceName.trim() } : s
+      ))
       setEditingSpace(null)
-    } catch (err) {
-      Alert.alert('Error', 'Registry could not be updated.')
+    } catch {
+      Alert.alert('Error', 'Could not rename space.')
     }
   }
 
-  const renderHeader = () => (
-    <View style={styles.headerContainer}>
-      <View style={styles.topNav}>
-        <TouchableOpacity
-          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-          style={styles.menuBtn}
-        >
-          <List color={colors.text.secondary} size={20} weight="light" />
-        </TouchableOpacity>
-        <Text style={styles.screenTitle}>OVERSIGHT</Text>
-        <View style={{ width: 40 }} /> 
-      </View>
+  const filtered = spaces.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
-      <View style={styles.statsGrid}>
-        <StatCard label="Domains" value={stats.domains} icon={Binoculars} color={colors.modules.aly} />
-        <StatCard label="Hubs" value={stats.hubs} icon={Database} color={colors.modules.track} />
-        <StatCard label="IQ Index" value={stats.iq} icon={Sparkle} color={colors.modules.knowledge} />
-        <StatCard label="Velocity" value={stats.velocity} icon={ChartLineUp} color="#FFD700" />
-      </View>
-
-      <View style={styles.sectionDivider}>
-        <Text style={styles.sectionLabel}>Life Domains</Text>
-      </View>
-    </View>
-  );
-
-  const renderSpaceCard = ({ item }) => (
+  const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.spaceRow}
-      onPress={() => navigation.navigate(item.id, { space: item })}
+      onPress={() => handleSpacePress(item)}
       onLongPress={() => handleSpaceLongPress(item)}
       activeOpacity={0.75}
     >
       <SpaceIcon icon={item.icon || 'Folder'} color={item.color} size={38} iconSize={19} weight="light" />
       <View style={styles.spaceInfo}>
         <Text style={styles.spaceName}>{item.name}</Text>
-        <Text style={styles.spaceSub}>{item.category || 'Life Domain'} • {item.hubs?.length || 0} Hubs</Text>
+        <Text style={styles.spaceSub}>
+          {item.hubs?.length || 0} {item.hubs?.length === 1 ? 'hub' : 'hubs'}
+          {item.category ? ` · ${item.category}` : ''}
+        </Text>
       </View>
       <Text style={styles.chevron}>›</Text>
     </TouchableOpacity>
-  );
-
-  const filteredSpaces = spaces.filter(s => 
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  )
 
   if (loading && !refreshing) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.modules.aly} />
-      </View>
-    );
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <ActivityIndicator style={{ flex: 1 }} color={colors.text.tertiary} />
+      </SafeAreaView>
+    )
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <FlatList
-        data={filteredSpaces}
-        keyExtractor={item => item.id}
-        renderItem={renderSpaceCard}
-        ListHeaderComponent={renderHeader}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadData(true)}
-            tintColor={colors.modules.aly}
-          />
-        }
-      />
-
-      {/* Floating Search Dock */}
-      <View style={styles.floatingControls}>
-        <View style={styles.searchBar}>
-          <MagnifyingGlass size={18} color={colors.text.tertiary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Identify space..."
-            placeholderTextColor={colors.text.tertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-        <TouchableOpacity style={styles.minNewBtn} onPress={() => navigation.navigate('CreateSpace')} activeOpacity={0.7}>
-          <Plus size={20} color={colors.modules.aly} weight="bold" />
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+        >
+          <CaretLeft color={colors.text.secondary} size={22} weight="light" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Spaces</Text>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('CreateSpace')}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+        >
+          <Plus color={colors.text.secondary} size={20} weight="light" />
         </TouchableOpacity>
       </View>
 
-      {/* High-Fidelity Rename Modal */}
+      {/* Search */}
+      <View style={styles.searchRow}>
+        <MagnifyingGlass color={colors.text.tertiary} size={16} weight="light" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search spaces..."
+          placeholderTextColor={colors.text.tertiary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
+
+      {/* List */}
+      <FlatList
+        data={filtered}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadSpaces(userId, true)}
+            tintColor={colors.text.tertiary}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>No spaces yet</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('CreateSpace')}>
+              <Text style={styles.emptyLink}>Create your first space</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      />
+
+      {/* Rename modal */}
       <Modal
         visible={!!editingSpace}
         transparent
@@ -238,30 +198,22 @@ export default function SpacesScreen({ navigation }) {
               value={newSpaceName}
               onChangeText={setNewSpaceName}
               autoFocus
-              placeholder="Enter new name..."
+              placeholder="Space name"
               placeholderTextColor={colors.text.tertiary}
             />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={styles.modalBtn} 
-                onPress={() => setEditingSpace(null)}
-              >
+            <View style={styles.modalBtns}>
+              <TouchableOpacity onPress={() => setEditingSpace(null)} style={styles.modalBtn}>
                 <Text style={styles.modalBtnCancel}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalBtn, styles.modalBtnSave]} 
-                onPress={submitRename}
-              >
-                <Text style={styles.modalBtnText}>Save</Text>
+              <TouchableOpacity onPress={submitRename} style={[styles.modalBtn, styles.modalBtnSave]}>
+                <Text style={styles.modalBtnSaveText}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-
-      <AssistantFAB />
     </SafeAreaView>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
@@ -269,94 +221,39 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
-  centered: {
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text.primary,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: colors.border.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  searchInput: {
     flex: 1,
-    backgroundColor: colors.background.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerContainer: {
-    paddingBottom: 24,
-  },
-  topNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 24,
-  },
-  menuBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.background.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-  },
-  screenTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.text.tertiary,
-    letterSpacing: 6,
-  },
-  addBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.background.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 20,
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  statCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background.tertiary + '80', // More subtle
-    width: '48.5%', // Solid 2-per-row with gap
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    marginBottom: 8,
-  },
-  statValue: {
     fontSize: 14,
-    fontWeight: '700',
-    marginRight: 4,
-  },
-  statLabel: {
-    fontSize: 9,
-    color: colors.text.tertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  sectionDivider: {
-    paddingHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.text.tertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    color: colors.text.primary,
   },
   list: {
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   spaceRow: {
     flexDirection: 'row',
@@ -387,11 +284,22 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     lineHeight: 24,
   },
-
-  // Modal Styles
+  empty: {
+    marginTop: 60,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    color: colors.text.secondary,
+  },
+  emptyLink: {
+    fontSize: 13,
+    color: colors.modules.aly,
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -399,102 +307,48 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     backgroundColor: colors.background.secondary,
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 24,
-    borderWidth: 1,
+    borderWidth: 0.5,
     borderColor: colors.border.primary,
+    gap: 16,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '500',
     color: colors.text.primary,
-    marginBottom: 20,
   },
   modalInput: {
     backgroundColor: colors.background.tertiary,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     color: colors.text.primary,
-    fontSize: 16,
+    fontSize: 15,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
-    marginBottom: 24,
   },
-  modalButtons: {
+  modalBtns: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 12,
+    gap: 10,
   },
   modalBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+  },
+  modalBtnCancel: {
+    fontSize: 14,
+    color: colors.text.tertiary,
+    fontWeight: '500',
   },
   modalBtnSave: {
     backgroundColor: colors.modules.aly,
   },
-  modalBtnCancel: {
-    color: colors.text.tertiary,
-    fontWeight: '600',
-  },
-  modalBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
-  },
-
-  // Floating Search Dock Styles
-  floatingControls: {
-    position: 'absolute',
-    bottom: 24,
-    left: 8,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: 30,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-    borderWidth: 1.5,
-    borderColor: colors.border.primary,
-    zIndex: 999,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 15,
-      },
-    }),
-  },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background.secondary + '80',
-    borderRadius: 24,
-    paddingHorizontal: 14,
-    height: 44,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    color: colors.text.primary,
+  modalBtnSaveText: {
     fontSize: 14,
-  },
-  minNewBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.modules.aly + '25',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 0.5,
-    borderColor: colors.modules.aly + '30',
+    fontWeight: '500',
+    color: '#fff',
   },
 })

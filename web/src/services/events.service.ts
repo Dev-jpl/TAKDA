@@ -6,10 +6,13 @@ export interface CalendarEvent {
   hub_id?: string;
   title: string;
   description?: string;
-  start_time: string;
-  end_time: string;
+  start_at: string;
+  end_at: string;
+  people?: string;
+  location?: string;
   category?: string;
   color?: string;
+  calendar_id?: string;
   created_at?: string;
 }
 
@@ -32,7 +35,7 @@ export const eventsService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(eventData),
     });
-    
+
     if (!response.ok) throw new Error('Deployment failure: Event denied.');
     return response.json();
   },

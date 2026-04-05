@@ -34,7 +34,7 @@ export const spacesService = {
     }
   },
 
-  async createSpace(name: string, description?: string, icon?: string, color?: string): Promise<Space> {
+  async createSpace(userId: string, name: string, category: string, description?: string, icon?: string, color?: string): Promise<Space> {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`${API_URL}/spaces`, {
@@ -43,7 +43,7 @@ export const spacesService = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ name, description, icon, color }),
+        body: JSON.stringify({ user_id: userId, name, category, description, icon, color }),
       });
       
       if (!response.ok) throw new Error('Deployment failure: Mission denied.');

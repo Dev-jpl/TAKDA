@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withSpring,
 } from "react-native-reanimated";
 import { colors } from "../../constants/colors";
 
@@ -53,20 +51,14 @@ export default function CompassNavigator({ hub, space }) {
   const hideTimerRef = useRef(null);
 
   const compassOpacity = useSharedValue(0);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
 
-  // Reset compass when space changes
+  // Reset compass when hub/space changes
   useEffect(() => {
     compassOpacity.value = 0;
     setCompassOpen(false);
     setActiveModule("track");
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
   }, [space?.id, hub?.id]);
-
-  const navigateTo = (module) => {
-    setActiveModule(module);
-  };
 
   const showCompass = () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -79,34 +71,6 @@ export default function CompassNavigator({ hub, space }) {
     hideTimerRef.current = setTimeout(() => setCompassOpen(false), 220);
   };
 
-  // Swipe gesture on screen content
-  const gesture = Gesture.Pan()
-    .onEnd((e) => {
-      const { translationX, translationY } = e;
-      const absX = Math.abs(translationX);
-      const absY = Math.abs(translationY);
-      const threshold = 60;
-
-      if (absX > absY) {
-        if (translationX < -threshold) navigateTo("annotate");
-        else if (translationX > threshold) navigateTo("track");
-      } else {
-        if (translationY < -threshold) navigateTo("knowledge");
-        else if (translationY > threshold) navigateTo("deliver");
-      }
-
-      translateX.value = withSpring(0);
-      translateY.value = withSpring(0);
-    })
-    .runOnJS(true);
-
-  const screenAnimStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-    ],
-  }));
-
   const compassOverlayStyle = useAnimatedStyle(() => ({
     opacity: compassOpacity.value,
   }));
@@ -117,13 +81,11 @@ export default function CompassNavigator({ hub, space }) {
     <View style={styles.container}>
 
       {/* ── Active screen content ── */}
-      <GestureDetector gesture={gesture}>
-        <Animated.View style={[styles.screen, screenAnimStyle]}>
-          <ActiveScreen hub={hub} space={space} />
-        </Animated.View>
-      </GestureDetector>
+      <View style={styles.screen}>
+        <ActiveScreen hub={hub} space={space} />
+      </View>
 
-      {/* ── Compass overlay (fades in on nav press-hold) ── */}
+      {/* ── Compass overlay (fades in on nav long-press) ── */}
       <Animated.View
         style={[styles.compassOverlay, compassOverlayStyle]}
         pointerEvents={compassOpen ? "box-none" : "none"}
@@ -134,7 +96,7 @@ export default function CompassNavigator({ hub, space }) {
             <CompassDot
               label="K"
               active={activeModule === "knowledge"}
-              onPress={() => { navigateTo("knowledge"); hideCompass(); }}
+              onPress={() => { setActiveModule("knowledge"); hideCompass(); }}
             />
           </View>
 
@@ -143,7 +105,7 @@ export default function CompassNavigator({ hub, space }) {
             <CompassDot
               label="T"
               active={activeModule === "track"}
-              onPress={() => { navigateTo("track"); hideCompass(); }}
+              onPress={() => { setActiveModule("track"); hideCompass(); }}
             />
             <View style={styles.compassCenter}>
               <View style={styles.compassCenterDot} />
@@ -151,7 +113,7 @@ export default function CompassNavigator({ hub, space }) {
             <CompassDot
               label="A"
               active={activeModule === "annotate"}
-              onPress={() => { navigateTo("annotate"); hideCompass(); }}
+              onPress={() => { setActiveModule("annotate"); hideCompass(); }}
             />
           </View>
 
@@ -160,7 +122,7 @@ export default function CompassNavigator({ hub, space }) {
             <CompassDot
               label="D"
               active={activeModule === "deliver"}
-              onPress={() => { navigateTo("deliver"); hideCompass(); }}
+              onPress={() => { setActiveModule("deliver"); hideCompass(); }}
             />
           </View>
         </View>
@@ -175,26 +137,16 @@ export default function CompassNavigator({ hub, space }) {
           return (
             <Pressable
               key={key}
-              onPress={() => navigateTo(key)}
+              onPress={() => setActiveModule(key)}
               onLongPress={showCompass}
               onPressOut={hideCompass}
               delayLongPress={350}
               style={styles.navItem}
             >
-              <Text
-                style={[
-                  styles.navLabel,
-                  isActive && { color: accentColor },
-                ]}
-              >
+              <Text style={[styles.navLabel, isActive && { color: accentColor }]}>
                 {label}
               </Text>
-              <View
-                style={[
-                  styles.navIndicator,
-                  isActive && { backgroundColor: accentColor },
-                ]}
-              />
+              <View style={[styles.navIndicator, isActive && { backgroundColor: accentColor }]} />
             </Pressable>
           );
         })}
@@ -210,13 +162,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-
-  // Screen
   screen: {
     flex: 1,
   },
-
-  // Compass overlay
   compassOverlay: {
     position: "absolute",
     top: 0,
@@ -279,8 +227,6 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.border.primary,
   },
-
-  // Bottom nav
   bottomNav: {
     flexDirection: "row",
     borderTopWidth: 0.5,

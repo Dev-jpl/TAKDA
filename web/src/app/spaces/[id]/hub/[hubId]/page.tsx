@@ -15,6 +15,7 @@ import { trackService, Task } from '@/services/track.service';
 import { knowledgeService, KnowledgeDocument } from '@/services/knowledge.service';
 import { annotateService, Annotation } from '@/services/annotate.service';
 import { automateService, Briefing } from '@/services/automate.service';
+import { deliverService, Delivery, DeliveryCreate } from '@/services/deliver.service';
 import { IconResolver } from '@/components/common/IconResolver';
 import { ModuleSwitcher, ModuleKey } from '@/components/hub/ModuleSwitcher';
 import { MissionTable } from '@/components/hub/MissionTable';
@@ -22,6 +23,7 @@ import { MissionModal } from '@/components/hub/MissionModal';
 import { VaultTerminal } from '@/components/knowledge/VaultTerminal';
 import { AnnotateTerminal } from '@/components/hub/AnnotateTerminal';
 import { AutomateTerminal } from '@/components/hub/AutomateTerminal';
+import { DeliverTerminal } from '@/components/hub/DeliverTerminal';
 
 export default function HubDetailPage() {
   const params = useParams();
@@ -35,12 +37,14 @@ export default function HubDetailPage() {
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [briefings, setBriefings] = useState<Briefing[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [activeModule, setActiveModule] = useState<ModuleKey>('track');
   const [loading, setLoading] = useState(true);
   const [missionsLoading, setMissionsLoading] = useState(false);
   const [docsLoading, setDocsLoading] = useState(false);
   const [notesLoading, setNotesLoading] = useState(false);
   const [briefingsLoading, setBriefingsLoading] = useState(false);
+  const [deliveriesLoading, setDeliveriesLoading] = useState(false);
   const [isMissionModalOpen, setMissionModalOpen] = useState(false);
 
   const loadMissions = useCallback(async (hId: string) => {
@@ -94,6 +98,18 @@ export default function HubDetailPage() {
     }
   }, []);
 
+  const loadDeliveries = useCallback(async (hId: string) => {
+    setDeliveriesLoading(true);
+    try {
+      const data = await deliverService.getDeliveries(hId);
+      setDeliveries(data);
+    } catch (err) {
+      console.error('Dispatch extraction failed:', err);
+    } finally {
+      setDeliveriesLoading(false);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -137,8 +153,11 @@ export default function HubDetailPage() {
       if (activeModule === 'automate' && briefings.length === 0) {
         loadBriefings(hub.id);
       }
+      if (activeModule === 'deliver' && deliveries.length === 0) {
+        loadDeliveries(hub.id);
+      }
     }
-  }, [activeModule, hub?.id, tasks.length, documents.length, annotations.length, briefings.length, loadMissions, loadDocuments, loadAnnotations, loadBriefings]);
+  }, [activeModule, hub?.id, tasks.length, documents.length, annotations.length, briefings.length, deliveries.length, loadMissions, loadDocuments, loadAnnotations, loadBriefings, loadDeliveries]);
 
   const handleAddMission = async (task: Partial<Task>) => {
     try {
@@ -242,11 +261,36 @@ export default function HubDetailPage() {
     }
   };
 
+  const handleCreateDelivery = async (data: Partial<DeliveryCreate>) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const newDelivery = await deliverService.createDelivery({
+        ...data,
+        hub_id: hubId,
+        user_id: user.id
+      } as DeliveryCreate);
+      setDeliveries(prev => [newDelivery, ...prev]);
+    } catch (err) {
+      console.error('Dispatch synthesis failure:', err);
+    }
+  };
+
+  const handleDeleteDelivery = async (id: string) => {
+    if (!confirm('Abort this dispatch? Extraction is permanent.')) return;
+    try {
+      await deliverService.deleteDelivery(id);
+      setDeliveries(prev => prev.filter(d => d.id !== id));
+    } catch (err) {
+      console.error('Dispatch extraction failure:', err);
+    }
+  };
+
   const handleStatusChange = async (taskId: string, status: Task['status']) => {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t));
     try {
       await trackService.updateTask(taskId, { status });
-    } catch (error) {
+    } catch {
       loadMissions(hubId);
     }
   };
@@ -256,7 +300,7 @@ export default function HubDetailPage() {
     setTasks(prev => prev.filter(t => t.id !== taskId));
     try {
       await trackService.deleteTask(taskId);
-    } catch (error) {
+    } catch {
       loadMissions(hubId);
     }
   };
@@ -422,6 +466,31 @@ export default function HubDetailPage() {
                 loading={briefingsLoading}
                 onGenerate={handleGenerateBriefing}
                 onDelete={handleDeleteBriefing}
+              />
+            </motion.div>
+          ) : activeModule === 'deliver' ? (
+            <motion.div
+              key="deliver-module"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-modules-deliver shadow-[0_0_8px_var(--modules-deliver)]" />
+                  <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">Project Dispatches</h2>
+                </div>
+                <div className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">
+                  {deliveries.length} Intelligence Units
+                </div>
+              </div>
+
+              <DeliverTerminal 
+                deliveries={deliveries}
+                loading={deliveriesLoading}
+                onCreate={handleCreateDelivery}
+                onDelete={handleDeleteDelivery}
               />
             </motion.div>
           ) : (

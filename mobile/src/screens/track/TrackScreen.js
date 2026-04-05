@@ -25,13 +25,13 @@ export default function TrackScreen({ hub, space }) {
       supabase.auth.getUser().then(({ data: { user } }) => {
         if (user) {
           setUserId(user.id)
-          loadTasks()
+          loadTasks(user.id)
         }
       })
     }, [hub?.id])
   )
 
-  const loadTasks = async () => {
+  const loadTasks = async (uid) => {
     if (!hub?.id) return
     setLoading(true)
     try {
@@ -62,7 +62,7 @@ export default function TrackScreen({ hub, space }) {
     try {
       await trackService.updateTask(taskId, { status: newStatus })
     } catch (e) {
-      loadTasks() // revert on failure
+      loadTasks(userId) // revert on failure
     }
   }
 
@@ -77,7 +77,7 @@ export default function TrackScreen({ hub, space }) {
           try {
             await trackService.deleteTask(taskId)
           } catch (e) {
-            loadTasks()
+            loadTasks(userId)
           }
         },
       },
@@ -155,7 +155,7 @@ export default function TrackScreen({ hub, space }) {
             loading={loading}
             onStatusCycle={handleStatusCycle}
             onDelete={handleDelete}
-            onRefresh={loadTasks}
+            onRefresh={() => loadTasks(userId)}
           />
         ) : (
           <TrackKanbanView

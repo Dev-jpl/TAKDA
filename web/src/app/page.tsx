@@ -9,7 +9,10 @@ import {
   Binoculars, 
   ChartLineUp, 
   Database,
-  CaretDown
+  CaretDown,
+  Brain,
+  Folder,
+  Cpu
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { ModuleShowcase } from '@/components/landing/ModuleShowcase';
@@ -328,11 +331,12 @@ export default function LandingPage() {
                   </h1>
                 </motion.div>
                 
+                {/* Desktop Intro Text */}
                 <motion.div
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.8, duration: 1.2 }}
-                  className="flex flex-wrap justify-center gap-x-6 gap-y-3 mb-10"
+                  className="hidden md:flex flex-wrap justify-center gap-x-6 gap-y-3 mb-10"
                 >
                   {["Task", "Annotate", "Knowledge", "Deliver", "Automate"].map((word, i) => (
                     <motion.span 
@@ -340,10 +344,36 @@ export default function LandingPage() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 1 + (i * 0.2), duration: 0.8 }}
-                      className="text-[11px] md:text-sm font-black uppercase tracking-[0.25em] text-modules-aly"
+                      className="text-sm font-black uppercase tracking-[0.25em] text-modules-aly"
                     >
                       {word}{i < 4 && <span className="ml-6 opacity-20 text-text-primary">.</span>}
                     </motion.span>
+                  ))}
+                </motion.div>
+
+                {/* Mobile Intro Icons */}
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.8, duration: 1.2 }}
+                  className="flex md:hidden justify-center gap-6 mb-12"
+                >
+                  {[
+                    { icon: Database, color: "var(--modules-track)" },
+                    { icon: Brain, color: "var(--modules-aly)" },
+                    { icon: Folder, color: "var(--modules-knowledge)" },
+                    { icon: Cpu, color: "var(--modules-automate)" },
+                    { icon: Sparkle, color: "var(--modules-aly)" }
+                  ].map((item, i) => (
+                    <motion.div 
+                      key={i}
+                      initial={{ opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 1 + (i * 0.1), duration: 0.5 }}
+                      className="w-10 h-10 rounded-xl bg-background-tertiary/80 border border-border-primary/50 flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+                    >
+                      <item.icon size={20} weight="fill" style={{ color: item.color }} />
+                    </motion.div>
                   ))}
                 </motion.div>
 
@@ -382,21 +412,22 @@ export default function LandingPage() {
                   <Sparkle size={16} weight="fill" />
                   <span>Next Gen Life OS Coordination</span>
                 </div>
-                <h2 className="text-4xl sm:text-6xl md:text-7xl lg:text-[100px] font-black leading-[0.95] tracking-tighter mb-8 md:mb-10">
-                  Work Smart. Live Well. <br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-text-primary via-text-secondary to-text-tertiary">Stay Connected.</span>
+                <h2 className="text-4xl sm:text-6xl md:text-7xl lg:text-[100px] font-black leading-[1.15] tracking-tighter mb-8 md:mb-10 text-center mx-auto max-w-fit flex flex-col items-center">
+                  <span className="text-text-primary">Work Smart</span>
+                  <span className="text-text-primary">Live Well</span>
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-text-primary via-text-secondary to-text-tertiary">Stay Connected</span>
                 </h2>
-                <p className="max-w-2xl mx-auto text-text-tertiary text-base sm:text-xl md:text-2xl font-medium leading-[1.6] mb-10 md:mb-14 opacity-80 px-4 md:px-0">
+                <p className="max-w-2xl mx-auto text-text-tertiary text-sm sm:text-lg md:text-2xl font-medium leading-[1.6] mb-10 md:mb-14 opacity-80 px-6 md:px-0 text-center">
                   TAKDA is your AI‑powered Life OS, blending productivity with personal care. 
                   It organizes tasks, tracks projects, and even remembers the little things that make life meaningful.
                 </p>
 
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-8">
-                  <Link href="/auth" className="w-full sm:w-auto flex items-center justify-center gap-3 bg-modules-aly text-white px-8 py-4 rounded-2xl font-bold text-base shadow-xl shadow-modules-aly/20 hover:scale-[1.02] active:scale-[0.98] transition-all group">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-6 md:gap-8">
+                  <Link href="/auth" className="w-full sm:w-auto flex items-center justify-center gap-3 bg-modules-aly text-white px-6 md:px-8 py-3.5 md:py-4 rounded-2xl font-bold text-sm md:text-base shadow-xl shadow-modules-aly/20 hover:scale-[1.02] active:scale-[0.98] transition-all group">
                     Initiate New Mission
                     <ArrowRight size={18} weight="bold" className="group-hover:translate-x-1.5 transition-transform" />
                   </Link>
-                  <a href="#features" className="w-full sm:w-auto flex items-center justify-center gap-3 bg-background-tertiary border border-border-primary text-text-primary px-8 py-4 rounded-2xl font-bold text-base hover:bg-background-tertiary/80 transition-all">
+                  <a href="#features" className="w-full sm:w-auto flex items-center justify-center gap-3 bg-background-tertiary border border-border-primary text-text-primary px-6 md:px-8 py-3.5 md:py-4 rounded-2xl font-bold text-sm md:text-base hover:bg-background-tertiary/80 transition-all">
                     Explore Analytics
                   </a>
                 </div>
@@ -451,7 +482,7 @@ export default function LandingPage() {
             </motion.div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-5">
             {features.map((feature, i) => (
               <motion.div
                 key={i}
@@ -459,7 +490,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.7, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
                 viewport={{ once: true }}
-                className={`bg-background-tertiary border border-border-primary p-7 rounded-[28px] group hover:border-modules-aly/30 transition-all hover:shadow-2xl hover:shadow-modules-aly/5 flex flex-col justify-between min-h-[220px] ${feature.span}`}
+                className={`bg-background-tertiary border border-border-primary p-5 md:p-7 rounded-[24px] md:rounded-[28px] group hover:border-modules-aly/30 transition-all hover:shadow-2xl hover:shadow-modules-aly/5 flex flex-col justify-between min-h-[180px] md:min-h-[220px] ${feature.span}`}
               >
                 <div>
                   <div 

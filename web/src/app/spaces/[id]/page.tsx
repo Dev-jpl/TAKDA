@@ -15,6 +15,7 @@ import { hubsService, Hub } from '@/services/hubs.service';
 import { HubCard } from '@/components/common/HubCard';
 import { IconResolver } from '@/components/common/IconResolver';
 import { supabase } from '@/services/supabase';
+import { CreateHubModal } from '@/components/spaces/CreateHubModal';
 
 export default function SpaceDetailPage() {
   const params = useParams();
@@ -24,11 +25,14 @@ export default function SpaceDetailPage() {
   const [space, setSpace] = useState<Space | null>(null);
   const [hubs, setHubs] = useState<Hub[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCreateHubModalOpen, setIsCreateHubModalOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const uId = user?.id;
+      if (uId) setUserId(uId);
       
       if (!uId) throw new Error('Registry Error: Session deauthorized.');
 
@@ -98,7 +102,10 @@ export default function SpaceDetailPage() {
             <button className="w-12 h-12 rounded-xl bg-background-secondary border border-border-primary flex items-center justify-center text-text-tertiary hover:text-text-primary transition-all">
               <DotsThreeVertical size={24} />
             </button>
-            <button className="flex items-center gap-2 bg-modules-track text-white px-6 py-3 rounded-xl font-bold text-sm shadow-xl shadow-modules-track/20 hover:scale-[1.02] transition-all">
+            <button 
+              onClick={() => setIsCreateHubModalOpen(true)}
+              className="flex items-center gap-2 bg-modules-track text-white px-6 py-3 rounded-xl font-bold text-sm shadow-xl shadow-modules-track/20 hover:scale-[1.02] transition-all active:scale-95"
+            >
               <Plus size={20} weight="bold" />
               <span>Create Hub</span>
             </button>
@@ -139,6 +146,19 @@ export default function SpaceDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Hub Initialization Modal */}
+      {userId && (
+        <CreateHubModal
+          isOpen={isCreateHubModalOpen}
+          onClose={() => setIsCreateHubModalOpen(false)}
+          onCreated={() => loadData()}
+          userId={userId}
+          spaceId={spaceId}
+          defaultColor={space.color}
+          hubsService={hubsService}
+        />
+      )}
     </main>
   );
 }

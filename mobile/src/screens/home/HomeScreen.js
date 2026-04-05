@@ -1,235 +1,274 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  ScrollView,
 } from 'react-native'
-import { useFocusEffect, DrawerActions } from '@react-navigation/native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useFocusEffect, DrawerActions } from '@react-navigation/native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../../services/supabase'
 import { spacesService } from '../../services/spaces'
-import { hubsService } from '../../services/hubs'
-import { colors } from '../../constants/colors'
-import { User, Plus, Sparkle, Calendar, Clock, List } from 'phosphor-react-native'
-import AssistantFAB from '../../components/common/AssistantFAB'
-import SpaceIcon from '../../components/common/SpaceIcon'
 import { eventService } from '../../services/events'
+import { vaultService } from '../../services/vault'
+import { colors } from '../../constants/colors'
+import { ASSISTANT_NAME } from '../../constants/brand'
+import SpaceIcon from '../../components/common/SpaceIcon'
+import {
+  List, User, Tray, CalendarBlank, CheckSquare,
+  Sparkle, ArrowRight,
+} from 'phosphor-react-native'
+
+const PINNED_KEY = 'pinned_hubs'
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
+function formatDate() {
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  })
+}
 
 export default function HomeScreen({ navigation }) {
+  const [user, setUser] = useState(null)
+  const [pinnedHubs, setPinnedHubs] = useState([])
   const [spaces, setSpaces] = useState([])
-  const [recentHubs, setRecentHubs] = useState([])
-  const [upcomingEvents, setUpcomingEvents] = useState([])
+  const [vaultCount, setVaultCount] = useState(0)
+  const [todayEvents, setTodayEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [user, setUser] = useState(null)
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user))
-  }, [])
 
   useFocusEffect(
     useCallback(() => {
-      if (user) loadAllData()
-    }, [user])
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          setUser(user)
+          loadData(user)
+        }
+      })
+    }, [])
   )
 
-  const loadAllData = async (isRefresh = false) => {
+  const loadData = async (u, isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
-
     try {
-      const spacesData = await spacesService.getSpaces(user.id)
+      const [raw, spacesData, events, vaultItems] = await Promise.all([
+        AsyncStorage.getItem(PINNED_KEY),
+        spacesService.getSpaces(u.id),
+        eventService.getEvents(u.id),
+        vaultService.getItems(u.id, 'unprocessed').catch(() => []),
+      ])
+
+      setPinnedHubs(raw ? JSON.parse(raw) : [])
       setSpaces(spacesData)
+      setVaultCount(Array.isArray(vaultItems) ? vaultItems.length : 0)
 
-      if (spacesData.length > 0) {
-        const hubsResults = await Promise.all(spacesData.slice(0, 3).map(s => hubsService.getHubs(s.id)))
-        setRecentHubs(hubsResults.flat().slice(0, 6))
-      }
-
-      const eventsData = await eventService.getEvents(user.id)
-      setUpcomingEvents(eventsData.slice(0, 3))
+      const today = new Date().toDateString()
+      const upcoming = (events || []).filter(e => {
+        const d = new Date(e.start_time || e.start)
+        return d.toDateString() === today || d > new Date()
+      }).slice(0, 3)
+      setTodayEvents(upcoming)
     } catch (e) {
-      console.warn('loadAllData error:', e)
+      console.warn('HomeScreen loadData error:', e)
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
   }
 
-  const handleSpacePress = (space) => {
-    navigation.navigate(space.id, { space })
+  const navigateToHub = async (hub) => {
+    try {
+      const allSpaces = spaces.length > 0 ? spaces : await spacesService.getSpaces(user.id)
+      const space = allSpaces.find(s => s.id === hub.space_id) || { id: hub.space_id }
+      navigation.navigate('Main', {
+        screen: hub.space_id,
+        params: { screen: 'Hub', params: { hub, space } },
+      })
+    } catch (e) {
+      console.warn('navigateToHub error:', e)
+    }
   }
 
-  const renderHeader = () => (
-    <View style={styles.header}>
+  const displayName = user?.user_metadata?.full_name?.split(' ')[0]
+    || user?.email?.split('@')[0]
+    || 'there'
 
-      {/* Top bar */}
-      <View style={styles.topNav}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <TouchableOpacity
-            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-            style={styles.menuBtn}
-          >
-            <List color={colors.text.secondary} size={20} weight="light" />
-          </TouchableOpacity>
-          <Text style={styles.brand}>TAKDA</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.avatarBtn}
-          onPress={() => navigation.navigate('Profile')}
-          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-        >
-          <User color={colors.text.secondary} size={16} weight="light" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Recents Quick Access */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recents</Text>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.recentsList}
-        >
-          {recentHubs.map((hub) => (
-            <TouchableOpacity 
-              key={hub.id} 
-              style={styles.recentItem}
-              onPress={() => navigation.navigate('Main', { 
-                screen: hub.space_id, 
-                params: { 
-                  screen: 'Hub', 
-                  params: { hub, space: { id: hub.space_id } } 
-                } 
-              })}
-            >
-              <View style={[styles.recentIcon, { backgroundColor: hub.color + '15' }]}>
-                <SpaceIcon icon={hub.icon} color={hub.color} size={28} iconSize={14} />
-              </View>
-              <Text style={styles.recentLabel} numberOfLines={1}>{hub.name}</Text>
-            </TouchableOpacity>
-          ))}
-          {recentHubs.length === 0 && (
-            <Text style={styles.emptyRecentText}>No recent activity</Text>
-          )}
-        </ScrollView>
-      </View>
-
-      {/* Upcoming missions */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Upcoming</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Calendar')}>
-            <Text style={styles.sectionLink}>See all</Text>
-          </TouchableOpacity>
-        </View>
-
-        {upcomingEvents.length > 0 ? (
-          <View style={styles.eventList}>
-            {upcomingEvents.map((event) => (
-              <TouchableOpacity key={event.id} style={styles.eventRow} activeOpacity={0.7}>
-                <View style={[styles.eventAccent, { backgroundColor: event.color || colors.modules.aly }]} />
-                <View style={styles.eventInfo}>
-                  <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-                  <View style={styles.eventMeta}>
-                    <Clock size={11} color={colors.text.tertiary} />
-                    <Text style={styles.eventTime}>
-                      {new Date(event.start_time).toLocaleDateString([], {
-                        month: 'short', day: 'numeric',
-                        hour: '2-digit', minute: '2-digit',
-                      })}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.emptyEvent} onPress={() => navigation.navigate('Calendar')}>
-            <Sparkle size={14} color={colors.text.tertiary} />
-            <Text style={styles.emptyEventText}>No upcoming events</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Spaces header */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Spaces</Text>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('CreateSpace')}
-          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-        >
-          <Plus color={colors.text.tertiary} size={16} weight="bold" />
-        </TouchableOpacity>
-      </View>
-
-    </View>
-  )
-
-  const renderSpace = ({ item }) => (
-    <TouchableOpacity
-      style={styles.spaceRow}
-      onPress={() => handleSpacePress(item)}
-      onLongPress={() => {}}
-      activeOpacity={0.75}
-    >
-      <SpaceIcon icon={item.icon || 'Folder'} color={item.color} size={38} iconSize={19} weight="light" />
-      <View style={styles.spaceInfo}>
-        <Text style={styles.spaceName}>{item.name}</Text>
-        <Text style={styles.spaceSub}>{item.category || 'Life Domain'}</Text>
-      </View>
-      <Text style={styles.chevron}>›</Text>
-    </TouchableOpacity>
-  )
-
-  const renderFooter = () => (
-    <TouchableOpacity style={styles.addSpace} onPress={() => navigation.navigate('CreateSpace')} activeOpacity={0.7}>
-      <Plus color={colors.text.tertiary} size={14} weight="bold" />
-      <Text style={styles.addSpaceText}>New space</Text>
-    </TouchableOpacity>
-  )
-
-  if (loading && !refreshing) {
+  if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.text.tertiary} size="small" />
-      </View>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <ActivityIndicator style={{ flex: 1 }} color={colors.text.tertiary} />
+      </SafeAreaView>
     )
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <FlatList
-        data={spaces}
-        keyExtractor={(item) => item.id}
-        renderItem={renderSpace}
-        ListHeaderComponent={renderHeader}
-        ListFooterComponent={renderFooter}
-        contentContainerStyle={styles.list}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => loadAllData(true)}
+            onRefresh={() => loadData(user, true)}
             tintColor={colors.text.tertiary}
           />
         }
-      />
-      <AssistantFAB />
+      >
+        {/* Top bar */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <List color={colors.text.secondary} size={22} weight="light" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Profile')}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <User color={colors.text.secondary} size={20} weight="light" />
+          </TouchableOpacity>
+        </View>
+
+        {/* 1. Greeting */}
+        <View style={styles.greeting}>
+          <Text style={styles.greetingText}>{getGreeting()}, {displayName}</Text>
+          <Text style={styles.greetingDate}>{formatDate()}</Text>
+        </View>
+
+        {/* 2. Vault summary */}
+        {vaultCount > 0 && (
+          <TouchableOpacity
+            style={styles.vaultBanner}
+            onPress={() => navigation.navigate('Vault')}
+            activeOpacity={0.8}
+          >
+            <Tray color={colors.modules.aly} size={16} weight="light" />
+            <Text style={styles.vaultBannerText}>
+              {vaultCount} {vaultCount === 1 ? 'item needs' : 'items need'} sorting
+            </Text>
+            <ArrowRight color={colors.modules.aly} size={14} weight="light" style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
+        )}
+
+        {/* 3. Daily brief */}
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Today</Text>
+          {todayEvents.length > 0 ? (
+            <View style={styles.briefList}>
+              {todayEvents.map(event => (
+                <View key={event.id} style={styles.briefRow}>
+                  <View style={[styles.briefDot, { backgroundColor: event.color || colors.modules.track }]} />
+                  <Text style={styles.briefText} numberOfLines={1}>{event.title || event.summary}</Text>
+                  <Text style={styles.briefTime}>
+                    {new Date(event.start_time || event.start).toLocaleTimeString([], {
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.briefEmpty}>
+              <Sparkle color={colors.modules.aly} size={14} weight="fill" />
+              <Text style={styles.briefEmptyText}>Nothing scheduled. A good day to get ahead.</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.briefLink}
+            onPress={() => navigation.navigate('Calendar')}
+          >
+            <CalendarBlank color={colors.text.tertiary} size={13} weight="light" />
+            <Text style={styles.briefLinkText}>Open calendar</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 4. Pinned hubs */}
+        {pinnedHubs.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>PINNED</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.pinnedRow}
+            >
+              {pinnedHubs.map(hub => (
+                <TouchableOpacity
+                  key={hub.id}
+                  style={styles.pinnedItem}
+                  onPress={() => navigateToHub(hub)}
+                  activeOpacity={0.75}
+                >
+                  <SpaceIcon
+                    icon={hub.icon || 'Folder'}
+                    color={hub.color || colors.modules.track}
+                    size={44}
+                    iconSize={20}
+                    weight="light"
+                  />
+                  <Text style={styles.pinnedName} numberOfLines={1}>{hub.name}</Text>
+                  <Text style={styles.pinnedSpace} numberOfLines={1}>{hub.space_name || ''}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* 5. Recent activity — spaces as proxy */}
+        {spaces.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionLabel}>SPACES</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Spaces')}>
+                <Text style={styles.sectionLink}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            {spaces.slice(0, 5).map(space => (
+              <TouchableOpacity
+                key={space.id}
+                style={styles.spaceRow}
+                onPress={() => navigation.navigate('Main', {
+                  screen: space.id,
+                  params: { space },
+                })}
+                activeOpacity={0.75}
+              >
+                <SpaceIcon icon={space.icon || 'Folder'} color={space.color} size={36} iconSize={18} weight="light" />
+                <View style={styles.spaceInfo}>
+                  <Text style={styles.spaceName}>{space.name}</Text>
+                  <Text style={styles.spaceSub}>
+                    {space.hubs?.length ?? 0} {space.hubs?.length === 1 ? 'hub' : 'hubs'}
+                  </Text>
+                </View>
+                <CheckSquare color={colors.text.tertiary} size={16} weight="light" />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {spaces.length === 0 && (
+          <TouchableOpacity
+            style={styles.emptySpaces}
+            onPress={() => navigation.navigate('CreateSpace')}
+          >
+            <Text style={styles.emptySpacesText}>Create your first space to get started</Text>
+            <ArrowRight color={colors.modules.aly} size={14} weight="light" />
+          </TouchableOpacity>
+        )}
+      </ScrollView>
     </SafeAreaView>
   )
-}
-
-function getGreeting() {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
 }
 
 const styles = StyleSheet.create({
@@ -237,162 +276,155 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  list: {
+  scroll: {
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
-
-  // Header
-  header: {
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
-  topNav: {
+  topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  brand: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.text.tertiary,
-    letterSpacing: 5,
-  },
-  avatarBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.background.secondary,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.background.secondary,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 12,
   },
 
-  // Recents
-  recentsList: {
+  // Greeting
+  greeting: {
+    paddingTop: 8,
+    paddingBottom: 20,
+    gap: 4,
+  },
+  greetingText: {
+    fontSize: 22,
+    fontWeight: '500',
+    color: colors.text.primary,
+  },
+  greetingDate: {
+    fontSize: 13,
+    color: colors.text.tertiary,
+  },
+
+  // Vault banner
+  vaultBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.modules.aly + '12',
+    borderWidth: 0.5,
+    borderColor: colors.modules.aly + '40',
+    borderRadius: 10,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    gap: 16,
+    marginBottom: 16,
   },
-  recentItem: {
-    alignItems: 'center',
-    width: 64,
+  vaultBannerText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.modules.aly,
   },
-  recentIcon: {
-    width: 48,
-    height: 48,
+
+  // Daily brief card
+  card: {
+    backgroundColor: colors.background.secondary,
     borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 0.5,
+    borderColor: colors.border.primary,
+    padding: 16,
+    marginBottom: 24,
+    gap: 12,
   },
-  recentLabel: {
+  cardLabel: {
     fontSize: 10,
     fontWeight: '500',
-    color: colors.text.secondary,
-    textAlign: 'center',
+    color: colors.text.tertiary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
-  emptyRecentText: {
+  briefList: {
+    gap: 8,
+  },
+  briefRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  briefDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  briefText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.text.primary,
+  },
+  briefTime: {
     fontSize: 11,
     color: colors.text.tertiary,
+  },
+  briefEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  briefEmptyText: {
+    fontSize: 13,
+    color: colors.text.secondary,
     fontStyle: 'italic',
-    paddingVertical: 10,
+  },
+  briefLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 4,
+    borderTopWidth: 0.5,
+    borderTopColor: colors.border.primary,
+  },
+  briefLinkText: {
+    fontSize: 12,
+    color: colors.text.tertiary,
   },
 
   // Section
   section: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: 16,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    padding: 16,
-    marginBottom: 20,
+    marginBottom: 24,
+    gap: 12,
   },
-  sectionHeader: {
+  sectionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
   },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.text.tertiary,
+    letterSpacing: 1.5,
   },
   sectionLink: {
     fontSize: 11,
     color: colors.modules.aly,
-    fontWeight: '600',
-    letterSpacing: 0.5,
   },
 
-  // Events
-  eventList: {
-    gap: 8,
+  // Pinned hubs
+  pinnedRow: {
+    gap: 12,
+    paddingRight: 4,
   },
-  eventRow: {
-    flexDirection: 'row',
+  pinnedItem: {
     alignItems: 'center',
-    backgroundColor: colors.background.tertiary,
-    borderRadius: 10,
-    padding: 10,
-    gap: 10,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
+    width: 70,
+    gap: 6,
   },
-  eventAccent: {
-    width: 3,
-    height: 28,
-    borderRadius: 2,
-  },
-  eventInfo: {
-    flex: 1,
-    gap: 3,
-  },
-  eventTitle: {
-    fontSize: 13,
+  pinnedName: {
+    fontSize: 11,
     fontWeight: '500',
     color: colors.text.primary,
+    textAlign: 'center',
   },
-  eventMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  eventTime: {
-    fontSize: 11,
+  pinnedSpace: {
+    fontSize: 10,
     color: colors.text.tertiary,
-  },
-  emptyEvent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-  },
-  emptyEventText: {
-    fontSize: 13,
-    color: colors.text.tertiary,
+    textAlign: 'center',
   },
 
   // Spaces list
@@ -400,19 +432,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.background.secondary,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
     padding: 12,
-    marginBottom: 8,
     gap: 12,
+    marginBottom: 8,
   },
   spaceInfo: {
     flex: 1,
     gap: 3,
   },
   spaceName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
     color: colors.text.primary,
   },
@@ -420,25 +452,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.text.tertiary,
   },
-  chevron: {
-    fontSize: 20,
-    color: colors.text.tertiary,
-    lineHeight: 24,
-  },
-  addSpace: {
+
+  // Empty
+  emptySpaces: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
     backgroundColor: colors.background.secondary,
     borderRadius: 14,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
-    borderStyle: 'dashed',
-    padding: 14,
-    gap: 8,
-    marginTop: 4,
+    padding: 20,
   },
-  addSpaceText: {
+  emptySpacesText: {
     fontSize: 13,
     color: colors.text.tertiary,
   },

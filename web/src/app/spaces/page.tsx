@@ -16,6 +16,7 @@ import { spacesService, Space } from '@/services/spaces.service';
 import { SpaceCard } from '@/components/common/SpaceCard';
 import { StatCard } from '@/components/common/StatCard';
 import { supabase } from '@/services/supabase';
+import { CreateSpaceModal } from '@/components/spaces/CreateSpaceModal';
 
 export default function SpacesPage() {
   const router = useRouter();
@@ -23,12 +24,15 @@ export default function SpacesPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const loadData = async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
       const { data: { user } } = await supabase.auth.getUser();
       const uId = user?.id;
+      if (uId) setUserId(uId);
       
       if (uId) {
         const data = await spacesService.getSpaces(uId);
@@ -58,7 +62,7 @@ export default function SpacesPage() {
     try {
       await spacesService.deleteSpace(id);
       setSpaces(spaces.filter(s => s.id !== id));
-    } catch (_error) {
+    } catch {
       alert('Extraction failed: Space persistent.');
     }
   };
@@ -99,7 +103,10 @@ export default function SpacesPage() {
               className="bg-background-secondary border border-border-primary rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-modules-aly/50 focus:border-modules-aly/50 transition-all w-full md:w-64"
             />
           </div>
-          <button className="flex items-center gap-2 bg-modules-aly text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-modules-aly/90 transition-all shadow-lg shadow-modules-aly/20">
+          <button 
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-2 bg-modules-aly text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-modules-aly/90 transition-all shadow-lg shadow-modules-aly/20 active:scale-95"
+          >
             <Plus size={20} weight="bold" />
             <span className="hidden sm:inline">New Space</span>
           </button>
@@ -181,6 +188,17 @@ export default function SpacesPage() {
           </div>
         )}
       </section>
+
+      {/* Domain Initialization Modal */}
+      {userId && (
+        <CreateSpaceModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreated={() => loadData(true)}
+          userId={userId}
+          spacesService={spacesService}
+        />
+      )}
     </main>
   );
 }

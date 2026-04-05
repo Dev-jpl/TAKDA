@@ -1,20 +1,112 @@
-import React, { useEffect, useState } from 'react'
-import { NavigationContainer } from '@react-navigation/native'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { View, StyleSheet } from 'react-native'
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { supabase } from '../../services/supabase'
 
 import LoginScreen from '../../screens/auth/LoginScreen'
 import RegisterScreen from '../../screens/auth/RegisterScreen'
 import SidebarNavigator from './SidebarNavigator'
-import HomeScreen from '../../screens/home/HomeScreen'
 import ProfileScreen from '../../screens/auth/ProfileScreen'
 import CreateSpaceScreen from '../../screens/home/CreateSpaceScreen'
 import CoordinatorScreen from '../../screens/coordinator/CoordinatorScreen'
 import AssistantQuiz from '../../screens/coordinator/QuizScreen'
 import CalendarScreen from '../../screens/calendar/CalendarScreen'
-import SpaceScreen from '../../screens/space/SpaceScreen'
+import SpacesScreen from '../../screens/spaces/SpacesScreen'
+import VaultScreen from '../../screens/vault/VaultScreen'
+import BottomNav from './BottomNav'
+import AlyButton from '../common/AlyButton'
+import QuickToolsDrawer from '../../screens/quicktools/QuickToolsDrawer'
 
 const Stack = createNativeStackNavigator()
+
+// Recursively find the deepest active route name
+function getActiveRouteName(state) {
+  if (!state || !state.routes) return null
+  const route = state.routes[state.index ?? 0]
+  if (route.state) return getActiveRouteName(route.state)
+  return route.name
+}
+
+// Check if the drawer navigator inside Main is currently open
+function isDrawerOpen(state) {
+  if (!state?.routes) return false
+  const mainRoute = state.routes.find(r => r.name === 'Main')
+  if (!mainRoute?.state) return false
+  return mainRoute.state.history?.some(h => h.type === 'drawer') ?? false
+}
+
+function AppShell({ session }) {
+  const [activeRouteName, setActiveRouteName] = useState('Home')
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [quickToolsVisible, setQuickToolsVisible] = useState(false)
+  const navigationRef = useNavigationContainerRef()
+
+  const handleStateChange = useCallback((state) => {
+    const name = getActiveRouteName(state)
+    if (name) setActiveRouteName(name)
+    setDrawerOpen(isDrawerOpen(state))
+  }, [])
+
+  const HUB_ROUTES = ['Hub', 'CreateHub']
+  const AUTH_ROUTES = ['Login', 'Register']
+  const isInHub = HUB_ROUTES.includes(activeRouteName)
+  const isInAuth = AUTH_ROUTES.includes(activeRouteName)
+
+  const bottomNavVisible = session && !isInHub && !isInAuth && !drawerOpen
+
+  const navigate = (screen) => {
+    if (navigationRef.isReady()) {
+      navigationRef.navigate(screen)
+    }
+  }
+
+  return (
+    <NavigationContainer ref={navigationRef} onStateChange={handleStateChange}>
+      <View style={styles.root}>
+        <Stack.Navigator
+          screenOptions={{ headerShown: false }}
+          initialRouteName={session ? 'Main' : 'Login'}
+        >
+          {session ? (
+            <>
+              <Stack.Screen name="Main" component={SidebarNavigator} />
+              <Stack.Screen name="Profile" component={ProfileScreen} />
+              <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
+              <Stack.Screen name="Coordinator" component={CoordinatorScreen} />
+              <Stack.Screen name="AssistantQuiz" component={AssistantQuiz} />
+              <Stack.Screen name="Calendar" component={CalendarScreen} />
+              <Stack.Screen name="Spaces" component={SpacesScreen} />
+              <Stack.Screen name="Vault" component={VaultScreen} />
+            </>
+          ) : (
+            <>
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+            </>
+          )}
+        </Stack.Navigator>
+
+        {session && (
+          <>
+            <BottomNav
+              visible={bottomNavVisible}
+              activeTab={activeRouteName}
+              onHomePress={() => navigationRef.isReady() && navigationRef.navigate('Main', { screen: 'Home' })}
+              onQuickToolsPress={() => setQuickToolsVisible(true)}
+              onSpacesPress={() => navigate('Spaces')}
+            />
+            {!drawerOpen && <AlyButton />}
+            <QuickToolsDrawer
+              visible={quickToolsVisible}
+              onClose={() => setQuickToolsVisible(false)}
+            />
+          </>
+        )}
+      </View>
+    </NavigationContainer>
+  )
+}
 
 export default function RootNavigator() {
   const [session, setSession] = useState(null)
@@ -35,28 +127,11 @@ export default function RootNavigator() {
 
   if (loading) return null
 
-  return (
-    <NavigationContainer>
-      <Stack.Navigator 
-        screenOptions={{ headerShown: false }}
-        initialRouteName={session ? "Main" : "Login"}
-      >
-        {session ? (
-          <>
-            <Stack.Screen name="Main" component={SidebarNavigator} />
-            <Stack.Screen name="Profile" component={ProfileScreen} />
-            <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
-            <Stack.Screen name="Coordinator" component={CoordinatorScreen} />
-            <Stack.Screen name="AssistantQuiz" component={AssistantQuiz} />
-            <Stack.Screen name="Calendar" component={CalendarScreen} />
-          </>
-        ) : (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
-  )
+  return <AppShell session={session} />
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+})

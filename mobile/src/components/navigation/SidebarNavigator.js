@@ -1,178 +1,146 @@
-import React, { useEffect, useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native'
+import React, { useEffect, useState, useCallback } from 'react'
+import {
+  View, Text, StyleSheet,
+  TouchableOpacity, ScrollView,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { createDrawerNavigator } from '@react-navigation/drawer'
+import { useFocusEffect } from '@react-navigation/native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { supabase } from '../../services/supabase'
 import { spacesService } from '../../services/spaces'
 import { colors } from '../../constants/colors'
-import SpaceIcon from '../common/SpaceIcon'
-import { House, User, Plus, Sparkle, Calendar } from 'phosphor-react-native'
 import { ASSISTANT_NAME } from '../../constants/brand'
+import SpaceIcon from '../common/SpaceIcon'
+import {
+  House, Calendar, Tray, Sparkle,
+  Gear, User,
+} from 'phosphor-react-native'
 
+import HomeScreen from '../../screens/home/HomeScreen'
+import CoordinatorScreen from '../../screens/coordinator/CoordinatorScreen'
 import HubsScreen from '../../screens/hubs/HubsScreen'
 import HubScreen from '../../screens/hubs/HubScreen'
 import CreateHubScreen from '../../screens/hubs/CreateHubScreen'
-import ProfileQuickModal from './ProfileQuickModal'
-import CoordinatorScreen from '../../screens/coordinator/CoordinatorScreen'
-import HomeScreen from '../../screens/home/HomeScreen'
 
 const Drawer = createDrawerNavigator()
+const Stack = createNativeStackNavigator()
 
-function CustomSidebar(props) {
-  const { state, navigation } = props
-  const [spaces, setSpaces] = useState([])
+const PINNED_KEY = 'pinned_hubs'
+
+// ─── Sidebar content ────────────────────────────────────────────────────────
+
+function CustomSidebar({ navigation }) {
   const [user, setUser] = useState(null)
-  const [isModalVisible, setModalVisible] = useState(false)
+  const [pinnedHubs, setPinnedHubs] = useState([])
+  const [spaces, setSpaces] = useState([])
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      if (user) loadSpaces(user.id)
-    })
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user))
+    loadPinnedHubs()
+  }, [])
 
-    // Refresh spaces when the sidebar might have been affected by a navigation back
-    const unsubscribe = navigation.addListener('state', () => {
-      if (user) loadSpaces(user.id)
-    })
-    return unsubscribe
-  }, [user?.id, navigation])
-
-  const loadSpaces = async (userId) => {
+  const loadPinnedHubs = async () => {
     try {
-      const data = await spacesService.getSpaces(userId)
-      setSpaces(data)
+      const raw = await AsyncStorage.getItem(PINNED_KEY)
+      if (raw) setPinnedHubs(JSON.parse(raw))
     } catch (e) {
-      console.warn('Sidebar loadSpaces error:', e)
+      console.warn('loadPinnedHubs error:', e)
     }
   }
 
-  const activeIndex = state.index
-  const activeRouteName = state.routeNames[activeIndex]
+  // Reload pinned hubs every time drawer opens
+  useFocusEffect(useCallback(() => { loadPinnedHubs() }, []))
 
-  const initials = user?.user_metadata?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'
+  const close = (cb) => {
+    navigation.closeDrawer()
+    setTimeout(cb, 150)
+  }
+
+  const navItem = (label, icon, color, onPress) => (
+    <TouchableOpacity style={styles.navItem} onPress={() => close(onPress)} key={label}>
+      <View style={[styles.iconCircle, { backgroundColor: color + '15' }]}>
+        {icon}
+      </View>
+      <Text style={[styles.navLabel, label === `Ask ${ASSISTANT_NAME}` && { color: colors.modules.aly }]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  )
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.contentWrapper}>
-        <View style={styles.header}>
-          <Text style={styles.brand}>TAKDA</Text>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.scroll}>
-          {/* Home Link */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => {
-              navigation.closeDrawer()
-              navigation.navigate('Home')
-            }}
-          >
-            <View style={styles.iconCircle}>
-              <House color={colors.text.secondary} size={20} weight="light" />
-            </View>
-            <Text style={styles.navLabel}>Home</Text>
-          </TouchableOpacity>
-
-          {/* Calendar Link */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => {
-              navigation.closeDrawer()
-              navigation.navigate('Calendar')
-            }}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: colors.modules.track + '15' }]}>
-              <Calendar color={colors.modules.track} size={20} weight="light" />
-            </View>
-            <Text style={styles.navLabel}>Calendar</Text>
-          </TouchableOpacity>
-
-          {/* Aly Global Trigger */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => {
-              navigation.closeDrawer()
-              navigation.navigate('Coordinator')
-            }}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: colors.modules.aly + '15' }]}>
-              <Sparkle color={colors.modules.aly} size={20} weight="fill" />
-            </View>
-            <Text style={[styles.navLabel, { color: colors.modules.aly }]}>Ask {ASSISTANT_NAME}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          {/* Spaces Section Header & New Space */}
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionHeader}>Spaces</Text>
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('CreateSpace')}
-              hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-            >
-              <Plus size={16} color={colors.text.tertiary} weight="bold" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Spaces List */}
-          {spaces.map((space) => {
-            const isActive = activeRouteName === space.id
-            return (
-              <TouchableOpacity
-                key={space.id}
-                style={[
-                  styles.item,
-                  isActive && { borderLeftColor: space.color, backgroundColor: colors.background.tertiary }
-                ]}
-                onPress={() => {
-                  navigation.navigate(space.id, { space })
-                  navigation.closeDrawer()
-                }}
-              >
-                <SpaceIcon
-                  icon={space.icon}
-                  color={space.color}
-                  size={32}
-                  iconSize={16}
-                  weight={isActive ? 'regular' : 'light'}
-                />
-                <Text style={[styles.label, isActive && { color: colors.text.primary }]}>
-                  {space.name}
-                </Text>
-              </TouchableOpacity>
-            )
-          })}
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <View style={styles.divider} />
-          {/* Profile Quick Actions trigger at the absolute bottom */}
-          <TouchableOpacity
-            style={styles.profileBtn}
-            onPress={() => setModalVisible(true)}
-          >
-            <View style={styles.miniAvatar}>
-              <Text style={styles.miniAvatarText}>{initials}</Text>
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName} numberOfLines={1}>
-                {user?.user_metadata?.full_name || 'User'}
-              </Text>
-              <Text style={styles.profileStatus}>Verified OS</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.header}>
+        <Text style={styles.brand}>TAKDA</Text>
       </View>
 
-      <ProfileQuickModal 
-        visible={isModalVisible} 
-        onClose={() => setModalVisible(false)} 
-        navigation={navigation}
-        user={user}
-      />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {navItem('Home', <House color={colors.text.secondary} size={18} weight="light" />, colors.text.secondary,
+          () => navigation.navigate('Home'))}
+        {navItem('Calendar', <Calendar color={colors.modules.track} size={18} weight="light" />, colors.modules.track,
+          () => navigation.navigate('Calendar'))}
+        {navItem('Vault', <Tray color={colors.modules.knowledge} size={18} weight="light" />, colors.modules.knowledge,
+          () => navigation.navigate('Vault'))}
+        {navItem(`Ask ${ASSISTANT_NAME}`, <Sparkle color={colors.modules.aly} size={18} weight="fill" />, colors.modules.aly,
+          () => navigation.navigate('Coordinator'))}
+
+        {pinnedHubs.length > 0 && (
+          <>
+            <View style={styles.divider} />
+            <Text style={styles.sectionLabel}>PINNED</Text>
+            {pinnedHubs.map(hub => {
+              const space = spaces.find(s => s.id === hub.space_id)
+              return (
+                <TouchableOpacity
+                  key={hub.id}
+                  style={styles.hubItem}
+                  onPress={() => close(() => navigation.navigate(hub.space_id, {
+                    screen: 'Hub',
+                    params: { hub, space: space || { id: hub.space_id } },
+                  }))}
+                >
+                  <SpaceIcon icon={hub.icon || 'Folder'} color={hub.color || colors.modules.track} size={30} iconSize={15} weight="light" />
+                  <View style={styles.hubInfo}>
+                    <Text style={styles.hubName} numberOfLines={1}>{hub.name}</Text>
+                    <Text style={styles.hubSpace} numberOfLines={1}>{hub.space_name || ''}</Text>
+                  </View>
+                </TouchableOpacity>
+              )
+            })}
+          </>
+        )}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <View style={styles.divider} />
+        <TouchableOpacity style={styles.footerItem} onPress={() => close(() => navigation.navigate('Profile'))}>
+          <Gear color={colors.text.tertiary} size={18} weight="light" />
+          <Text style={styles.footerLabel}>Settings</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerItem} onPress={() => close(() => navigation.navigate('Profile'))}>
+          <User color={colors.text.tertiary} size={18} weight="light" />
+          <Text style={styles.footerLabel}>Profile</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   )
 }
+
+// ─── Space stack ─────────────────────────────────────────────────────────────
+
+function SpaceStack({ route }) {
+  const { space } = route.params
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="HubsList" component={HubsScreen} initialParams={{ space }} />
+      <Stack.Screen name="Hub" component={HubScreen} />
+      <Stack.Screen name="CreateHub" component={CreateHubScreen} />
+    </Stack.Navigator>
+  )
+}
+
+// ─── Navigator ───────────────────────────────────────────────────────────────
 
 export default function SidebarNavigator() {
   const [spaces, setSpaces] = useState([])
@@ -203,7 +171,7 @@ export default function SidebarNavigator() {
           borderRightWidth: 0.5,
           borderRightColor: colors.border.primary,
         },
-        overlayColor: 'rgba(0,0,0,0.7)',
+        overlayColor: 'rgba(0,0,0,0.6)',
       }}
     >
       <Drawer.Screen name="Home" component={HomeScreen} />
@@ -216,142 +184,99 @@ export default function SidebarNavigator() {
           initialParams={{ space }}
         />
       ))}
-      {/* Fallback if no spaces */}
       {spaces.length === 0 && (
-         <Drawer.Screen name="NoSpaces" component={HubsScreen} />
+        <Drawer.Screen name="NoSpaces" component={HubsScreen} />
       )}
     </Drawer.Navigator>
   )
 }
 
-// Each space has its own stack: Hubs -> Hub -> HubDetail
-import { createNativeStackNavigator } from '@react-navigation/native-stack'
-const Stack = createNativeStackNavigator()
-
-function SpaceStack({ route }) {
-  const { space } = route.params
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="HubsList" component={HubsScreen} initialParams={{ space }} />
-      <Stack.Screen name="Hub" component={HubScreen} />
-      <Stack.Screen name="CreateHub" component={CreateHubScreen} />
-    </Stack.Navigator>
-  )
-}
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.secondary,
   },
-  contentWrapper: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
   header: {
-    padding: 24,
-    paddingTop: 40,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 20,
   },
   brand: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
     color: colors.text.tertiary,
     letterSpacing: 4,
   },
   scroll: {
-    flex: 1,
-    paddingVertical: 10,
+    paddingBottom: 12,
   },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 11,
+    paddingHorizontal: 20,
     gap: 12,
   },
   iconCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.background.tertiary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   navLabel: {
-    fontSize: 15,
-    color: colors.text.primary,
+    fontSize: 14,
     fontWeight: '500',
+    color: colors.text.primary,
   },
   divider: {
     height: 0.5,
     backgroundColor: colors.border.primary,
-    marginHorizontal: 16,
-    marginVertical: 12,
+    marginHorizontal: 20,
+    marginVertical: 10,
   },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingRight: 20,
-    marginBottom: 8,
-  },
-  sectionHeader: {
-    fontSize: 11,
-    fontWeight: '700',
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '500',
     color: colors.text.tertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginLeft: 16,
+    letterSpacing: 1.5,
+    paddingHorizontal: 20,
+    marginBottom: 6,
   },
-  item: {
+  hubItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: 'transparent',
-    gap: 12,
+    paddingHorizontal: 20,
+    gap: 10,
   },
-  label: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    fontWeight: '500',
-  },
-  footer: {
-    paddingBottom: 20,
-  },
-  profileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  miniAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.modules.track + '20',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.modules.track + '40',
-  },
-  miniAvatarText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.modules.track,
-  },
-  profileInfo: {
+  hubInfo: {
     flex: 1,
+    gap: 2,
   },
-  profileName: {
-    fontSize: 14,
-    fontWeight: '600',
+  hubName: {
+    fontSize: 13,
+    fontWeight: '500',
     color: colors.text.primary,
   },
-  profileStatus: {
+  hubSpace: {
     fontSize: 11,
     color: colors.text.tertiary,
-    marginTop: 1,
   },
-});
+  footer: {
+    paddingBottom: 8,
+  },
+  footerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  footerLabel: {
+    fontSize: 13,
+    color: colors.text.tertiary,
+  },
+})

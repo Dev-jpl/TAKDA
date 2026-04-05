@@ -14,7 +14,7 @@ export interface Hub {
 export const hubsService = {
   async getHubsBySpace(spaceId: string): Promise<Hub[]> {
     const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch(`${API_URL}/hubs/space/${spaceId}`, {
+    const response = await fetch(`${API_URL}/hubs/${spaceId}`, {
       headers: { 'Authorization': `Bearer ${session?.access_token}` },
     });
     if (!response.ok) {
@@ -25,7 +25,7 @@ export const hubsService = {
     return Array.isArray(data) ? data : [];
   },
 
-  async createHub(spaceId: string, name: string, description?: string): Promise<Hub> {
+  async createHub(spaceId: string, userId: string, name: string, description?: string, icon?: string, color?: string): Promise<Hub> {
     const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch(`${API_URL}/hubs`, {
       method: 'POST',
@@ -33,7 +33,7 @@ export const hubsService = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session?.access_token}`,
       },
-      body: JSON.stringify({ space_id: spaceId, name, description }),
+      body: JSON.stringify({ space_id: spaceId, user_id: userId, name, description, icon, color }),
     });
     return response.json();
   }

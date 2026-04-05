@@ -1,8 +1,6 @@
-"use client";
-
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Sparkle } from '@phosphor-icons/react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkle, List, X } from '@phosphor-icons/react';
 import Link from 'next/link';
 
 interface LandingNavbarProps {
@@ -10,6 +8,8 @@ interface LandingNavbarProps {
 }
 
 export function LandingNavbar({ activeSection }: LandingNavbarProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   const sections = [
     { name: 'Intro', id: 'intro', href: '/#intro' },
     { name: 'Intelligence', id: 'intelligence', href: '/#intelligence' },
@@ -44,6 +44,7 @@ export function LandingNavbar({ activeSection }: LandingNavbarProps) {
           </motion.div>
         </Link>
 
+        {/* Desktop Menu */}
         <div className="hidden md:flex items-center gap-10">
           {sections.map((item) => {
             const isActive = activeSection === item.id;
@@ -86,7 +87,83 @@ export function LandingNavbar({ activeSection }: LandingNavbarProps) {
             </motion.div>
           </Link>
         </div>
+
+        {/* Mobile Hamburger Trigger */}
+        <button 
+          onClick={() => setIsMenuOpen(true)}
+          className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-background-tertiary border border-border-primary text-text-primary active:scale-95 transition-all"
+        >
+          <List size={20} weight="bold" />
+        </button>
       </div>
+
+      {/* Mobile Side Drawer Overlay */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMenuOpen(false)}
+              className="fixed inset-0 bg-background-primary/40 backdrop-blur-md z-[110] pointer-events-auto"
+            />
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed right-0 top-0 bottom-0 w-[280px] bg-background-secondary border-l border-border-primary z-[120] pointer-events-auto flex flex-col p-8"
+            >
+              <div className="flex items-center justify-between mb-12">
+                <div className="flex items-center gap-3">
+                  <Sparkle size={20} className="text-modules-aly" weight="fill" />
+                  <span className="text-xs font-black tracking-[0.3em] text-text-primary">REGISTRY</span>
+                </div>
+                <button 
+                  onClick={() => setIsMenuOpen(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-background-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                >
+                  <X size={16} weight="bold" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-6 px-2">
+                {sections.map((item) => {
+                  const isActive = activeSection === item.id;
+                  return (
+                    <Link 
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => setIsMenuOpen(false)}
+                      className={`relative transition-all flex items-center group ${
+                        isActive 
+                          ? 'text-modules-aly font-medium tracking-widest' 
+                          : 'text-text-tertiary font-medium hover:text-text-primary tracking-[0.15em]'
+                      }`}
+                    >
+                      <div className={`absolute -left-4 w-1.5 h-1.5 rounded-full bg-modules-aly shadow-[0_0_10px_rgba(255,107,38,0.8)] transition-all ${
+                        isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
+                      }`} />
+                      <span className="text-xs uppercase">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              <div className="mt-auto">
+                <Link 
+                  href="/auth"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="w-full py-4 bg-modules-aly text-white rounded-2xl font-bold text-center tracking-widest text-xs uppercase shadow-xl shadow-modules-aly/20 block"
+                >
+                  Initiate Terminal
+                </Link>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </nav>
   );
 }

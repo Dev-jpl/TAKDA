@@ -11,15 +11,17 @@ import {
   Modal,
   TextInput,
 } from 'react-native'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect, DrawerActions } from '@react-navigation/native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Plus, MagnifyingGlass, CaretLeft } from 'phosphor-react-native'
+import { Plus, MagnifyingGlass, List, Sparkle } from 'phosphor-react-native'
+import { useAlySheet } from '../../context/AlySheetContext'
 import { colors } from '../../constants/colors'
 import { spacesService } from '../../services/spaces'
 import { supabase } from '../../services/supabase'
 import SpaceIcon from '../../components/common/SpaceIcon'
 
 export default function SpacesScreen({ navigation }) {
+  const { openSheet } = useAlySheet()
   const [spaces, setSpaces] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -133,10 +135,10 @@ export default function SpacesScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
           hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
         >
-          <CaretLeft color={colors.text.secondary} size={22} weight="light" />
+          <List color={colors.text.secondary} size={22} weight="light" />
         </TouchableOpacity>
         <Text style={styles.title}>Spaces</Text>
         <TouchableOpacity
@@ -175,9 +177,14 @@ export default function SpacesScreen({ navigation }) {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No spaces yet</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('CreateSpace')}>
-              <Text style={styles.emptyLink}>Create your first space</Text>
+            <Sparkle color={colors.modules.aly} size={32} weight="fill" />
+            <Text style={styles.emptyTitle}>Aly can set up your spaces</Text>
+            <Text style={styles.emptyBody}>Tell her what areas of life you want to organize</Text>
+            <TouchableOpacity
+              style={styles.emptyAlyBtn}
+              onPress={openSheet}
+            >
+              <Text style={styles.emptyAlyBtnText}>Talk to Aly</Text>
             </TouchableOpacity>
           </View>
         }
@@ -287,15 +294,32 @@ const styles = StyleSheet.create({
   empty: {
     marginTop: 60,
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+    paddingHorizontal: 32,
   },
   emptyTitle: {
     fontSize: 15,
-    color: colors.text.secondary,
+    fontWeight: '500',
+    color: colors.text.primary,
+    textAlign: 'center',
   },
-  emptyLink: {
+  emptyBody: {
     fontSize: 13,
-    color: colors.modules.aly,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  emptyAlyBtn: {
+    marginTop: 8,
+    backgroundColor: colors.modules.aly,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  emptyAlyBtnText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#fff',
   },
   modalOverlay: {
     flex: 1,

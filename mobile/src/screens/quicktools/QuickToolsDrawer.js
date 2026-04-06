@@ -9,16 +9,18 @@ import {
   Animated,
   ScrollView,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
+  Keyboard,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { X, Tray, CurrencyDollar, ForkKnife, Note, CheckSquare } from 'phosphor-react-native'
+import { X, Tray, CurrencyDollar, ForkKnife, Note } from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
 import { vaultService } from '../../services/vault'
 import { supabase } from '../../services/supabase'
 import { API_URL } from '../../services/apiConfig'
+import VaultCaptureSheet from '../vault/VaultCaptureSheet'
 
 const TOOLS = [
   {
@@ -202,14 +204,17 @@ function SubmitBtn({ label, loading, disabled, onPress }) {
   )
 }
 
-const FORMS = { vault: VaultForm, expense: ExpenseForm, food: FoodForm, note: NoteForm }
+const FORMS = { expense: ExpenseForm, food: FoodForm, note: NoteForm }
 
 // ─── Main drawer ──────────────────────────────────────────────────────────────
 
 export default function QuickToolsDrawer({ visible, onClose }) {
-  const slideAnim = useRef(new Animated.Value(400)).current
+  const { height } = useWindowDimensions()
+  const slideAnim = useRef(new Animated.Value(height)).current
+  const bottomAnim = useRef(new Animated.Value(0)).current
   const [activeTool, setActiveTool] = useState(null)
   const [userId, setUserId] = useState(null)
+  const [vaultSheetVisible, setVaultSheetVisible] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -217,25 +222,59 @@ export default function QuickToolsDrawer({ visible, onClose }) {
     })
   }, [])
 
+  // Slide in/out
   useEffect(() => {
     if (visible) {
       setActiveTool(null)
       Animated.spring(slideAnim, {
         toValue: 0,
-        useNativeDriver: true,
+        useNativeDriver: false,
         damping: 20,
         stiffness: 200,
       }).start()
     } else {
+      Keyboard.dismiss()
+      bottomAnim.setValue(0)
       Animated.timing(slideAnim, {
-        toValue: 400,
+        toValue: height,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start()
     }
   }, [visible])
 
+  // Shift sheet up when keyboard appears
+  useEffect(() => {
+    if (!visible) return
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+
+    const onShow = (e) => {
+      Animated.timing(bottomAnim, {
+        toValue: e.endCoordinates.height,
+        duration: Platform.OS === 'ios' ? e.duration : 250,
+        useNativeDriver: false,
+      }).start()
+    }
+    const onHide = () => {
+      Animated.timing(bottomAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: false,
+      }).start()
+    }
+
+    const showSub = Keyboard.addListener(showEvent, onShow)
+    const hideSub = Keyboard.addListener(hideEvent, onHide)
+    return () => { showSub.remove(); hideSub.remove() }
+  }, [visible])
+
   const handleToolPress = (toolId) => {
+    if (toolId === 'vault') {
+      onClose()
+      setTimeout(() => setVaultSheetVisible(true), 250)
+      return
+    }
     setActiveTool(toolId)
   }
 
@@ -247,58 +286,59 @@ export default function QuickToolsDrawer({ visible, onClose }) {
   const ActiveForm = activeTool ? FORMS[activeTool] : null
 
   return (
+    <>
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay} />
       </TouchableWithoutFeedback>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.kavWrapper}
-        pointerEvents="box-none"
-      >
-        <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
-          <SafeAreaView style={styles.inner} edges={['bottom']}>
-            <View style={styles.handle} />
+      <Animated.View style={[styles.sheet, { maxHeight: height * 0.75, bottom: bottomAnim, transform: [{ translateY: slideAnim }] }]}>
+        <SafeAreaView style={styles.inner} edges={['bottom']}>
+          <View style={styles.handle} />
 
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>
-                {activeTool ? TOOLS.find(t => t.id === activeTool)?.label : 'Quick Tools'}
-              </Text>
-              <TouchableOpacity
-                onPress={activeTool ? () => setActiveTool(null) : onClose}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <X color={colors.text.tertiary} size={20} weight="light" />
-              </TouchableOpacity>
-            </View>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>
+              {activeTool ? TOOLS.find(t => t.id === activeTool)?.label : 'Quick Tools'}
+            </Text>
+            <TouchableOpacity
+              onPress={activeTool ? () => setActiveTool(null) : onClose}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            >
+              <X color={colors.text.tertiary} size={20} weight="light" />
+            </TouchableOpacity>
+          </View>
 
-            {ActiveForm ? (
-              <ActiveForm userId={userId} onDone={handleDone} />
-            ) : (
-              <ScrollView contentContainerStyle={styles.toolGrid} showsVerticalScrollIndicator={false}>
-                {TOOLS.map(tool => {
-                  const Icon = tool.icon
-                  return (
-                    <TouchableOpacity
-                      key={tool.id}
-                      style={styles.toolItem}
-                      onPress={() => handleToolPress(tool.id)}
-                      activeOpacity={0.75}
-                    >
-                      <View style={[styles.toolIcon, { backgroundColor: tool.color + '18' }]}>
-                        <Icon color={tool.color} size={22} weight="light" />
-                      </View>
-                      <Text style={styles.toolLabel}>{tool.label}</Text>
-                    </TouchableOpacity>
-                  )
-                })}
-              </ScrollView>
-            )}
-          </SafeAreaView>
-        </Animated.View>
-      </KeyboardAvoidingView>
+          {ActiveForm ? (
+            <ActiveForm userId={userId} onDone={handleDone} />
+          ) : (
+            <ScrollView contentContainerStyle={styles.toolGrid} showsVerticalScrollIndicator={false}>
+              {TOOLS.map(tool => {
+                const Icon = tool.icon
+                return (
+                  <TouchableOpacity
+                    key={tool.id}
+                    style={styles.toolItem}
+                    onPress={() => handleToolPress(tool.id)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[styles.toolIcon, { backgroundColor: tool.color + '18' }]}>
+                      <Icon color={tool.color} size={22} weight="light" />
+                    </View>
+                    <Text style={styles.toolLabel}>{tool.label}</Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Animated.View>
     </Modal>
+
+    <VaultCaptureSheet
+      visible={vaultSheetVisible}
+      onClose={() => setVaultSheetVisible(false)}
+    />
+    </>
   )
 }
 
@@ -307,13 +347,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  kavWrapper: {
+  sheet: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
-  },
-  sheet: {
+    bottom: 0,
     backgroundColor: colors.background.secondary,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,

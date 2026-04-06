@@ -72,7 +72,7 @@ export default function HubSwitcherModal({
               <View style={styles.handle} />
 
               <View style={styles.header}>
-                <Text style={styles.title}>SWITCH HUB</Text>
+                <Text style={styles.title}>Switch hub</Text>
                 <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                   <X color={colors.text.tertiary} size={20} />
                 </TouchableOpacity>

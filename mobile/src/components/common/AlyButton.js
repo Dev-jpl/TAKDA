@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import {
   TouchableOpacity,
   StyleSheet,
@@ -7,11 +7,9 @@ import {
 } from 'react-native'
 import { Sparkle } from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
-import AlySheet from './AlySheet'
 
-export default function AlyButton({ hasProactiveSuggestion = false }) {
+export default function AlyButton({ onOpen, hasProactiveSuggestion = false }) {
   const breathAnim = useRef(new Animated.Value(0.85)).current
-  const [sheetVisible, setSheetVisible] = useState(false)
 
   useEffect(() => {
     Animated.loop(
@@ -31,20 +29,16 @@ export default function AlyButton({ hasProactiveSuggestion = false }) {
   }, [])
 
   return (
-    <>
-      <Animated.View style={[styles.fab, { opacity: breathAnim }]}>
-        <TouchableOpacity
-          style={styles.touch}
-          onPress={() => setSheetVisible(true)}
-          activeOpacity={0.8}
-        >
-          <Sparkle color="#fff" size={24} weight="fill" />
-          {hasProactiveSuggestion && <View style={styles.badge} />}
-        </TouchableOpacity>
-      </Animated.View>
-
-      <AlySheet visible={sheetVisible} onClose={() => setSheetVisible(false)} />
-    </>
+    <Animated.View style={[styles.fab, { opacity: breathAnim }]}>
+      <TouchableOpacity
+        style={styles.touch}
+        onPress={onOpen}
+        activeOpacity={0.8}
+      >
+        <Sparkle color="#fff" size={24} weight="fill" />
+        {hasProactiveSuggestion && <View style={styles.badge} />}
+      </TouchableOpacity>
+    </Animated.View>
   )
 }
 

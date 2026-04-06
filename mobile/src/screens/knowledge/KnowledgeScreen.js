@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity,
   StyleSheet, Alert,
@@ -21,34 +21,29 @@ export default function KnowledgeScreen({ hub, space }) {
   const [uploadVisible, setUploadVisible] = useState(false);
   const [userId, setUserId] = useState(null);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUserId(user?.id);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (userId) loadDocs();
-  }, [userId]);
-
   useFocusEffect(
     useCallback(() => {
-      if (userId) loadDocs();
-    }, [userId])
-  );
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          setUserId(user.id)
+          loadDocs(user.id)
+        }
+      })
+    }, [hub?.id])
+  )
 
-  const loadDocs = async () => {
-    if (!userId) return;
-    setDocsLoading(true);
+  const loadDocs = async (uid) => {
+    if (!uid) return
+    setDocsLoading(true)
     try {
-      const data = await knowledgeService.getDocuments(userId, hub?.id);
-      setDocs(data);
+      const data = await knowledgeService.getDocuments(uid, hub?.id)
+      setDocs(data)
     } catch (e) {
-      console.warn("loadDocs error:", e);
+      console.warn('loadDocs error:', e)
     } finally {
-      setDocsLoading(false);
+      setDocsLoading(false)
     }
-  };
+  }
 
   const handleDelete = async (docId) => {
     Alert.alert(
@@ -124,7 +119,7 @@ export default function KnowledgeScreen({ hub, space }) {
             docs={docs}
             loading={docsLoading}
             onDelete={handleDelete}
-            onRefresh={loadDocs}
+            onRefresh={() => loadDocs(userId)}
           />
         )}
       </View>
@@ -135,7 +130,7 @@ export default function KnowledgeScreen({ hub, space }) {
         userId={userId}
         hubId={hub?.id}
         onClose={() => setUploadVisible(false)}
-        onUploaded={loadDocs}
+        onUploaded={() => loadDocs(userId)}
       />
     </SafeAreaView>
   );

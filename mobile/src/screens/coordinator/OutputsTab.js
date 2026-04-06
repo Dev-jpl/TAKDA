@@ -98,7 +98,7 @@ export default function OutputsTab({ userId }) {
         </View>
         <Text style={styles.emptyTitle}>NO OUTPUTS GENERATED</Text>
         <Text style={styles.emptySub}>
-          Ask {ASSISTANT_NAME} to synthesize a report or mission plan to begin building your professional repository.
+          Ask {ASSISTANT_NAME} to generate a report or plan. Your saved outputs will appear here.
         </Text>
       </View>
     );

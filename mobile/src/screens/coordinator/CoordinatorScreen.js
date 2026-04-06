@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Keyboard, Animated, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Keyboard, Animated, Platform, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../constants/colors';
 import { supabase } from '../../services/supabase';
@@ -156,21 +156,27 @@ export default function CoordinatorScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Context Picker (only for live chat) */}
-      {activeTab === 'chat' && (
-        <ContextPicker 
-          spaces={spaces}
-          selectedSpaceIds={selectedSpaceIds}
-          onToggleSpace={handleToggleSpace}
-          onToggleHub={handleToggleHub}
-          selectedHubIds={selectedHubIds}
-        />
-      )}
+      <KeyboardAvoidingView
+        style={styles.content}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        {/* Context Picker (only for live chat) */}
+        {activeTab === 'chat' && (
+          <ContextPicker
+            spaces={spaces}
+            selectedSpaceIds={selectedSpaceIds}
+            onToggleSpace={handleToggleSpace}
+            onToggleHub={handleToggleHub}
+            selectedHubIds={selectedHubIds}
+          />
+        )}
 
-      {/* Content */}
-      <View style={styles.content}>
-        {renderContent()}
-      </View>
+        {/* Content */}
+        <View style={styles.content}>
+          {renderContent()}
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

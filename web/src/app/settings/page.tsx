@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
   ShieldCheck,
@@ -18,6 +18,7 @@ import {
   Plug,
   EnvelopeOpen,
   FolderOpen,
+  ArrowsClockwise,
   IconProps,
 } from "@phosphor-icons/react";
 import { integrationsService, UserIntegration } from "@/services/integrations.service";
@@ -170,11 +171,19 @@ const IntegrationItem: React.FC<IntegrationItemProps> = ({
 
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<SettingsTab>("integrations");
 
   // Integration States
   const [activeIntegrations, setActiveIntegrations] = useState<UserIntegration[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [syncingStrava, setSyncingStrava] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const fetchIntegrations = useCallback(async () => {
     const data = await integrationsService.getIntegrations();
@@ -186,15 +195,41 @@ export default function SettingsPage() {
     await integrationsService.initiateGoogleAuth(userId);
   };
 
+  const handleConnectStrava = async () => {
+    if (!userId) return;
+    await integrationsService.initiateStravaAuth(userId);
+  };
+
+  const handleSyncStrava = async () => {
+    if (!userId || syncingStrava) return;
+    setSyncingStrava(true);
+    try {
+      const res = await integrationsService.syncStrava(userId);
+      showToast(`Synced ${res.synced_count ?? 0} activities`);
+    } catch {
+      showToast("Sync failed. Try again.");
+    } finally {
+      setSyncingStrava(false);
+    }
+  };
+
+  // Handle OAuth redirect back to settings
+  useEffect(() => {
+    const integration = searchParams.get("integration");
+    const status = searchParams.get("status");
+    if (integration && status === "success") {
+      showToast(`${integration.charAt(0).toUpperCase() + integration.slice(1)} connected!`);
+      fetchIntegrations();
+      // Clean up URL params
+      router.replace("/settings");
+    }
+  }, [searchParams, fetchIntegrations, router]);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUserId(data.user?.id || null);
     });
-    
-    const init = async () => {
-      await fetchIntegrations();
-    };
-    init();
+    fetchIntegrations();
   }, [fetchIntegrations]);
 
   // Settings States
@@ -204,8 +239,23 @@ export default function SettingsPage() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [twoFactorAuth, setTwoFactorAuth] = useState(true);
   const [dataCollection, setDataCollection] = useState(false);
+  const stravaIntegration = activeIntegrations.find(i => i.provider === 'strava');
+  const googleIntegration = activeIntegrations.find(i => i.provider === 'google');
+
   return (
     <div className="min-h-screen bg-background-primary">
+      {/* Toast */}
+      {toast && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-background-secondary border border-border-primary rounded-lg px-5 py-3 text-sm text-text-primary shadow-lg"
+        >
+          {toast}
+        </motion.div>
+      )}
+
       {/* Header */}
       <div className="border-b border-border-primary sticky top-0 z-40 bg-background-primary/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
@@ -282,118 +332,89 @@ export default function SettingsPage() {
             {/* Integrations Tab */}
             {activeTab === "integrations" && (
               <div className="space-y-8">
-                {/* Calendar Integration */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="space-y-4"
-                >
+
+                {/* Google Calendar */}
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
                   <div className="flex items-center gap-2">
                     <Calendar size={18} className="text-modules-knowledge" />
-                    <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">
-                      Calendar
-                    </h2>
+                    <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">Google Calendar</h2>
                   </div>
-                  <div className="space-y-3">
-                    {activeIntegrations.filter(i => i.provider === 'google').map((integration) => (
-                      <IntegrationItem
-                        key={integration.id}
-                        name="Google Calendar"
-                        provider="Google"
-                        email={integration.metadata?.email as string | undefined}
-                        enabled={true}
-                        onToggle={() => {}}
-                        onRemove={() => integrationsService.removeIntegration(integration.id).then(fetchIntegrations)}
-                      />
-                    ))}
-                    <motion.button
-                      whileHover={{ backgroundColor: "rgba(255,255,255,0.03)" }}
+                  {googleIntegration ? (
+                    <div className="flex items-center justify-between p-4 rounded-lg border border-border-secondary bg-background-secondary">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Connected</p>
+                        <p className="text-xs text-text-tertiary mt-0.5">
+                          {googleIntegration.metadata?.email as string || "Google account"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => integrationsService.removeIntegration(googleIntegration.id).then(fetchIntegrations)}
+                        className="flex items-center gap-1.5 text-xs text-status-high hover:opacity-80 transition-opacity"
+                      >
+                        <Trash size={14} />
+                        Disconnect
+                      </button>
+                    </div>
+                  ) : (
+                    <button
                       onClick={handleAddCalendar}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-2 rounded-lg border border-dashed border-modules-knowledge/40 bg-modules-knowledge/5 hover:bg-modules-knowledge/10 transition-all"
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-dashed border-modules-knowledge/40 bg-modules-knowledge/5 hover:bg-modules-knowledge/10 transition-all"
                     >
                       <Plus size={16} className="text-modules-knowledge" />
-                      <span className="text-xs font-medium text-modules-knowledge">
-                        Add Google Calendar
-                      </span>
-                    </motion.button>
-                  </div>
+                      <span className="text-xs font-medium text-modules-knowledge">Connect Google Calendar</span>
+                    </button>
+                  )}
                 </motion.div>
 
-                {/* Gmail Integration */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className="space-y-4"
-                >
+                {/* Strava */}
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <EnvelopeOpen size={18} className="text-status-high" />
-                    <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">
-                      Gmail
-                    </h2>
+                    {/* Strava orange dot */}
+                    <div className="w-4 h-4 rounded-full bg-[#FC4C02] flex items-center justify-center">
+                      <span className="text-[8px] font-black text-white">S</span>
+                    </div>
+                    <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">Strava</h2>
                   </div>
-                  <div className="space-y-3">
-                    {activeIntegrations.filter(i => i.provider === 'google').map((integration) => (
-                      <IntegrationItem
-                        key={integration.id}
-                        name="Gmail Inbox"
-                        provider="Gmail"
-                        email={integration.metadata?.email as string | undefined}
-                        enabled={true}
-                        onToggle={() => {}}
-                        onRemove={() => integrationsService.removeIntegration(integration.id).then(fetchIntegrations)}
-                      />
-                    ))}
-                    <motion.button
-                      whileHover={{ backgroundColor: "rgba(255,255,255,0.03)" }}
-                      onClick={handleAddCalendar}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-2 rounded-lg border border-dashed border-status-high/40 bg-status-high/5 hover:bg-status-high/10 transition-all"
+                  {stravaIntegration ? (
+                    <div className="flex items-center justify-between p-4 rounded-lg border border-border-secondary bg-background-secondary">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">
+                          {[stravaIntegration.metadata?.firstname, stravaIntegration.metadata?.lastname]
+                            .filter(Boolean).join(" ") || "Connected"}
+                        </p>
+                        <p className="text-xs text-text-tertiary mt-0.5">
+                          @{stravaIntegration.metadata?.username || "strava"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={handleSyncStrava}
+                          disabled={syncingStrava}
+                          className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                        >
+                          <ArrowsClockwise size={14} className={syncingStrava ? "animate-spin" : ""} />
+                          {syncingStrava ? "Syncing..." : "Sync"}
+                        </button>
+                        <button
+                          onClick={() => integrationsService.removeIntegration(stravaIntegration.id).then(fetchIntegrations)}
+                          className="flex items-center gap-1.5 text-xs text-status-high hover:opacity-80 transition-opacity"
+                        >
+                          <Trash size={14} />
+                          Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleConnectStrava}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-dashed border-[#FC4C02]/40 bg-[#FC4C02]/5 hover:bg-[#FC4C02]/10 transition-all"
                     >
-                      <Plus size={16} className="text-status-high" />
-                      <span className="text-xs font-medium text-status-high">
-                        Add Gmail Account
-                      </span>
-                    </motion.button>
-                  </div>
+                      <Plus size={16} className="text-[#FC4C02]" />
+                      <span className="text-xs font-medium text-[#FC4C02]">Connect Strava</span>
+                    </button>
+                  )}
                 </motion.div>
 
-                {/* Google Drive Integration */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                  className="space-y-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <FolderOpen size={18} className="text-modules-deliver" />
-                    <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">
-                      Google Drive
-                    </h2>
-                  </div>
-                  <div className="space-y-3">
-                    {activeIntegrations.filter(i => i.provider === 'google').map((integration) => (
-                      <IntegrationItem
-                        key={integration.id}
-                        name="Google Drive"
-                        provider="Drive"
-                        email={integration.metadata?.email as string | undefined}
-                        enabled={true}
-                        onToggle={() => {}}
-                        onRemove={() => integrationsService.removeIntegration(integration.id).then(fetchIntegrations)}
-                      />
-                    ))}
-                    <motion.button
-                      whileHover={{ backgroundColor: "rgba(255,255,255,0.03)" }}
-                      onClick={() => console.log("Add drive")}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-2 rounded-lg border border-dashed border-modules-deliver/40 bg-modules-deliver/5 hover:bg-modules-deliver/10 transition-all"
-                    >
-                      <Plus size={16} className="text-modules-deliver" />
-                      <span className="text-xs font-medium text-modules-deliver">
-                        Add Google Drive
-                      </span>
-                    </motion.button>
-                  </div>
-                </motion.div>
               </div>
             )}
 

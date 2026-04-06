@@ -199,7 +199,7 @@ export default function AssistantQuiz({ route, navigation }) {
           ) : (
             <>
               <Text style={styles.nextBtnText}>
-                {currentIndex === questions.length - 1 ? 'SUBMIT AUDIT' : 'NEXT STEP'}
+                {currentIndex === questions.length - 1 ? 'Submit' : 'Next'}
               </Text>
               <ArrowRight size={18} color="#fff" weight="bold" />
             </>

@@ -24,8 +24,8 @@ function SessionRow({ session, onResume, onDelete, onRename }) {
 
   const showOptions = () => {
     Alert.alert(
-      'Coordination Options',
-      `Manage "${session.title || 'Coordination Session'}"`,
+      'Chat Options',
+      `Manage "${session.title || 'Chat'}"`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Rename', onPress: () => onRename(session) },
@@ -47,7 +47,7 @@ function SessionRow({ session, onResume, onDelete, onRename }) {
       
       <View style={styles.rowContent}>
         <Text style={styles.rowTitle} numberOfLines={1}>
-          {session.title || 'Coordination Session'}
+          {session.title || 'Chat'}
         </Text>
         <Text style={styles.rowDate}>{dateStr}</Text>
       </View>
@@ -101,7 +101,7 @@ export default function HistoryTab({ userId, onResume, onNewChat }) {
   const handleDelete = (id) => {
     Alert.alert(
       'Delete Session',
-      'Are you sure you want to delete this coordination session?',
+      'Are you sure you want to delete this chat?',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -121,7 +121,7 @@ export default function HistoryTab({ userId, onResume, onNewChat }) {
   };
 
   const filteredSessions = sessions.filter(s => 
-    (s.title || 'Coordination Session').toLowerCase().includes(searchQuery.toLowerCase())
+    (s.title || 'Chat').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (loading && sessions.length === 0) {
@@ -151,7 +151,7 @@ export default function HistoryTab({ userId, onResume, onNewChat }) {
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No previous coordinations found.</Text>
+            <Text style={styles.emptyText}>No chat history yet.</Text>
           </View>
         }
       />
@@ -180,7 +180,7 @@ export default function HistoryTab({ userId, onResume, onNewChat }) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Rename Coordination</Text>
+            <Text style={styles.modalTitle}>Rename Chat</Text>
             <TextInput
               style={styles.modalInput}
               value={newTitle}

@@ -38,6 +38,21 @@ export const integrationsService = {
     return response.json();
   },
 
+  async initiateStravaAuth(userId: string) {
+    const response = await fetch(`${API_URL}/integrations/strava/auth?user_id=${userId}`);
+    const data = await response.json();
+    if (data.url) {
+      window.location.href = data.url;
+    }
+  },
+
+  async syncStrava(userId: string) {
+    const response = await fetch(`${API_URL}/integrations/strava/sync?user_id=${userId}`, {
+      method: 'POST'
+    });
+    return response.json();
+  },
+
   async removeIntegration(id: string) {
     const { error } = await supabase
       .from('user_integrations')

@@ -1,36 +1,194 @@
-import React, { useState, useCallback, useEffect } from 'react'
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native'
+import React, { useState, useCallback, useRef } from 'react'
+import {
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  ActivityIndicator, RefreshControl, Alert,
+  Modal, TextInput, Animated, Platform, Keyboard,
+  useWindowDimensions,
+} from 'react-native'
 import { useFocusEffect, DrawerActions } from '@react-navigation/native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { supabase } from '../../services/supabase'
 import { hubsService } from '../../services/hubs'
+import { spacesService } from '../../services/spaces'
 import { colors } from '../../constants/colors'
 import SpaceIcon from '../../components/common/SpaceIcon'
-import { List } from 'phosphor-react-native'
+import { CaretLeft, CaretDown, Plus, MagnifyingGlass, Check, X } from 'phosphor-react-native'
+
+const PEEK = 64
+
+// ─── Space switcher sheet ──────────────────────────────────────────────────────
+
+function SpaceSwitcherSheet({ visible, onClose, currentSpaceId, onSelect }) {
+  const { height } = useWindowDimensions()
+  const slideAnim = useRef(new Animated.Value(height)).current
+  const bottomAnim = useRef(new Animated.Value(0)).current
+  const [spaces, setSpaces] = useState([])
+  const [query, setQuery] = useState('')
+
+  // Load spaces when shown
+  React.useEffect(() => {
+    if (!visible) return
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) spacesService.getSpaces(user.id).then(setSpaces).catch(() => {})
+    })
+    setQuery('')
+  }, [visible])
+
+  // Slide in/out
+  React.useEffect(() => {
+    if (visible) {
+      Animated.spring(slideAnim, {
+        toValue: 0, useNativeDriver: false, damping: 20, stiffness: 200,
+      }).start()
+    } else {
+      Keyboard.dismiss()
+      bottomAnim.setValue(0)
+      Animated.timing(slideAnim, {
+        toValue: height, duration: 250, useNativeDriver: false,
+      }).start()
+    }
+  }, [visible])
+
+  // Keyboard handling
+  React.useEffect(() => {
+    if (!visible) return
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const onShow = (e) => Animated.timing(bottomAnim, {
+      toValue: e.endCoordinates.height,
+      duration: Platform.OS === 'ios' ? e.duration : 250,
+      useNativeDriver: false,
+    }).start()
+    const onHide = () => Animated.timing(bottomAnim, {
+      toValue: 0, duration: 250, useNativeDriver: false,
+    }).start()
+    const s1 = Keyboard.addListener(showEvent, onShow)
+    const s2 = Keyboard.addListener(hideEvent, onHide)
+    return () => { s1.remove(); s2.remove() }
+  }, [visible])
+
+  const filtered = spaces.filter(s =>
+    s.name.toLowerCase().includes(query.toLowerCase())
+  )
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <TouchableOpacity style={sheet.overlay} activeOpacity={1} onPress={onClose} />
+      <Animated.View style={[sheet.container, { top: PEEK, bottom: bottomAnim, transform: [{ translateY: slideAnim }] }]}>
+        <SafeAreaView style={sheet.inner} edges={['bottom']}>
+          <View style={sheet.handle} />
+
+          <View style={sheet.header}>
+            <Text style={sheet.title}>Switch Space</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
+              <X color={colors.text.tertiary} size={20} weight="light" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={sheet.searchRow}>
+            <MagnifyingGlass color={colors.text.tertiary} size={16} weight="light" />
+            <TextInput
+              style={sheet.searchInput}
+              placeholder="Search spaces..."
+              placeholderTextColor={colors.text.tertiary}
+              value={query}
+              onChangeText={setQuery}
+              autoFocus={false}
+            />
+          </View>
+
+          <FlatList
+            data={filtered}
+            keyExtractor={item => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={sheet.list}
+            renderItem={({ item }) => {
+              const active = item.id === currentSpaceId
+              return (
+                <TouchableOpacity
+                  style={[sheet.spaceRow, active && sheet.spaceRowActive]}
+                  onPress={() => onSelect(item)}
+                  activeOpacity={0.75}
+                >
+                  <SpaceIcon icon={item.icon || 'Folder'} color={item.color} size={36} iconSize={18} weight="light" />
+                  <View style={sheet.spaceInfo}>
+                    <Text style={sheet.spaceName}>{item.name}</Text>
+                    <Text style={sheet.spaceSub}>
+                      {item.hubs?.length || 0} {item.hubs?.length === 1 ? 'hub' : 'hubs'}
+                    </Text>
+                  </View>
+                  {active && <Check color={colors.modules.aly} size={16} weight="bold" />}
+                </TouchableOpacity>
+              )
+            }}
+          />
+        </SafeAreaView>
+      </Animated.View>
+    </Modal>
+  )
+}
+
+const sheet = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  container: {
+    position: 'absolute', left: 0, right: 0,
+    backgroundColor: colors.background.secondary,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    borderTopWidth: 0.5, borderColor: colors.border.primary,
+  },
+  inner: { flex: 1, paddingHorizontal: 20, paddingTop: 12 },
+  handle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: colors.border.primary,
+    alignSelf: 'center', marginBottom: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  title: { fontSize: 15, fontWeight: '500', color: colors.text.primary },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.background.tertiary,
+    borderRadius: 10, borderWidth: 0.5, borderColor: colors.border.primary,
+    paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12,
+  },
+  searchInput: { flex: 1, fontSize: 14, color: colors.text.primary },
+  list: { paddingBottom: 16 },
+  spaceRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 12, paddingHorizontal: 12,
+    borderRadius: 12, marginBottom: 4, gap: 12,
+  },
+  spaceRowActive: {
+    backgroundColor: colors.modules.aly + '10',
+    borderWidth: 0.5, borderColor: colors.modules.aly + '40',
+  },
+  spaceInfo: { flex: 1, gap: 2 },
+  spaceName: { fontSize: 14, fontWeight: '500', color: colors.text.primary },
+  spaceSub: { fontSize: 11, color: colors.text.tertiary },
+})
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function HubsScreen({ navigation, route }) {
   const { space } = route.params
   const [hubs, setHubs] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [user, setUser] = useState(null)
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-    })
-  }, [])
+  const [switcherVisible, setSwitcherVisible] = useState(false)
 
   useFocusEffect(
     useCallback(() => {
-      if (user && space) loadHubs()
-    }, [user, space])
+      loadHubs()
+    }, [space?.id])
   )
 
   const loadHubs = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
-
     try {
       const data = await hubsService.getHubs(space.id)
       setHubs(data)
@@ -54,28 +212,31 @@ export default function HubsScreen({ navigation, route }) {
     Alert.alert(hub.name, 'Manage this hub', [
       { text: 'Edit', onPress: () => navigation.navigate('CreateHub', { hub, spaceId: space.id }) },
       {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert('Delete hub', 'Are you sure? This will delete all content within this hub.', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Delete',
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  await hubsService.deleteHub(hub.id)
-                  setHubs(prev => prev.filter(h => h.id !== hub.id))
-                } catch (e) {
-                  Alert.alert('Error', 'Failed to delete hub.')
-                }
+        text: 'Delete', style: 'destructive',
+        onPress: () => Alert.alert('Delete hub', 'Are you sure? This will delete all content within this hub.', [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete', style: 'destructive',
+            onPress: async () => {
+              try {
+                await hubsService.deleteHub(hub.id)
+                setHubs(prev => prev.filter(h => h.id !== hub.id))
+              } catch {
+                Alert.alert('Error', 'Failed to delete hub.')
               }
             }
-          ])
-        }
+          }
+        ])
       },
       { text: 'Cancel', style: 'cancel' }
     ])
+  }
+
+  const handleSpaceSelect = (selectedSpace) => {
+    setSwitcherVisible(false)
+    if (selectedSpace.id === space.id) return
+    // Navigate to the selected space
+    navigation.navigate(selectedSpace.id, { space: selectedSpace })
   }
 
   const renderHub = ({ item }) => (
@@ -98,32 +259,35 @@ export default function HubsScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() => navigation.dispatch(DrawerActions.toggleDrawer())}
-            style={styles.menuBtn}
-            hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-          >
-            <List color={colors.text.secondary} size={24} weight="light" />
-          </TouchableOpacity>
-          <View>
-            <View style={styles.titleRow}>
-              <SpaceIcon icon={space.icon} color={space.color} size={24} iconSize={12} />
-              <Text style={styles.title}>{space.name}</Text>
-            </View>
-            {space.category && (
-              <View style={[styles.badge, { backgroundColor: space.color + '15' }]}>
-                <Text style={[styles.badgeText, { color: space.color }]}>{space.category.toUpperCase()}</Text>
-              </View>
-            )}
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+        >
+          <CaretLeft color={colors.text.secondary} size={22} weight="light" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.spaceChip}
+          onPress={() => setSwitcherVisible(true)}
+          activeOpacity={0.7}
+        >
+          <SpaceIcon icon={space.icon} color={space.color} size={26} iconSize={13} weight="light" />
+          <View style={styles.spaceTextWrap}>
+            <Text style={styles.title} numberOfLines={1}>{space.name}</Text>
+            <Text style={styles.spaceSubtitle}>
+              {hubs.length} {hubs.length === 1 ? 'hub' : 'hubs'}
+            </Text>
           </View>
-        </View>
+          <CaretDown color={colors.text.tertiary} size={12} weight="bold" />
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.addBtn}
           onPress={handleAddHub}
           hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
         >
-          <Text style={styles.addText}>+</Text>
+          <Plus color={colors.text.secondary} size={20} weight="light" />
         </TouchableOpacity>
       </View>
 
@@ -144,16 +308,21 @@ export default function HubsScreen({ navigation, route }) {
         ListEmptyComponent={
           !loading && (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No hubs in this space</Text>
-              <Text style={styles.emptyHint}>
-                Tap + to create your first working hub.
-              </Text>
+              <Text style={styles.emptyTitle}>No hubs yet</Text>
+              <Text style={styles.emptyHint}>Tap + to create your first hub.</Text>
             </View>
           )
         }
       />
+
+      <SpaceSwitcherSheet
+        visible={switcherVisible}
+        onClose={() => setSwitcherVisible(false)}
+        currentSpaceId={space.id}
+        onSelect={handleSpaceSelect}
+      />
     </SafeAreaView>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
@@ -162,68 +331,59 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border.primary,
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-  },
-  menuBtn: {
+  backBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.background.secondary,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  spaceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    backgroundColor: colors.background.tertiary,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginHorizontal: 8,
   },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 4,
+  spaceTextWrap: {
+    flex: 1,
   },
   title: {
-    fontSize: 20,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: '500',
     color: colors.text.primary,
   },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-  },
-  badgeText: {
+  spaceSubtitle: {
     fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
+    fontWeight: '500',
+    color: colors.text.tertiary,
+    letterSpacing: 0.5,
+    marginTop: 1,
   },
   addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.background.secondary,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-  },
-  addText: {
-    fontSize: 24,
-    color: colors.text.secondary,
-    marginTop: -2,
+    width: 44,
+    height: 44,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   list: {
     paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingTop: 16,
+    paddingBottom: 120,
   },
   row: {
     gap: 12,
@@ -237,6 +397,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
+  hubHeader: {},
   hubName: {
     fontSize: 15,
     fontWeight: '500',
@@ -250,15 +411,15 @@ const styles = StyleSheet.create({
   empty: {
     marginTop: 100,
     alignItems: 'center',
+    gap: 6,
   },
   emptyTitle: {
     fontSize: 15,
     fontWeight: '500',
     color: colors.text.secondary,
-    marginBottom: 4,
   },
   emptyHint: {
     fontSize: 13,
     color: colors.text.tertiary,
-  }
+  },
 })

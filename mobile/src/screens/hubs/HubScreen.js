@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { DrawerActions } from "@react-navigation/native";
 import CompassNavigator from "../../components/navigation/CompassNavigator";
 import { colors } from "../../constants/colors";
 import SpaceIcon from "../../components/common/SpaceIcon";
-import { List, CaretDown, CaretLeft } from "phosphor-react-native";
+import { CaretDown, CaretLeft } from "phosphor-react-native";
 import HubSwitcherModal from "./HubSwitcherModal";
 
 export default function HubScreen({ route, navigation }) {
@@ -24,34 +23,27 @@ export default function HubScreen({ route, navigation }) {
           <CaretLeft color={colors.text.secondary} size={24} weight="regular" />
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.hubInfo}
+        <TouchableOpacity
+          style={styles.hubChip}
           onPress={() => setSwitcherVisible(true)}
           activeOpacity={0.7}
         >
-            <SpaceIcon
-              icon={hub?.icon || "Circle"}
-              color={hub?.color}
-              size={32}
-              iconSize={16}
-              weight="light"
-            />
-            <View style={styles.hubTitleWrapper}>
-              <View style={styles.hubNameRow}>
-                <Text style={styles.hubName} numberOfLines={1}>{hub?.name || 'Unnamed Hub'}</Text>
-                <CaretDown color={colors.text.tertiary} size={14} weight="bold" />
-              </View>
-              <Text style={styles.spaceName}>{space?.name?.toUpperCase() || 'MISSION ZONE'}</Text>
-            </View>
+          <SpaceIcon
+            icon={hub?.icon || "Circle"}
+            color={hub?.color}
+            size={26}
+            iconSize={13}
+            weight="light"
+          />
+          <View style={styles.hubTitleWrapper}>
+            <Text style={styles.hubName} numberOfLines={1}>{hub?.name || 'Unnamed Hub'}</Text>
+            <Text style={styles.spaceName}>{space?.name?.toUpperCase() || 'SPACE'}</Text>
+          </View>
+          <CaretDown color={colors.text.tertiary} size={12} weight="bold" />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => navigation.dispatch(DrawerActions.toggleDrawer())}
-          style={styles.menuBtn}
-          hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
-        >
-          <List color={colors.text.tertiary} size={22} weight="light" />
-        </TouchableOpacity>
+        {/* Spacer to keep chip centered */}
+        <View style={styles.backBtn} />
       </View>
 
       {/* Compass navigator scoped to this hub */}
@@ -89,12 +81,18 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "center",
   },
-  hubInfo: {
+  hubChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     flex: 1,
+    backgroundColor: colors.background.tertiary,
+    borderWidth: 0.5,
+    borderColor: colors.border.primary,
+    borderRadius: 10,
     paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginHorizontal: 8,
   },
   hubTitleWrapper: {
     flex: 1,
@@ -105,20 +103,15 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   hubName: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "500",
     color: colors.text.primary,
   },
   spaceName: {
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: "500",
     color: colors.text.tertiary,
-    letterSpacing: 1,
-  },
-  menuBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "flex-end",
-    justifyContent: "center",
+    letterSpacing: 0.8,
+    marginTop: 1,
   },
 });

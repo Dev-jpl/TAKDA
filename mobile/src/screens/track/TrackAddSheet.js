@@ -53,7 +53,7 @@ export default function TrackAddSheet({ visible, onClose, onAdd }) {
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.headerDot} />
-                <Text style={styles.title}>INITIALIZE TASK</Text>
+                <Text style={styles.title}>New Task</Text>
               </View>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                 <X color={colors.text.tertiary} size={20} weight="bold" />

@@ -122,7 +122,7 @@ export default function AutomateScreen({ hub, space }) {
             </View>
             
             <Text style={styles.cardPreview} numberOfLines={3}>
-              {latestBriefing?.content || 'Aggregate your project state across all modules to generate a professional AI synthesis of your current mission velocity.'}
+              {latestBriefing?.content || 'Aggregate your project state across all modules to get an AI summary of your current progress.'}
             </Text>
 
             <View style={styles.cardFooter}>

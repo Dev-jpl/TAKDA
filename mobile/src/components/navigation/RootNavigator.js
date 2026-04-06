@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { View, StyleSheet } from 'react-native'
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -8,15 +8,17 @@ import LoginScreen from '../../screens/auth/LoginScreen'
 import RegisterScreen from '../../screens/auth/RegisterScreen'
 import SidebarNavigator from './SidebarNavigator'
 import ProfileScreen from '../../screens/auth/ProfileScreen'
+import SettingsScreen from '../../screens/settings/SettingsScreen'
 import CreateSpaceScreen from '../../screens/home/CreateSpaceScreen'
 import CoordinatorScreen from '../../screens/coordinator/CoordinatorScreen'
 import AssistantQuiz from '../../screens/coordinator/QuizScreen'
 import CalendarScreen from '../../screens/calendar/CalendarScreen'
-import SpacesScreen from '../../screens/spaces/SpacesScreen'
 import VaultScreen from '../../screens/vault/VaultScreen'
 import BottomNav from './BottomNav'
 import AlyButton from '../common/AlyButton'
+import AlySheet from '../common/AlySheet'
 import QuickToolsDrawer from '../../screens/quicktools/QuickToolsDrawer'
+import { AlySheetProvider } from '../../context/AlySheetContext'
 
 const Stack = createNativeStackNavigator()
 
@@ -40,7 +42,11 @@ function AppShell({ session }) {
   const [activeRouteName, setActiveRouteName] = useState('Home')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [quickToolsVisible, setQuickToolsVisible] = useState(false)
+  const [alySheetVisible, setAlySheetVisible] = useState(false)
   const navigationRef = useNavigationContainerRef()
+
+  // Stable ref so any screen can call openSheet() via context
+  const openAlySheetRef = useRef(() => setAlySheetVisible(true))
 
   const handleStateChange = useCallback((state) => {
     const name = getActiveRouteName(state)
@@ -55,56 +61,56 @@ function AppShell({ session }) {
 
   const bottomNavVisible = session && !isInHub && !isInAuth && !drawerOpen
 
-  const navigate = (screen) => {
-    if (navigationRef.isReady()) {
-      navigationRef.navigate(screen)
-    }
-  }
-
   return (
-    <NavigationContainer ref={navigationRef} onStateChange={handleStateChange}>
-      <View style={styles.root}>
-        <Stack.Navigator
-          screenOptions={{ headerShown: false }}
-          initialRouteName={session ? 'Main' : 'Login'}
-        >
-          {session ? (
+    <AlySheetProvider sheetRef={openAlySheetRef}>
+      <NavigationContainer ref={navigationRef} onStateChange={handleStateChange}>
+        <View style={styles.root}>
+          <Stack.Navigator
+            screenOptions={{ headerShown: false }}
+            initialRouteName={session ? 'Main' : 'Login'}
+          >
+            {session ? (
+              <>
+                <Stack.Screen name="Main" component={SidebarNavigator} />
+                <Stack.Screen name="Profile" component={ProfileScreen} />
+                <Stack.Screen name="Settings" component={SettingsScreen} />
+                <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
+                <Stack.Screen name="Coordinator" component={CoordinatorScreen} />
+                <Stack.Screen name="AssistantQuiz" component={AssistantQuiz} />
+                <Stack.Screen name="Calendar" component={CalendarScreen} />
+                <Stack.Screen name="Vault" component={VaultScreen} />
+              </>
+            ) : (
+              <>
+                <Stack.Screen name="Login" component={LoginScreen} />
+                <Stack.Screen name="Register" component={RegisterScreen} />
+              </>
+            )}
+          </Stack.Navigator>
+
+          {session && (
             <>
-              <Stack.Screen name="Main" component={SidebarNavigator} />
-              <Stack.Screen name="Profile" component={ProfileScreen} />
-              <Stack.Screen name="CreateSpace" component={CreateSpaceScreen} />
-              <Stack.Screen name="Coordinator" component={CoordinatorScreen} />
-              <Stack.Screen name="AssistantQuiz" component={AssistantQuiz} />
-              <Stack.Screen name="Calendar" component={CalendarScreen} />
-              <Stack.Screen name="Spaces" component={SpacesScreen} />
-              <Stack.Screen name="Vault" component={VaultScreen} />
-            </>
-          ) : (
-            <>
-              <Stack.Screen name="Login" component={LoginScreen} />
-              <Stack.Screen name="Register" component={RegisterScreen} />
+              <BottomNav
+                visible={bottomNavVisible}
+                activeTab={activeRouteName}
+                onHomePress={() => navigationRef.isReady() && navigationRef.navigate('Main', { screen: 'Home' })}
+                onQuickToolsPress={() => setQuickToolsVisible(true)}
+                onSpacesPress={() => navigationRef.isReady() && navigationRef.navigate('Main', { screen: 'Spaces' })}
+              />
+              <AlyButton onOpen={() => setAlySheetVisible(true)} />
+              <AlySheet
+                visible={alySheetVisible}
+                onClose={() => setAlySheetVisible(false)}
+              />
+              <QuickToolsDrawer
+                visible={quickToolsVisible}
+                onClose={() => setQuickToolsVisible(false)}
+              />
             </>
           )}
-        </Stack.Navigator>
-
-        {session && (
-          <>
-            <BottomNav
-              visible={bottomNavVisible}
-              activeTab={activeRouteName}
-              onHomePress={() => navigationRef.isReady() && navigationRef.navigate('Main', { screen: 'Home' })}
-              onQuickToolsPress={() => setQuickToolsVisible(true)}
-              onSpacesPress={() => navigate('Spaces')}
-            />
-            {!drawerOpen && <AlyButton />}
-            <QuickToolsDrawer
-              visible={quickToolsVisible}
-              onClose={() => setQuickToolsVisible(false)}
-            />
-          </>
-        )}
-      </View>
-    </NavigationContainer>
+        </View>
+      </NavigationContainer>
+    </AlySheetProvider>
   )
 }
 

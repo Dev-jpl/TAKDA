@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -48,7 +49,24 @@ function CompassDot({ label, active, onPress }) {
 export default function CompassNavigator({ hub, space }) {
   const [activeModule, setActiveModule] = useState("track");
   const [compassOpen, setCompassOpen] = useState(false);
+  const [hintVisible, setHintVisible] = useState(false);
   const hideTimerRef = useRef(null);
+  const hintTimerRef = useRef(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem("compass_hint_shown").then(val => {
+      if (!val) {
+        setHintVisible(true);
+        hintTimerRef.current = setTimeout(() => {
+          setHintVisible(false);
+          AsyncStorage.setItem("compass_hint_shown", "true");
+        }, 3000);
+      }
+    });
+    return () => {
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    };
+  }, []);
 
   const compassOpacity = useSharedValue(0);
 
@@ -127,6 +145,13 @@ export default function CompassNavigator({ hub, space }) {
           </View>
         </View>
       </Animated.View>
+
+      {/* ── First-visit hint ── */}
+      {hintVisible && (
+        <View style={styles.hint}>
+          <Text style={styles.hintText}>Tap the letters below to switch tools</Text>
+        </View>
+      )}
 
       {/* ── Bottom nav bar ── */}
       <View style={styles.bottomNav}>
@@ -226,6 +251,20 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.border.primary,
+  },
+  hint: {
+    alignSelf: "center",
+    backgroundColor: "rgba(20,20,20,0.92)",
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: colors.border.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  hintText: {
+    fontSize: 12,
+    color: colors.text.secondary,
   },
   bottomNav: {
     flexDirection: "row",

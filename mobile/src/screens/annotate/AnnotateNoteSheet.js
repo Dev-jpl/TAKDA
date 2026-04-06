@@ -50,7 +50,7 @@ export default function AnnotateNoteSheet({ visible, onClose, onAdd, documents =
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.headerDot} />
-                <Text style={styles.title}>INITIALIZE INSIGHT</Text>
+                <Text style={styles.title}>New Note</Text>
               </View>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                 <X color={colors.text.tertiary} size={20} weight="bold" />

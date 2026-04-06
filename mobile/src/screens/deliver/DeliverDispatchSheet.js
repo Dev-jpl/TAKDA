@@ -48,7 +48,7 @@ export default function DeliverDispatchSheet({ visible, onClose, onAdd }) {
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.headerDot} />
-                <Text style={styles.title}>INITIALIZE DISPATCH</Text>
+                <Text style={styles.title}>New Delivery</Text>
               </View>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                 <X color={colors.text.tertiary} size={20} weight="bold" />
@@ -62,7 +62,7 @@ export default function DeliverDispatchSheet({ visible, onClose, onAdd }) {
             >
               {/* Protocol Picker */}
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>MISSION PROTOCOL</Text>
+                <Text style={styles.label}>TYPE</Text>
                 <View style={styles.protocolGrid}>
                   {PROTOCOLS.map(p => {
                     const isActive = type === p.key

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  View, Text, StyleSheet, FlatList, 
+  View, Text, StyleSheet, FlatList,
   TextInput, TouchableOpacity, ActivityIndicator,
-  KeyboardAvoidingView, Platform, Animated, Keyboard, TouchableWithoutFeedback,
+  Platform, Animated, Keyboard, TouchableWithoutFeedback,
   Modal, ScrollView, StatusBar
 } from 'react-native';
 import { colors } from '../../constants/colors';
@@ -18,6 +18,23 @@ import { ASSISTANT_NAME } from '../../constants/brand';
 import { useNavigation } from '@react-navigation/native';
 import { ICON_MAP } from '../../components/common/IconPicker';
 import { supabase } from '../../services/supabase';
+
+function _confirmationText(actionType, label) {
+  switch (actionType) {
+    case 'CREATE_TASK':    return `Done! I've added "${label}" to your list.`;
+    case 'UPDATE_TASK':    return `Got it, task updated.`;
+    case 'CREATE_EVENT':   return `Scheduled! "${label}" is on your calendar.`;
+    case 'UPDATE_EVENT':   return `Calendar updated.`;
+    case 'DELETE_EVENT':   return `Event removed.`;
+    case 'LOG_EXPENSE':    return `Logged! I've noted that expense.`;
+    case 'LOG_FOOD':       return `Logged! Food entry saved.`;
+    case 'SAVE_TO_VAULT':  return `Saved to your vault for later.`;
+    case 'SAVE_REPORT':    return `Report saved!`;
+    case 'CREATE_SPACE':   return `Space "${label}" created!`;
+    case 'CREATE_HUB':     return `Hub "${label}" created!`;
+    default:               return `Done!`;
+  }
+}
 
 function TypingIndicator() {
   const dot1 = useRef(new Animated.Value(0)).current
@@ -50,23 +67,19 @@ function TypingIndicator() {
   }, [])
 
   const dotStyle = (anim) => ({
-    width: 6, height: 6, borderRadius: 3,
+    width: 5, height: 5, borderRadius: 2.5,
     backgroundColor: colors.modules.aly,
     marginHorizontal: 2,
     opacity: anim,
   })
 
   return (
-    <View style={styles.aiRow}>
-      <View style={styles.aiAvatar}>
-        <View style={styles.aiAvatarDot} />
-      </View>
-      <View style={styles.aiBubble}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', height: 20 }}>
-          <Animated.View style={dotStyle(dot1)} />
-          <Animated.View style={dotStyle(dot2)} />
-          <Animated.View style={dotStyle(dot3)} />
-        </View>
+    <View style={styles.aiBlock}>
+      <Text style={styles.aiName}>{ASSISTANT_NAME}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', height: 24, paddingLeft: 2 }}>
+        <Animated.View style={dotStyle(dot1)} />
+        <Animated.View style={dotStyle(dot2)} />
+        <Animated.View style={dotStyle(dot3)} />
       </View>
     </View>
   )
@@ -127,15 +140,15 @@ function ActionCard({ action, onInteraction, userId }) {
       </View>
       <View style={styles.actionInfo}>
         <Text style={[styles.actionStatus, isProposal && { color: colors.modules.aly }]}>
-          {status === 'proposed' ? 'MISSION PROPOSED' : 
-           status === 'confirmed' ? 'MISSION SECURED' :
-           status === 'aborted' ? 'MISSION ABORTED' :
-           isTask ? 'TASK INITIALIZED' : 
-           isSpace ? 'SPACE CONSTRUCTED' : 
-           isHub ? 'HUB ACTIVATED' :
-           isQuiz ? 'QUIZ GENERATED' :
-           isEvent ? 'EVENT SCHEDULED' :
-           'OUTPUT SECURED'}
+          {status === 'proposed' ? 'Proposed' :
+           status === 'confirmed' ? 'Done' :
+           status === 'aborted' ? 'Cancelled' :
+           isTask ? 'Task created' :
+           isSpace ? 'Space created' :
+           isHub ? 'Hub created' :
+           isQuiz ? 'Quiz ready' :
+           isEvent ? 'Event scheduled' :
+           'Completed'}
         </Text>
         <Text style={styles.actionLabel} numberOfLines={1}>{action.label}</Text>
         
@@ -148,14 +161,14 @@ function ActionCard({ action, onInteraction, userId }) {
                 onPress={handleConfirm}
                 disabled={busy}
               >
-                {busy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.miniBtnText}>CONFIRM</Text>}
+                {busy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.miniBtnText}>Yes, do it</Text>}
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.miniBtn, styles.miniBtnAbort]} 
+              <TouchableOpacity
+                style={[styles.miniBtn, styles.miniBtnAbort]}
                 onPress={handleAbort}
                 disabled={busy}
               >
-                <Text style={[styles.miniBtnText, { color: colors.text.secondary }]}>ABORT</Text>
+                <Text style={[styles.miniBtnText, { color: colors.text.secondary }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -183,17 +196,14 @@ function WelcomeView({ userName, onSelectSuggestion }) {
   }, []);
 
   const suggestions = [
-    // Mission Toolbox
-    { id: '1', label: 'Morning SITREP', icon: <Info size={18} color={colors.modules.aly} />, prompt: 'Aly, provide a SITREP briefing.' },
-    { id: '2', label: 'Space Architect', icon: <MagicWand size={18} color={colors.modules.aly} />, prompt: 'Aly, analyze my current spaces and suggest optimizations.' },
-    // Core Capabilities
-    { id: '3', label: 'Schedule Mission', icon: <Calendar size={18} color={colors.modules.track} />, prompt: 'I need to schedule a new mission.' },
-    { id: '4', label: 'Status Report', icon: <ChartBar size={18} color={colors.modules.aly} />, prompt: 'Aly, generate a detailed mission report.' },
-    { id: '5', label: 'Knowledge Quiz', icon: <Brain size={18} color={colors.modules.aly} />, prompt: 'Create a quiz based on my notes.' },
-    { id: '6', label: 'Focus Session', icon: <Target size={18} color={colors.modules.track} />, prompt: 'Aly, I need to focus. What are my top priorities?' },
-    // Cognitive & Clean
-    { id: '7', label: 'Mission Brainstorm', icon: <Sparkle size={18} color={colors.modules.aly} />, prompt: 'Aly, let\'s brainstorm some new directions for my projects.' },
-    { id: '8', label: 'Clean Workspace', icon: <Database size={18} color={colors.modules.annotate} />, prompt: 'Find and clean up stale hubs.' },
+    { id: '1', label: 'My day', icon: <Info size={18} color={colors.modules.aly} />, prompt: 'What does my day look like?' },
+    { id: '2', label: 'Add task', icon: <ListChecks size={18} color={colors.modules.track} />, prompt: 'I need to add a task' },
+    { id: '3', label: 'Daily briefing', icon: <ChartBar size={18} color={colors.modules.aly} />, prompt: 'Give me a quick briefing on my week' },
+    { id: '4', label: 'Log something', icon: <Database size={18} color={colors.modules.annotate} />, prompt: 'I want to log something' },
+    { id: '5', label: 'I need help', icon: <Sparkle size={18} color={colors.modules.aly} />, prompt: 'Help me figure out what to focus on' },
+    { id: '6', label: 'Quiz me', icon: <Brain size={18} color={colors.modules.aly} />, prompt: 'Create a quiz from my notes' },
+    { id: '7', label: 'Schedule event', icon: <Calendar size={18} color={colors.modules.track} />, prompt: 'I need to schedule an event' },
+    { id: '8', label: 'Brainstorm', icon: <MagicWand size={18} color={colors.modules.aly} />, prompt: 'Let\'s brainstorm some new directions for my projects' },
   ];
 
   return (
@@ -202,8 +212,8 @@ function WelcomeView({ userName, onSelectSuggestion }) {
         <View style={styles.welcomeIcon}>
           <Sparkle size={32} color={colors.modules.aly} weight="fill" />
         </View>
-        <Text style={styles.welcomeGreeting}>Glad you're here, {userName || 'Agent'}!</Text>
-        <Text style={styles.welcomeSub}>I'm {ASSISTANT_NAME}, your event coordinator. Ready to optimize your workflow?</Text>
+        <Text style={styles.welcomeGreeting}>Hey{userName ? `, ${userName}` : ''}!</Text>
+        <Text style={styles.welcomeSub}>I'm {ASSISTANT_NAME}. What's on your mind?</Text>
       </View>
 
       <View style={styles.suggestionGrid}>
@@ -294,13 +304,11 @@ function MessageBubble({ msg, onInteraction, userId }) {
   }
 
   return (
-    <View style={styles.aiRow}>
-      <View style={styles.aiAvatar}>
-        <View style={styles.aiAvatarDot} />
-      </View>
-      <View style={styles.aiBubble}>
+    <View style={styles.aiBlock}>
+      <Text style={styles.aiName}>{ASSISTANT_NAME}</Text>
+      <View style={styles.aiContent}>
         <MarkdownRenderer content={msg.content} />
-        
+
         {msg.citations?.map((cite, i) => (
           <View key={i} style={styles.citation}>
             <Text style={styles.citationText} numberOfLines={1}>
@@ -312,11 +320,11 @@ function MessageBubble({ msg, onInteraction, userId }) {
         {msg.actions && msg.actions.length > 0 && (
           <View style={styles.actionsList}>
             {msg.actions.map((act, i) => (
-              <ActionCard 
-                key={i} 
-                action={act} 
-                onInteraction={onInteraction} 
-                userId={userId} 
+              <ActionCard
+                key={i}
+                action={act}
+                onInteraction={onInteraction}
+                userId={userId}
               />
             ))}
           </View>
@@ -340,17 +348,14 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
   const flatListRef = useRef(null);
 
   const SLASH_COMMANDS = [
-    // --- MISSION TOOLBOX ---
-    { cmd: '/sitrep', label: 'Morning SITREP briefing', text: 'Aly, provide a SITREP briefing.' },
-    { cmd: '/focus', label: 'Initiate Focus Guard', text: 'Aly, I need to focus. What are my top priorities?' },
-    { cmd: '/architect', label: 'Deploy Space Architect', text: 'Aly, analyze my current spaces and suggest optimizations.' },
-    { cmd: '/clean', label: 'Run Environment Cleanup', text: 'Find and clean up stale hubs.' },
-    // --- CORE CAPABILITIES ---
-    { cmd: '/schedule', label: 'Coordinate Mission/Event', text: 'I need to schedule a new mission.' },
-    { cmd: '/report', label: 'Generate Status Report', text: 'Aly, generate a detailed mission report.' },
-    { cmd: '/quiz', label: 'Create Knowledge Quiz', text: 'Create a quiz based on my notes.' },
-    // --- COGNITIVE ---
-    { cmd: '/brainstorm', label: 'Mission Brainstorming', text: 'Aly, let\'s brainstorm some new directions for my projects.' },
+    { cmd: '/briefing', label: 'Daily briefing', text: 'Give me a quick briefing on my day.' },
+    { cmd: '/focus', label: 'Help me focus', text: 'Aly, I need to focus. What are my top priorities?' },
+    { cmd: '/organize', label: 'Organize my spaces', text: 'Aly, analyze my current spaces and suggest improvements.' },
+    { cmd: '/clean', label: 'Clean up stale hubs', text: 'Find and clean up stale hubs.' },
+    { cmd: '/schedule', label: 'Schedule an event', text: 'I need to schedule an event.' },
+    { cmd: '/report', label: 'Generate a report', text: 'Aly, generate a summary report.' },
+    { cmd: '/quiz', label: 'Quiz me on my notes', text: 'Create a quiz based on my notes.' },
+    { cmd: '/brainstorm', label: 'Brainstorm ideas', text: 'Let\'s brainstorm some new directions for my projects.' },
   ];
 
   const handleInputChange = (text) => {
@@ -486,7 +491,7 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
       console.error('Chat error:', e);
       setMessages(prev => prev.map(m => 
         m.id === assistantPlaceholderId 
-          ? { ...m, content: 'Calibration failed. Please retry.', streaming: false } 
+          ? { ...m, content: 'Something went wrong. Please try again.', streaming: false }
           : m
       ));
     } finally {
@@ -540,7 +545,7 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
         setMessages(prev => prev.map(m => m.id === assistantPlaceholderId ? { ...m, streaming: false } : m));
       }
     } catch (e) {
-      setMessages(prev => prev.map(m => m.id === assistantPlaceholderId ? { ...m, content: 'Optimization failed.', streaming: false } : m));
+      setMessages(prev => prev.map(m => m.id === assistantPlaceholderId ? { ...m, content: 'Something went wrong. Please try again.', streaming: false } : m));
     } finally {
       setLoading(false);
     }
@@ -551,7 +556,7 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
       const abortMsg = { 
         id: Date.now().toString(), 
         role: 'assistant', 
-        content: '_Aborted mission proposal._',
+        content: '_Cancelled._',
         created_at: new Date() 
       };
       setMessages(prev => [...prev, abortMsg]);
@@ -563,22 +568,25 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
       const confirmMsg = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `Got it. Mission **${action.label}** has been successfully secured.`,
+        content: _confirmationText(action.action_type, action.label),
         created_at: new Date()
       };
       setMessages(prev => [...prev, confirmMsg]);
     } catch (e) {
       console.warn('finalizeAction error:', e);
+      const errMsg = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: "Sorry, something went wrong with that. Try again?",
+        created_at: new Date()
+      };
+      setMessages(prev => [...prev, errMsg]);
     }
   };
 
   return (
     <View style={styles.container}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+      <View style={{ flex: 1 }}>
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -686,7 +694,7 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
             )}
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       {/* Action Drawer Modal */}
       <Modal
@@ -735,7 +743,7 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
                        style={styles.drawerGridItem}
                        onPress={() => {
                          setActionDrawerVisible(false);
-                         handleSendDirect("I need to schedule a new mission.");
+                         handleSendDirect("I need to schedule a new event.");
                        }}
                      >
                        <View style={[styles.itemIcon, { backgroundColor: colors.modules.track + '15' }]}>
@@ -751,7 +759,7 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
                        style={styles.drawerGridItem}
                        onPress={() => {
                          setActionDrawerVisible(false);
-                         handleSendDirect("Aly, generate a detailed mission report.");
+                         handleSendDirect("Generate a detailed summary report.");
                        }}
                      >
                        <View style={[styles.itemIcon, { backgroundColor: colors.modules.aly + '15' }]}>
@@ -780,21 +788,21 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
                      </TouchableOpacity>
                    </ScrollView>
 
-                   <Text style={[styles.drawerTitle, { marginBottom: 8, marginTop: 24, paddingHorizontal: 20 }]}>MISSION TOOLBOX</Text>
+                   <Text style={[styles.drawerTitle, { marginBottom: 8, marginTop: 24, paddingHorizontal: 20 }]}>Quick actions</Text>
                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.drawerGrid}>
-                     <TouchableOpacity 
+                     <TouchableOpacity
                        style={styles.drawerGridItem}
                        onPress={() => {
                          setActionDrawerVisible(false);
-                         handleSendDirect("Aly, provide a SITREP briefing.");
+                         handleSendDirect("Give me a quick briefing on my day.");
                        }}
                      >
                        <View style={[styles.itemIcon, { backgroundColor: colors.modules.aly + '15' }]}>
                          <Info size={18} color={colors.modules.aly} />
                        </View>
                        <View style={styles.itemInfo}>
-                         <Text style={styles.itemName}>SITREP</Text>
-                         <Text style={styles.itemSub}>Smart briefing</Text>
+                         <Text style={styles.itemName}>Daily briefing</Text>
+                         <Text style={styles.itemSub}>What's on today</Text>
                        </View>
                      </TouchableOpacity>
 
@@ -882,7 +890,7 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
                          </View>
                          <View style={styles.itemInfo}>
                            <Text style={styles.itemName}>{s.name}</Text>
-                           <Text style={styles.itemSub}>Switch to this mission zone</Text>
+                           <Text style={styles.itemSub}>Switch to this space</Text>
                          </View>
                          <CaretRight size={14} color={colors.text.tertiary} />
                        </TouchableOpacity>
@@ -905,105 +913,75 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   list: {
-    padding: 16,
-    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 24,
+    gap: 24,
   },
   userRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginBottom: 4,
   },
   userBubble: {
-    backgroundColor: colors.modules.aly + '20',
-    borderRadius: 16,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 18,
     borderBottomRightRadius: 4,
     borderWidth: 0.5,
-    borderColor: colors.modules.aly + '40',
-    padding: 10,
-    maxWidth: '85%',
+    borderColor: colors.border.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    maxWidth: '80%',
   },
   userText: {
-    color: colors.modules.aly,
-    fontSize: 14,
-    lineHeight: 20,
+    color: colors.text.primary,
+    fontSize: 15,
+    lineHeight: 22,
   },
-  aiRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 4,
-    alignItems: 'flex-start',
-  },
-  aiAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.modules.aly + '20',
-    borderWidth: 0.5,
-    borderColor: colors.modules.aly + '40',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-    flexShrink: 0,
-  },
-  aiAvatarDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.modules.aly,
-  },
-  aiBubble: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: 4,
-    borderTopRightRadius: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    padding: 10,
-    flex: 1,
+  aiBlock: {
     gap: 6,
   },
-  aiText: {
-    color: colors.text.primary,
-    fontSize: 14,
-    lineHeight: 20,
+  aiName: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.modules.aly,
+    letterSpacing: 0.3,
+  },
+  aiContent: {
+    gap: 4,
   },
   mdHeader: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.modules.aly,
-    marginTop: 12,
-    marginBottom: 6,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text.primary,
+    marginTop: 14,
+    marginBottom: 4,
   },
   mdPara: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 23,
     color: colors.text.primary,
-    marginBottom: 8,
+    marginBottom: 2,
   },
   mdBold: {
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.text.primary,
   },
   mdListItem: {
     flexDirection: 'row',
-    paddingLeft: 4,
-    marginBottom: 4,
+    paddingLeft: 2,
+    marginBottom: 6,
     alignItems: 'flex-start',
   },
   mdBullet: {
-    fontSize: 14,
-    color: colors.modules.aly,
-    marginRight: 8,
-    lineHeight: 20,
+    fontSize: 15,
+    color: colors.text.tertiary,
+    marginRight: 10,
+    lineHeight: 23,
   },
   mdListText: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 23,
     color: colors.text.primary,
   },
   citation: {

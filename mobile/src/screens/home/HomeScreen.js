@@ -15,6 +15,8 @@ import { supabase } from '../../services/supabase'
 import { spacesService } from '../../services/spaces'
 import { eventService } from '../../services/events'
 import { vaultService } from '../../services/vault'
+import { API_URL } from '../../services/apiConfig'
+import { useAlySheet } from '../../context/AlySheetContext'
 import { colors } from '../../constants/colors'
 import { ASSISTANT_NAME } from '../../constants/brand'
 import SpaceIcon from '../../components/common/SpaceIcon'
@@ -39,11 +41,13 @@ function formatDate() {
 }
 
 export default function HomeScreen({ navigation }) {
+  const { openSheet } = useAlySheet()
   const [user, setUser] = useState(null)
   const [pinnedHubs, setPinnedHubs] = useState([])
   const [spaces, setSpaces] = useState([])
   const [vaultCount, setVaultCount] = useState(0)
   const [todayEvents, setTodayEvents] = useState([])
+  const [dailyInsight, setDailyInsight] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -62,12 +66,14 @@ export default function HomeScreen({ navigation }) {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
     try {
-      const [raw, spacesData, events, vaultItems] = await Promise.all([
+      const [raw, spacesData, events, vaultItems, insightRes] = await Promise.all([
         AsyncStorage.getItem(PINNED_KEY),
         spacesService.getSpaces(u.id),
         eventService.getEvents(u.id),
         vaultService.getItems(u.id, 'unprocessed').catch(() => []),
+        fetch(`${API_URL}/aly/daily-insight?user_id=${u.id}`).then(r => r.json()).catch(() => ({})),
       ])
+      if (insightRes?.insight) setDailyInsight(insightRes.insight)
 
       setPinnedHubs(raw ? JSON.parse(raw) : [])
       setSpaces(spacesData)
@@ -147,6 +153,11 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.greetingDate}>{formatDate()}</Text>
         </View>
 
+        {/* 1b. Aly daily insight */}
+        {dailyInsight ? (
+          <Text style={styles.insight}>{dailyInsight}</Text>
+        ) : null}
+
         {/* 2. Vault summary */}
         {vaultCount > 0 && (
           <TouchableOpacity
@@ -154,11 +165,11 @@ export default function HomeScreen({ navigation }) {
             onPress={() => navigation.navigate('Vault')}
             activeOpacity={0.8}
           >
-            <Tray color={colors.modules.aly} size={16} weight="light" />
+            <Tray color={colors.text.tertiary} size={16} weight="light" />
             <Text style={styles.vaultBannerText}>
               {vaultCount} {vaultCount === 1 ? 'item needs' : 'items need'} sorting
             </Text>
-            <ArrowRight color={colors.modules.aly} size={14} weight="light" style={{ marginLeft: 'auto' }} />
+            <ArrowRight color={colors.text.tertiary} size={14} weight="light" style={{ marginLeft: 'auto' }} />
           </TouchableOpacity>
         )}
 
@@ -194,7 +205,19 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* 4. Pinned hubs */}
+        {/* 4. Pinned hubs / Talk to Aly card */}
+        {pinnedHubs.length === 0 && (
+          <TouchableOpacity
+            style={styles.alyCard}
+            onPress={openSheet}
+            activeOpacity={0.8}
+          >
+            <Sparkle color={colors.modules.aly} size={20} weight="fill" />
+            <Text style={styles.alyCardText}>Talk to Aly to get started</Text>
+            <ArrowRight color={colors.modules.aly} size={14} weight="light" />
+          </TouchableOpacity>
+        )}
+
         {pinnedHubs.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>PINNED</Text>
@@ -303,15 +326,42 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
   },
 
+  insight: {
+    fontSize: 13,
+    color: colors.modules.aly,
+    fontStyle: 'italic',
+    marginTop: -8,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  alyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 0.5,
+    borderColor: colors.modules.aly + '50',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 24,
+    backgroundColor: colors.modules.aly + '08',
+  },
+  alyCardText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.modules.aly,
+  },
+
   // Vault banner
   vaultBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: colors.modules.aly + '12',
+    backgroundColor: colors.background.secondary,
     borderWidth: 0.5,
-    borderColor: colors.modules.aly + '40',
-    borderRadius: 10,
+    borderColor: colors.border.primary,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 16,
@@ -319,7 +369,7 @@ const styles = StyleSheet.create({
   vaultBannerText: {
     fontSize: 13,
     fontWeight: '500',
-    color: colors.modules.aly,
+    color: colors.text.primary,
   },
 
   // Daily brief card

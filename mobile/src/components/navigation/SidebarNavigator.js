@@ -17,8 +17,10 @@ import {
   House, Calendar, Tray, Sparkle,
   Gear, User,
 } from 'phosphor-react-native'
+import { useAlySheet } from '../../context/AlySheetContext'
 
 import HomeScreen from '../../screens/home/HomeScreen'
+import SpacesScreen from '../../screens/spaces/SpacesScreen'
 import CoordinatorScreen from '../../screens/coordinator/CoordinatorScreen'
 import HubsScreen from '../../screens/hubs/HubsScreen'
 import HubScreen from '../../screens/hubs/HubScreen'
@@ -35,6 +37,7 @@ function CustomSidebar({ navigation }) {
   const [user, setUser] = useState(null)
   const [pinnedHubs, setPinnedHubs] = useState([])
   const [spaces, setSpaces] = useState([])
+  const { openSheet } = useAlySheet()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user))
@@ -83,7 +86,7 @@ function CustomSidebar({ navigation }) {
         {navItem('Vault', <Tray color={colors.modules.knowledge} size={18} weight="light" />, colors.modules.knowledge,
           () => navigation.navigate('Vault'))}
         {navItem(`Ask ${ASSISTANT_NAME}`, <Sparkle color={colors.modules.aly} size={18} weight="fill" />, colors.modules.aly,
-          () => navigation.navigate('Coordinator'))}
+          () => openSheet())}
 
         {pinnedHubs.length > 0 && (
           <>
@@ -114,7 +117,7 @@ function CustomSidebar({ navigation }) {
 
       <View style={styles.footer}>
         <View style={styles.divider} />
-        <TouchableOpacity style={styles.footerItem} onPress={() => close(() => navigation.navigate('Profile'))}>
+        <TouchableOpacity style={styles.footerItem} onPress={() => close(() => navigation.navigate('Settings'))}>
           <Gear color={colors.text.tertiary} size={18} weight="light" />
           <Text style={styles.footerLabel}>Settings</Text>
         </TouchableOpacity>
@@ -175,6 +178,7 @@ export default function SidebarNavigator() {
       }}
     >
       <Drawer.Screen name="Home" component={HomeScreen} />
+      <Drawer.Screen name="Spaces" component={SpacesScreen} />
       <Drawer.Screen name="Coordinator" component={CoordinatorScreen} />
       {spaces.map(space => (
         <Drawer.Screen

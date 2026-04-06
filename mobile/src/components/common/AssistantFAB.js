@@ -2,15 +2,15 @@ import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { colors } from '../../constants/colors';
 import { Sparkle } from 'phosphor-react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useAlySheet } from '../../context/AlySheetContext';
 
 export default function AssistantFAB() {
-  const navigation = useNavigation();
+  const { openSheet } = useAlySheet();
 
   return (
-    <TouchableOpacity 
-      style={styles.fab} 
-      onPress={() => navigation.navigate('Coordinator')}
+    <TouchableOpacity
+      style={styles.fab}
+      onPress={openSheet}
       activeOpacity={0.8}
     >
       <View style={styles.inner}>

@@ -67,7 +67,7 @@ const CATEGORIZED_TOOLS = [
       },
       {
         id: 'strava',
-        label: 'Strava',
+        label: 'Sync Strava',
         icon: Lightning,
         color: '#FC5200', // Strava Orange
       },
@@ -474,18 +474,18 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
-    padding: 16,
-    gap: 10,
+    padding: 12,
+    gap: 8,
   },
   toolIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   toolLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
     color: colors.text.primary,
   },

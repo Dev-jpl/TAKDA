@@ -15,42 +15,64 @@ import {
   useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { X, Tray, CurrencyDollar, ForkKnife, Note } from 'phosphor-react-native'
+import { 
+  X, Tray, CurrencyDollar, ForkKnife, Note, 
+  CalendarBlank, Lightning, ArrowsClockwise 
+} from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
 import { vaultService } from '../../services/vault'
+import { integrationsService } from '../../services/integrations'
 import { supabase } from '../../services/supabase'
 import { API_URL } from '../../services/apiConfig'
 import VaultCaptureSheet from '../vault/VaultCaptureSheet'
 
-const TOOLS = [
+const CATEGORIZED_TOOLS = [
   {
-    id: 'vault',
-    label: 'Dump to Vault',
-    icon: Tray,
-    color: colors.modules.aly,
-    removable: false,
+    title: 'Tools',
+    items: [
+      {
+        id: 'vault',
+        label: 'Dump to Vault',
+        icon: Tray,
+        color: colors.modules.aly,
+      },
+      {
+        id: 'expense',
+        label: 'Log Expense',
+        icon: CurrencyDollar,
+        color: colors.modules.deliver,
+      },
+      {
+        id: 'food',
+        label: 'Log Calories',
+        icon: ForkKnife,
+        color: colors.modules.annotate,
+      },
+      {
+        id: 'note',
+        label: 'Quick Note',
+        icon: Note,
+        color: colors.modules.knowledge,
+      },
+    ]
   },
   {
-    id: 'expense',
-    label: 'Log Expense',
-    icon: CurrencyDollar,
-    color: colors.modules.deliver,
-    removable: true,
-  },
-  {
-    id: 'food',
-    label: 'Log Calories',
-    icon: ForkKnife,
-    color: colors.modules.annotate,
-    removable: true,
-  },
-  {
-    id: 'note',
-    label: 'Quick Note',
-    icon: Note,
-    color: colors.modules.knowledge,
-    removable: true,
-  },
+    title: 'Integrations',
+    items: [
+      {
+        id: 'calendar',
+        label: 'Sync Calendar',
+        icon: CalendarBlank,
+        color: colors.modules.track,
+      },
+      {
+        id: 'strava',
+        label: 'Strava',
+        icon: Lightning,
+        color: '#FC5200', // Strava Orange
+      },
+    ]
+  }
 ]
 
 // ─── Tool forms ───────────────────────────────────────────────────────────────
@@ -213,6 +235,7 @@ export default function QuickToolsDrawer({ visible, onClose }) {
   const slideAnim = useRef(new Animated.Value(height)).current
   const bottomAnim = useRef(new Animated.Value(0)).current
   const [activeTool, setActiveTool] = useState(null)
+  const [syncing, setSyncing] = useState(null) // ID of sync item
   const [userId, setUserId] = useState(null)
   const [vaultSheetVisible, setVaultSheetVisible] = useState(false)
 
@@ -269,12 +292,41 @@ export default function QuickToolsDrawer({ visible, onClose }) {
     return () => { showSub.remove(); hideSub.remove() }
   }, [visible])
 
-  const handleToolPress = (toolId) => {
+  const handleToolPress = async (toolId) => {
     if (toolId === 'vault') {
       onClose()
       setTimeout(() => setVaultSheetVisible(true), 250)
       return
     }
+
+    if (toolId === 'calendar') {
+      if (syncing) return
+      setSyncing('calendar')
+      try {
+        await integrationsService.syncGoogleCalendar(userId)
+        alert('Calendar sync complete!')
+      } catch (e) {
+        alert('Calendar sync failed.')
+      } finally {
+        setSyncing(null)
+      }
+      return
+    }
+
+    if (toolId === 'strava') {
+      if (syncing) return
+      setSyncing('strava')
+      try {
+        await integrationsService.syncStrava(userId)
+        alert('Strava sync complete!')
+      } catch (e) {
+        alert('Strava sync failed.')
+      } finally {
+        setSyncing(null)
+      }
+      return
+    }
+
     setActiveTool(toolId)
   }
 
@@ -298,7 +350,9 @@ export default function QuickToolsDrawer({ visible, onClose }) {
 
           <View style={styles.header}>
             <Text style={styles.headerTitle}>
-              {activeTool ? TOOLS.find(t => t.id === activeTool)?.label : 'Quick Tools'}
+              {activeTool 
+                ? CATEGORIZED_TOOLS.flatMap(c => c.items).find(t => t.id === activeTool)?.label 
+                : 'Quick Access'}
             </Text>
             <TouchableOpacity
               onPress={activeTool ? () => setActiveTool(null) : onClose}
@@ -311,23 +365,36 @@ export default function QuickToolsDrawer({ visible, onClose }) {
           {ActiveForm ? (
             <ActiveForm userId={userId} onDone={handleDone} />
           ) : (
-            <ScrollView contentContainerStyle={styles.toolGrid} showsVerticalScrollIndicator={false}>
-              {TOOLS.map(tool => {
-                const Icon = tool.icon
-                return (
-                  <TouchableOpacity
-                    key={tool.id}
-                    style={styles.toolItem}
-                    onPress={() => handleToolPress(tool.id)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.toolIcon, { backgroundColor: tool.color + '18' }]}>
-                      <Icon color={tool.color} size={22} weight="light" />
-                    </View>
-                    <Text style={styles.toolLabel}>{tool.label}</Text>
-                  </TouchableOpacity>
-                )
-              })}
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+              {CATEGORIZED_TOOLS.map(cat => (
+                <View key={cat.title} style={styles.categorySection}>
+                  <Text style={styles.categoryTitle}>{cat.title}</Text>
+                  <View style={styles.toolGrid}>
+                    {cat.items.map(tool => {
+                      const Icon = tool.icon
+                      const isSyncing = syncing === tool.id
+                      return (
+                        <TouchableOpacity
+                          key={tool.id}
+                          style={styles.toolItem}
+                          onPress={() => handleToolPress(tool.id)}
+                          activeOpacity={0.75}
+                          disabled={syncing !== null && syncing !== tool.id}
+                        >
+                          <View style={[styles.toolIcon, { backgroundColor: tool.color + '18' }]}>
+                            {isSyncing ? (
+                              <ActivityIndicator size="small" color={tool.color} />
+                            ) : (
+                              <Icon color={tool.color} size={22} weight="light" />
+                            )}
+                          </View>
+                          <Text style={styles.toolLabel}>{tool.label}</Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                </View>
+              ))}
             </ScrollView>
           )}
         </SafeAreaView>
@@ -381,11 +448,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.text.primary,
   },
+  scrollContent: {
+    paddingBottom: 24,
+  },
+  categorySection: {
+    marginBottom: 20,
+  },
+  categoryTitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.text.tertiary,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+    marginLeft: 4,
+  },
   toolGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    paddingBottom: 16,
   },
   toolItem: {
     width: '47%',

@@ -69,7 +69,7 @@ export default function BottomNav({ visible, activeTab, onHomePress, onQuickTool
           activeColor={colors.text.primary}
         />
         <TabItem
-          label="Quick Tools"
+          label="Quick Access"
           icon={<Wrench />}
           active={activeTab === 'QuickTools'}
           onPress={onQuickToolsPress}

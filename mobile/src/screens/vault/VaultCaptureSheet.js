@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   X, PaperPlaneTilt, Tray, Trash,
   ListBullets, CheckSquare, TextHOne,
-  ArrowLineLeft, ArrowLineRight, TextBolder, TextItalic,
+  ArrowLineLeft, ArrowLineRight, TextB, TextItalic,
   Palette, Check,
 } from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
@@ -122,7 +122,7 @@ function FormattingToolbar({ activeLine, onToggle, colorPickerOpen, onToggleColo
         <ArrowLineRight size={18} color={indent > 0 ? activeColor : inactiveColor} weight="light" />
       </ToolBtn>
       <ToolBtn active={bold} onPress={() => onToggle('bold')}>
-        <TextBolder size={18} color={bold ? activeColor : inactiveColor} weight="light" />
+        <TextB size={18} color={bold ? activeColor : inactiveColor} weight="light" />
       </ToolBtn>
       <ToolBtn active={italic} onPress={() => onToggle('italic')}>
         <TextItalic size={18} color={italic ? activeColor : inactiveColor} weight="light" />

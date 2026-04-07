@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   House,
   Sparkle,
-  Calendar,
-  Binoculars,
-  Vault,
+  FolderOpen,
+  Tray,
   CaretDown,
+  Plugs,
 } from '@phosphor-icons/react';
-import { useRouter } from 'next/navigation';
 import { ASSISTANT_NAME } from '@/constants/brand';
 import { ProfileMenuPopup } from '@/components/profile/ProfileMenuPopup';
+import { supabase } from '@/services/supabase';
 
 interface NavItemProps {
   href: string;
@@ -25,15 +25,15 @@ interface NavItemProps {
 const NavItem: React.FC<NavItemProps> = ({ href, icon: Icon, label, active }) => (
   <Link
     href={href}
-    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all group ${
+    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group ${
       active
-        ? "bg-modules-aly/10 text-modules-aly border border-modules-aly/20 shadow-sm"
+        ? "bg-modules-aly/10 text-modules-aly border border-modules-aly/20"
         : "text-text-secondary hover:bg-background-tertiary hover:text-text-primary"
     }`}
   >
-    <Icon size={20} weight={active ? "fill" : "regular"} className="group-hover:scale-110 transition-transform" />
-    <span className="text-sm font-semibold tracking-wide">{label}</span>
-    {active && <div className="ml-auto w-1 h-4 rounded-full bg-modules-aly" />}
+    <Icon size={18} weight={active ? "fill" : "regular"} />
+    <span className="text-sm font-medium">{label}</span>
+    {active && <div className="ml-auto w-1 h-3.5 rounded-full bg-modules-aly" />}
   </Link>
 );
 
@@ -41,14 +41,14 @@ interface SubItem {
   href?: string;
   label: string;
   comingSoon?: boolean;
-  dot?: string; // hex color for the dot
+  dot?: string;
 }
 
 interface NavGroupProps {
   icon: React.ElementType;
   label: string;
   items: SubItem[];
-  active?: boolean; // any child is active
+  active?: boolean;
   defaultOpen?: boolean;
 }
 
@@ -60,30 +60,30 @@ const NavGroup: React.FC<NavGroupProps> = ({ icon: Icon, label, items, active, d
     <div>
       <button
         onClick={() => setOpen(o => !o)}
-        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group ${
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
           active
             ? "bg-modules-aly/10 text-modules-aly border border-modules-aly/20"
             : "text-text-secondary hover:bg-background-tertiary hover:text-text-primary"
         }`}
       >
-        <Icon size={20} weight={active ? "fill" : "regular"} />
-        <span className="text-sm font-semibold tracking-wide flex-1 text-left">{label}</span>
+        <Icon size={18} weight={active ? "fill" : "regular"} />
+        <span className="text-sm font-medium flex-1 text-left">{label}</span>
         <CaretDown
-          size={13}
+          size={12}
           weight="bold"
           className={`transition-transform duration-200 ${open ? "rotate-0" : "-rotate-90"}`}
         />
       </button>
 
       {open && (
-        <div className="mt-1 ml-4 pl-4 border-l border-border-primary flex flex-col gap-0.5">
+        <div className="mt-1 ml-3.5 pl-4 border-l border-border-primary/60 flex flex-col gap-0.5">
           {items.map(item => {
             const isActive = item.href ? pathname === item.href : false;
             if (item.comingSoon) {
               return (
                 <div
                   key={item.label}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg opacity-40 cursor-default"
+                  className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg opacity-40 cursor-default"
                 >
                   {item.dot && (
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.dot }} />
@@ -99,7 +99,7 @@ const NavGroup: React.FC<NavGroupProps> = ({ icon: Icon, label, items, active, d
               <Link
                 key={item.label}
                 href={item.href!}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors ${
+                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors ${
                   isActive
                     ? "text-modules-aly bg-modules-aly/5"
                     : "text-text-tertiary hover:text-text-primary hover:bg-background-tertiary"
@@ -123,61 +123,74 @@ const NavGroup: React.FC<NavGroupProps> = ({ icon: Icon, label, items, active, d
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
-  const router = useRouter();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [userName, setUserName] = useState<string>("You");
+  const [initials, setInitials] = useState<string>("—");
 
   const integrationsActive = pathname.startsWith("/integrations") || pathname === "/calendar";
 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        const full = user.user_metadata?.full_name || user.email || "";
+        const parts = full.split(" ");
+        const first = parts[0] || "";
+        const last = parts[1] || "";
+        setUserName(first || full);
+        setInitials(
+          first && last
+            ? `${first[0]}${last[0]}`.toUpperCase()
+            : full.slice(0, 2).toUpperCase()
+        );
+      }
+    });
+  }, []);
+
   return (
-    <aside className="w-64 bg-background-secondary border-r border-border-primary p-6 hidden lg:flex flex-col gap-8 z-50">
+    <aside className="w-60 bg-background-secondary border-r border-border-primary px-4 py-6 hidden lg:flex flex-col gap-6 z-50">
       {/* Brand */}
-      <div className="flex items-center gap-3 px-2">
-        <div className="w-8 h-8 rounded-lg bg-modules-aly/20 flex items-center justify-center border border-modules-aly/30 shadow-lg shadow-modules-aly/10">
-          <Sparkle size={18} color="var(--modules-aly)" weight="fill" />
+      <div className="flex items-center gap-2.5 px-1 mb-2">
+        <div className="w-7 h-7 rounded-lg bg-modules-aly/15 flex items-center justify-center border border-modules-aly/25">
+          <Sparkle size={15} color="var(--modules-aly)" weight="fill" />
         </div>
-        <span className="text-[11px] font-bold tracking-[0.4em] text-text-tertiary">TAKDA</span>
+        <span className="text-[11px] font-bold tracking-[0.35em] text-text-tertiary">TAKDA</span>
       </div>
 
       {/* Main nav */}
-      <nav className="flex flex-col gap-1.5 pt-4">
-        <p className="text-[9px] font-bold text-text-tertiary/60 uppercase tracking-[0.2em] mb-2 px-4">Registry</p>
-        <NavItem href="/dashboard" icon={House}      label="Dashboard" active={pathname === "/dashboard"} />
-        <NavItem href="/spaces"    icon={Binoculars} label="Oversight"  active={pathname.startsWith("/spaces")} />
-        <NavItem href="/vault"     icon={Vault}      label="The Vault"  active={pathname === "/vault"} />
-
+      <nav className="flex flex-col gap-0.5">
+        <NavItem href="/dashboard" icon={House}      label="Home"   active={pathname === "/dashboard"} />
+        <NavItem href="/spaces"    icon={FolderOpen} label="Spaces" active={pathname.startsWith("/spaces")} />
+        <NavItem href="/vault"     icon={Tray}       label="Vault"  active={pathname === "/vault"} />
         <NavGroup
-          icon={Calendar}
+          icon={Plugs}
           label="Integrations"
           active={integrationsActive}
           defaultOpen={integrationsActive}
           items={[
-            { label: "Calendar",     href: "/calendar",          dot: "#4285F4" },
-            { label: "Google Drive", comingSoon: true,           dot: "#34A853" },
-            { label: "Strava",       href: "/integrations",      dot: "#FC4C02" },
+            { label: "Calendar",     href: "/calendar",     dot: "#4285F4" },
+            { label: "Google Drive", comingSoon: true,      dot: "#34A853" },
+            { label: "Strava",       href: "/integrations", dot: "#FC4C02" },
           ]}
         />
       </nav>
 
-      {/* Intelligence */}
-      <nav className="flex flex-col gap-1.5">
-        <p className="text-[9px] font-bold text-text-tertiary/60 uppercase tracking-[0.2em] mb-2 px-4">Intelligence</p>
-        <NavItem href="/coordinator" icon={Sparkle} label={`Ask ${ASSISTANT_NAME}`} active={pathname === "/coordinator"} />
+      {/* Ask Aly */}
+      <nav className="flex flex-col gap-0.5">
+        <NavItem href="/chat" icon={Sparkle} label={`Ask ${ASSISTANT_NAME}`} active={pathname.startsWith("/chat")} />
       </nav>
 
       {/* Profile */}
-      <div className="mt-auto flex flex-col gap-4 relative">
+      <div className="mt-auto relative">
         <button
           onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-          className="p-1 border border-border-primary rounded-2xl bg-background-tertiary/30 hover:bg-background-tertiary/50 transition-all cursor-pointer group"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-background-tertiary transition-all group cursor-pointer"
         >
-          <div className="p-3.5 rounded-xl bg-background-tertiary border border-border-primary/50 flex items-center gap-3 shadow-inner group-hover:border-modules-track/30 transition-all">
-            <div className="w-10 h-10 rounded-full bg-modules-track/20 border border-modules-track/30 flex items-center justify-center text-modules-track font-bold text-xs shadow-sm group-hover:bg-modules-track/30 transition-all">
-              PH
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-text-primary truncate group-hover:text-modules-track transition-colors">Patrick</p>
-              <p className="text-[9px] text-text-tertiary uppercase tracking-wider font-semibold">Verified OS</p>
-            </div>
+          <div className="w-8 h-8 rounded-full bg-modules-track/20 border border-modules-track/30 flex items-center justify-center text-modules-track font-bold text-xs shrink-0">
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-sm font-medium text-text-primary truncate">{userName}</p>
+            <p className="text-[10px] text-text-tertiary">Personal workspace</p>
           </div>
         </button>
 

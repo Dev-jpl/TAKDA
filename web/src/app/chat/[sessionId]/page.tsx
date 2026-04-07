@@ -181,7 +181,7 @@ function WelcomeView({ userName, onSelect }: { userName: string; onSelect: (prom
           <h1 className="text-2xl font-bold text-text-primary tracking-tight">
             Hey{userName ? `, ${userName}` : ''}!
           </h1>
-          <p className="text-text-tertiary">I&apos;m {ASSISTANT_NAME}. What mission shall we deploy today?</p>
+          <p className="text-text-tertiary">I&apos;m {ASSISTANT_NAME}. What&apos;s on your mind today?</p>
         </div>
       </div>
 
@@ -340,17 +340,17 @@ export default function ChatSessionPage() {
 
   return (
     <main className="flex h-screen bg-background-primary overflow-hidden">
-      {/* Session Sidebar (Missions) */}
+      {/* Session Sidebar (Conversations) */}
       <aside className="w-80 border-r border-border-primary bg-background-secondary/30 flex flex-col hidden xl:flex shadow-sm z-20">
         <div className="p-6 border-b border-border-primary flex items-center justify-between bg-background-secondary/50 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-modules-aly animate-pulse shadow-[0_0_8px_rgba(var(--modules-aly-rgb),0.5)]" />
-            <h2 className="text-[10px] font-bold tracking-[0.25em] text-text-tertiary uppercase">Active Missions</h2>
+            <div className="w-2.5 h-2.5 rounded-full bg-modules-track animate-pulse shadow-[0_0_8px_rgba(var(--modules-track-rgb),0.5)]" />
+            <h2 className="text-[10px] font-bold tracking-[0.25em] text-text-tertiary uppercase">Recent Chats</h2>
           </div>
           <button 
             onClick={() => router.push('/chat')}
-            className="p-2 rounded-xl border border-border-primary hover:bg-background-tertiary text-modules-aly transition-all hover:scale-105 active:scale-95"
-            title="New Mission"
+            className="p-2 rounded-xl border border-border-primary hover:bg-background-tertiary text-modules-track transition-all hover:scale-105 active:scale-95"
+            title="New Chat"
           >
             <Plus size={18} weight="bold" />
           </button>
@@ -362,7 +362,7 @@ export default function ChatSessionPage() {
               <div className="w-12 h-12 rounded-2xl bg-background-tertiary flex items-center justify-center mx-auto mb-4 opacity-50">
                 <ClockCounterClockwise size={24} className="text-text-tertiary" />
               </div>
-              <p className="text-xs text-text-tertiary leading-relaxed">Intelligence registry empty.<br/>Start a new mission to begin logs.</p>
+              <p className="text-xs text-text-tertiary leading-relaxed">No conversations yet.<br/>Start a new chat to begin.</p>
             </div>
           ) : sessions.map(session => (
             <button 
@@ -370,15 +370,15 @@ export default function ChatSessionPage() {
               onClick={() => router.push(`/chat/${session.id}`)}
               className={`w-full p-4 rounded-2xl border text-left transition-all group ${
                 sessionId === session.id 
-                  ? "bg-background-tertiary/80 border-modules-aly/30 shadow-sm" 
+                  ? "bg-background-tertiary/80 border-modules-track/30 shadow-sm" 
                   : "bg-background-secondary/20 border-transparent text-text-tertiary hover:bg-background-tertiary/40 hover:text-text-primary hover:border-border-primary/50"
               }`}
             >
               <p className={`text-sm font-bold truncate mb-1.5 ${sessionId === session.id ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>
-                {session.title || 'Untitled Mission'}
+                {session.title || 'New Conversation'}
               </p>
               <div className="flex items-center gap-2 opacity-50">
-                <div className={`w-1 h-1 rounded-full ${sessionId === session.id ? 'bg-modules-aly' : 'bg-text-tertiary'}`} />
+                <div className={`w-1 h-1 rounded-full ${sessionId === session.id ? 'bg-modules-track' : 'bg-text-tertiary'}`} />
                 <p className="text-[10px] font-medium tracking-wide">
                   {new Date(session.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 </p>
@@ -398,7 +398,7 @@ export default function ChatSessionPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold tracking-tight text-text-primary">
-                  {sessionId && sessions.find(s => s.id === sessionId)?.title || 'Mission Coordinator'}
+                  {sessionId && sessions.find(s => s.id === sessionId)?.title || 'Ask Aly'}
                 </h1>
                 {isStreaming && (
                   <div className="flex gap-0.5 ml-2">
@@ -410,7 +410,7 @@ export default function ChatSessionPage() {
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-status-success shadow-[0_0_6px_rgba(var(--status-success-rgb),0.4)]" />
-                <p className="text-[10px] text-text-tertiary font-bold tracking-widest uppercase">Registry Connection Secured</p>
+                <p className="text-[10px] text-text-tertiary font-bold tracking-widest uppercase">Connected & Secure</p>
               </div>
             </div>
           </div>
@@ -507,7 +507,7 @@ export default function ChatSessionPage() {
                   }
                 }}
                 rows={1}
-                placeholder="Ask intelligence registry…"
+                placeholder={`Ask ${ASSISTANT_NAME} anything…`}
                 className="flex-1 bg-transparent px-6 py-4 text-sm font-medium focus:outline-none placeholder:text-text-tertiary resize-none max-h-40"
                 style={{ height: 'auto' }}
               />

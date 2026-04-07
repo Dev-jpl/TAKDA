@@ -38,6 +38,6 @@ export default function ChatEntryPage() {
     );
   }
 
-  // Render the chat page in "new mission" mode
+  // Render the chat page in "new conversation" mode
   return <ChatSessionPage />;
 }

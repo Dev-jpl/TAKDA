@@ -15,7 +15,7 @@ import { ASSISTANT_NAME } from '../../constants/brand'
 import SpaceIcon from '../common/SpaceIcon'
 import {
   House, Calendar, Tray, Sparkle,
-  Gear, User,
+  Gear, User, Lightning, Footprints,
 } from 'phosphor-react-native'
 import { useAlySheet } from '../../context/AlySheetContext'
 
@@ -87,6 +87,14 @@ function CustomSidebar({ navigation }) {
           () => navigation.navigate('Vault'))}
         {navItem(`Ask ${ASSISTANT_NAME}`, <Sparkle color={colors.modules.aly} size={18} weight="fill" />, colors.modules.aly,
           () => openSheet())}
+
+        {/* Integrations */}
+        <View style={styles.divider} />
+        <Text style={styles.sectionLabel}>INTEGRATIONS</Text>
+        {navItem('Strava', <Lightning color="#FC5200" size={18} weight="fill" />, '#FC5200',
+          () => navigation.navigate('Strava'))}
+        {navItem('Fitness', <Footprints color="#22C55E" size={18} weight="fill" />, '#22C55E',
+          () => navigation.navigate('Fitness'))}
 
         {pinnedHubs.length > 0 && (
           <>

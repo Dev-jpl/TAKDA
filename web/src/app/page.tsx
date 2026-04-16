@@ -18,43 +18,43 @@ import { LandingNavbar } from '@/components/layout/LandingNavbar';
 
 const features = [
   {
-    title: "Mission Tracking",
-    desc: "Multi-dimensional oversight for Every project shard in your Life OS.",
+    title: "Task Tracking",
+    desc: "Keep every project, task, and deadline organized across all areas of your life.",
     icon: Database,
     color: "var(--modules-track)",
     span: "md:col-span-2"
   },
   {
-    title: "Context Intelligence",
-    desc: "Identify exactly required knowledge shards in real-time.",
+    title: "Knowledge Base",
+    desc: "Save documents, links, and notes — and actually find them later.",
     icon: Binoculars,
     color: "var(--modules-knowledge)",
     span: "md:col-span-1"
   },
   {
-    title: "Social Synthesis",
-    desc: "Seamless coordination across your entire social human registry.",
+    title: "Aly — your AI companion",
+    desc: "Ask Aly anything. She knows your tasks, your schedule, and what matters most.",
     icon: Sparkle,
     color: "var(--modules-aly)",
     span: "md:col-span-1"
   },
   {
-    title: "Automated Flow",
-    desc: "Initiate professional trigger protocols for absolute technical efficiency.",
+    title: "Automations",
+    desc: "Set up workflows that handle the repetitive stuff so you can focus on what matters.",
     icon: ChartLineUp,
     color: "var(--modules-track)",
     span: "md:col-span-2"
   },
   {
-    title: "High-Fidelity Analytics",
-    desc: "Visual glimpse into your mission progress with world-class metadata.",
+    title: "Progress Insights",
+    desc: "See how you're moving across your goals, habits, and projects.",
     icon: Database,
     color: "var(--modules-knowledge)",
     span: "md:col-span-1"
   },
   {
-    title: "Registry Synergy",
-    desc: "Absolute technical parity across Every life OS terminal.",
+    title: "Works everywhere",
+    desc: "Web and mobile — your data stays in sync wherever you are.",
     icon: Sparkle,
     color: "var(--modules-aly)",
     span: "md:col-span-2"
@@ -179,7 +179,7 @@ export default function LandingPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsInitiated(true);
-    }, 5000);
+    }, 1500);
     return () => clearTimeout(timer);
   }, []);
 
@@ -353,8 +353,8 @@ export default function LandingPage() {
                    transition={{ delay: 1.8, duration: 1.5 }}
                    className="max-w-md mx-auto text-text-tertiary text-[10px] md:text-xs font-bold tracking-[0.1em] uppercase leading-[1.8]"
                 >
-                  The world-class Unified Intelligence Registry <br />
-                  for high-fidelity mission-critical coordination.
+                  One place for your tasks, notes, projects, and life. <br />
+                  Powered by an AI that actually knows your context.
                 </motion.p>
                 
                 {/* Initiation Progress Scannline */}
@@ -380,7 +380,7 @@ export default function LandingPage() {
               >
                 <div className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full border border-border-primary bg-background-tertiary/50 text-[11px] font-bold uppercase tracking-widest text-modules-aly mb-10 shadow-inner">
                   <Sparkle size={16} weight="fill" />
-                  <span>Next Gen Life OS Coordination</span>
+                  <span>Your personal AI life assistant</span>
                 </div>
                 <h2 className="text-4xl sm:text-6xl md:text-7xl lg:text-[100px] font-black leading-[0.95] tracking-tighter mb-8 md:mb-10">
                   Work Smart. Live Well. <br />
@@ -393,11 +393,11 @@ export default function LandingPage() {
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-8">
                   <Link href="/auth" className="w-full sm:w-auto flex items-center justify-center gap-3 bg-modules-aly text-white px-8 py-4 rounded-2xl font-bold text-base shadow-xl shadow-modules-aly/20 hover:scale-[1.02] active:scale-[0.98] transition-all group">
-                    Initiate New Mission
+                    Get started free
                     <ArrowRight size={18} weight="bold" className="group-hover:translate-x-1.5 transition-transform" />
                   </Link>
                   <a href="#features" className="w-full sm:w-auto flex items-center justify-center gap-3 bg-background-tertiary border border-border-primary text-text-primary px-8 py-4 rounded-2xl font-bold text-base hover:bg-background-tertiary/80 transition-all">
-                    Explore Analytics
+                    See what's inside
                   </a>
                 </div>
               </motion.div>
@@ -442,11 +442,11 @@ export default function LandingPage() {
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-[1px] bg-modules-aly/40" />
-                <span className="text-[9px] font-black uppercase tracking-[0.4em] text-modules-aly">Technical Oversight Registry</span>
+                <span className="text-[9px] font-black uppercase tracking-[0.4em] text-modules-aly">What&apos;s inside TAKDA</span>
               </div>
               <h2 className="text-4xl md:text-5xl font-black tracking-tighter leading-none">
-                High-Fidelity <br />
-                <span className="text-text-primary/40">Platform Modules</span>
+                Everything you need. <br />
+                <span className="text-text-primary/40">Nothing you don&apos;t.</span>
               </h2>
             </motion.div>
           </div>
@@ -501,8 +501,8 @@ export default function LandingPage() {
             <span className="text-[10px] font-bold tracking-[0.4em] text-text-tertiary">TAKDA LIFE OS</span>
           </div>
           <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest flex gap-8">
-            <span>Privacy Protocol</span>
-            <span>OS Registry</span>
+            <span>Privacy</span>
+            <span>Terms</span>
             <span>© 2026</span>
           </p>
         </div>

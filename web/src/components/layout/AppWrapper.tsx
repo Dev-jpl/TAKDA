@@ -29,9 +29,13 @@ export function AppWrapper({ children }: { children: React.ReactNode }) {
           {children}
         </div>
         
-        {/* Assistant Entry Point */}
-        <AlyFAB isOpen={isAlyOpen} onClick={() => setIsAlyOpen(true)} />
-        <AlyAssistant isOpen={isAlyOpen} onClose={() => setIsAlyOpen(false)} />
+        {/* Assistant Entry Point — hidden on the dedicated chat page */}
+        {pathname !== '/chat' && (
+          <>
+            <AlyFAB isOpen={isAlyOpen} onClick={() => setIsAlyOpen(true)} />
+            <AlyAssistant isOpen={isAlyOpen} onClose={() => setIsAlyOpen(false)} />
+          </>
+        )}
       </div>
     </div>
   );

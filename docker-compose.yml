@@ -8,4 +8,9 @@ services:
       - ./backend/model_cache:/app/model_cache
     env_file:
       - ./backend/.env
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+      - FAST_MODEL=qwen2.5:3b
+      - MAIN_MODEL=qwen2.5:7b
+      - AI_PROVIDER=ollama
     restart: unless-stopped

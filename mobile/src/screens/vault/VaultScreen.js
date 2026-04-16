@@ -38,21 +38,28 @@ function timeAgo(dateStr) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-function VaultItem({ item, onAccept, onDismiss }) {
+function VaultItem({ item, onAccept, onDismiss, onPress }) {
   const TypeIcon = TYPE_ICONS[item.content_type] || FileText
   const isSuggested = item.status === 'suggested' && item.aly_suggestion
 
   return (
-    <View style={styles.item}>
+    <TouchableOpacity style={styles.item} onPress={() => onPress(item)} activeOpacity={0.75}>
       <View style={styles.itemRow}>
         <View style={styles.typeIcon}>
           <TypeIcon color={colors.text.tertiary} size={16} weight="light" />
         </View>
         <View style={styles.itemContent}>
-          <Text style={styles.itemText} numberOfLines={3}>{item.content}</Text>
+          <Text style={styles.itemText} numberOfLines={4}>{item.content}</Text>
           <Text style={styles.itemTime}>{timeAgo(item.created_at)}</Text>
         </View>
       </View>
+
+      {/* Tap hint */}
+      {!isSuggested && (
+        <View style={styles.tapHint}>
+          <Text style={styles.tapHintText}>Tap to edit</Text>
+        </View>
+      )}
 
       {isSuggested && (
         <View style={styles.suggestion}>
@@ -81,7 +88,7 @@ function VaultItem({ item, onAccept, onDismiss }) {
           </View>
         </View>
       )}
-    </View>
+    </TouchableOpacity>
   )
 }
 
@@ -106,6 +113,7 @@ export default function VaultScreen({ navigation }) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [captureVisible, setCaptureVisible] = useState(false)
+  const [editItem, setEditItem] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -208,7 +216,12 @@ export default function VaultScreen({ navigation }) {
           data={items}
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
-            <VaultItem item={item} onAccept={handleAccept} onDismiss={handleDismiss} />
+            <VaultItem
+            item={item}
+            onAccept={handleAccept}
+            onDismiss={handleDismiss}
+            onPress={(item) => setEditItem(item)}
+          />
           )}
           contentContainerStyle={items.length === 0 ? styles.emptyContainer : styles.list}
           ListEmptyComponent={<EmptyState tab={activeTab} />}
@@ -223,9 +236,18 @@ export default function VaultScreen({ navigation }) {
         />
       )}
 
+      {/* New capture sheet */}
       <VaultCaptureSheet
         visible={captureVisible}
         onClose={() => setCaptureVisible(false)}
+        onCapture={() => loadItems(userId)}
+      />
+
+      {/* Edit sheet */}
+      <VaultCaptureSheet
+        visible={!!editItem}
+        editItem={editItem}
+        onClose={() => setEditItem(null)}
         onCapture={() => loadItems(userId)}
       />
     </SafeAreaView>
@@ -314,6 +336,15 @@ const styles = StyleSheet.create({
   itemTime: {
     fontSize: 11,
     color: colors.text.tertiary,
+  },
+  tapHint: {
+    alignSelf: 'flex-end',
+    marginTop: 6,
+  },
+  tapHintText: {
+    fontSize: 10,
+    color: colors.text.tertiary,
+    opacity: 0.6,
   },
   suggestion: {
     marginTop: 12,

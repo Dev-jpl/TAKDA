@@ -9,11 +9,13 @@ export const vaultService = {
     return res.json()
   },
 
-  async createItem(userId, content, type = 'text') {
+  async createItem(userId, content, type = 'text', metadata = null) {
+    const body = { user_id: userId, content, content_type: type }
+    if (metadata) body.metadata = metadata
     const res = await fetch(`${API_URL}/vault/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, content, content_type: type }),
+      body: JSON.stringify(body),
     })
     if (!res.ok) throw new Error('Failed to create vault item')
     return res.json()
@@ -34,6 +36,26 @@ export const vaultService = {
       method: 'PATCH',
     })
     if (!res.ok) throw new Error('Failed to dismiss suggestion')
+    return res.json()
+  },
+
+  async updateItem(itemId, content, metadata = null) {
+    const body = { content }
+    if (metadata) body.metadata = metadata
+    const res = await fetch(`${API_URL}/vault/${itemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error('Failed to update vault item')
+    return res.json()
+  },
+
+  async deleteItem(itemId) {
+    const res = await fetch(`${API_URL}/vault/${itemId}`, {
+      method: 'DELETE',
+    })
+    if (!res.ok) throw new Error('Failed to delete vault item')
     return res.json()
   },
 }

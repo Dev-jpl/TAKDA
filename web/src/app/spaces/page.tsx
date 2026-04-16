@@ -39,7 +39,7 @@ export default function SpacesPage() {
         setSpaces(data);
       }
     } catch (err) {
-      console.error('Oversight failed to load registry:', err);
+      console.error('Failed to load spaces:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -58,12 +58,12 @@ export default function SpacesPage() {
   }, [spaces, searchQuery]);
 
   const handleDeleteSpace = async (id: string, name: string) => {
-    if (!window.confirm(`Deauthorize ${name}? This action is irreversible.`)) return;
+    if (!window.confirm(`Delete "${name}"? This can't be undone.`)) return;
     try {
       await spacesService.deleteSpace(id);
       setSpaces(spaces.filter(s => s.id !== id));
     } catch {
-      alert('Extraction failed: Space persistent.');
+      alert('Failed to delete space. Please try again.');
     }
   };
 
@@ -85,8 +85,8 @@ export default function SpacesPage() {
       {/* Header */}
       <header className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-text-primary">Oversight</h1>
-          <p className="text-text-tertiary text-sm mt-1">Registry of all mission-critical life domains.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-text-primary">Spaces</h1>
+          <p className="text-text-tertiary text-sm mt-1">Your life, organized into areas that matter.</p>
         </div>
 
         <div className="flex items-center gap-4">
@@ -97,7 +97,7 @@ export default function SpacesPage() {
             />
             <input 
               type="text" 
-              placeholder="Identify domain..."
+              placeholder="Search spaces..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-background-secondary border border-border-primary rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-modules-aly/50 focus:border-modules-aly/50 transition-all w-full md:w-64"
@@ -115,29 +115,29 @@ export default function SpacesPage() {
 
       {/* Stats Grid - 2x2 on small, 4-inline on large */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-        <StatCard 
-          label="Domains" 
-          value={spaces.length} 
-          icon={<Binoculars size={18} />} 
-          color="var(--modules-aly)" 
+        <StatCard
+          label="Spaces"
+          value={spaces.length}
+          icon={<Binoculars size={18} />}
+          color="var(--modules-aly)"
         />
-        <StatCard 
-          label="Context Index" 
-          value="142" 
-          icon={<ChartLineUp size={18} />} 
-          color="var(--modules-track)" 
+        <StatCard
+          label="Notes"
+          value="142"
+          icon={<ChartLineUp size={18} />}
+          color="var(--modules-track)"
         />
-        <StatCard 
-          label="IQ Points" 
-          value="2,840" 
-          icon={<Database size={18} />} 
-          color="var(--modules-knowledge)" 
+        <StatCard
+          label="Knowledge items"
+          value="2,840"
+          icon={<Database size={18} />}
+          color="var(--modules-knowledge)"
         />
-        <StatCard 
-          label="Velocity" 
-          value="84%" 
-          icon={<Sparkle size={18} />} 
-          color="var(--status-success)" 
+        <StatCard
+          label="Tasks done"
+          value="84%"
+          icon={<Sparkle size={18} />}
+          color="var(--status-success)"
         />
       </section>
 
@@ -178,12 +178,12 @@ export default function SpacesPage() {
         {filteredSpaces.length === 0 && !loading && (
           <div className="col-span-full py-20 text-center bg-background-secondary/30 rounded-3xl border border-dashed border-border-primary">
             <Binoculars size={48} className="mx-auto text-text-tertiary/20 mb-4" />
-            <p className="text-text-tertiary font-medium">No life domains identified within this mission parameter.</p>
-            <button 
+            <p className="text-text-tertiary font-medium">No spaces found.</p>
+            <button
               onClick={() => setSearchQuery('')}
               className="mt-4 text-modules-aly text-sm font-bold hover:underline"
             >
-              Reset Intelligence Query
+              Clear search
             </button>
           </div>
         )}

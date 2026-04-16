@@ -12,10 +12,10 @@ interface LandingNavbarProps {
 export function LandingNavbar({ activeSection }: LandingNavbarProps) {
   const sections = [
     { name: 'Intro', id: 'intro', href: '/#intro' },
-    { name: 'Intelligence', id: 'intelligence', href: '/#intelligence' },
-    { name: 'Social', id: 'social', href: '/#social' },
+    { name: 'Modules', id: 'intelligence', href: '/#intelligence' },
+    { name: 'Reviews', id: 'social', href: '/#social' },
     { name: 'Features', id: 'features', href: '/#features' },
-    { name: 'Access', id: 'access', href: '/#access' }
+    { name: 'Pricing', id: 'access', href: '/#access' }
   ];
 
   return (
@@ -82,7 +82,7 @@ export function LandingNavbar({ activeSection }: LandingNavbarProps) {
               whileTap={{ scale: 0.95 }}
               className="flex items-center gap-2 bg-text-primary text-background-primary px-6 py-2 rounded-full font-medium text-[10px] uppercase tracking-widest shadow-none"
             >
-              Launch OS
+              Get started
             </motion.div>
           </Link>
         </div>

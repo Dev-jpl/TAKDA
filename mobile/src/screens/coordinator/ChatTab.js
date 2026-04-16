@@ -18,6 +18,7 @@ import { ASSISTANT_NAME } from '../../constants/brand';
 import { useNavigation } from '@react-navigation/native';
 import { ICON_MAP } from '../../components/common/IconPicker';
 import { supabase } from '../../services/supabase';
+import { MarkdownRenderer } from '../../components/common/MarkdownRenderer';
 
 function _confirmationText(actionType, label) {
   switch (actionType) {
@@ -232,63 +233,7 @@ function WelcomeView({ userName, onSelectSuggestion }) {
   );
 }
 
-function MarkdownRenderer({ content, style }) {
-  const lines = content.split('\n');
-  
-  return (
-    <View style={style}>
-      {lines.map((line, i) => {
-        // Headers: ### Header
-        if (line.startsWith('### ')) {
-          return (
-            <Text key={i} style={styles.mdHeader}>
-              {line.replace('### ', '')}
-            </Text>
-          );
-        }
-        
-        // Lists: - Item or * Item
-        if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
-          const bulletIcon = line.trim().startsWith('- ') ? '•' : '◦';
-          const cleanLine = line.trim().substring(2);
-          return (
-            <View key={i} style={styles.mdListItem}>
-              <Text style={styles.mdBullet}>{bulletIcon}</Text>
-              <Text style={styles.mdListText}>
-                <BoldParser text={cleanLine} />
-              </Text>
-            </View>
-          );
-        }
 
-        // Regular lines with Bold parsing
-        return (
-          <Text key={i} style={styles.mdPara}>
-            <BoldParser text={line} />
-          </Text>
-        );
-      })}
-    </View>
-  );
-}
-
-function BoldParser({ text }) {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
-  return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return (
-            <Text key={i} style={styles.mdBold}>
-              {part.substring(2, part.length - 2)}
-            </Text>
-          );
-        }
-        return <Text key={i}>{part}</Text>;
-      })}
-    </>
-  );
-}
 
 function MessageBubble({ msg, onInteraction, userId }) {
   const isUser = msg.role === 'user'
@@ -948,41 +893,6 @@ const styles = StyleSheet.create({
   },
   aiContent: {
     gap: 4,
-  },
-  mdHeader: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: colors.text.primary,
-    marginTop: 14,
-    marginBottom: 4,
-  },
-  mdPara: {
-    fontSize: 15,
-    lineHeight: 23,
-    color: colors.text.primary,
-    marginBottom: 2,
-  },
-  mdBold: {
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  mdListItem: {
-    flexDirection: 'row',
-    paddingLeft: 2,
-    marginBottom: 6,
-    alignItems: 'flex-start',
-  },
-  mdBullet: {
-    fontSize: 15,
-    color: colors.text.tertiary,
-    marginRight: 10,
-    lineHeight: 23,
-  },
-  mdListText: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 23,
-    color: colors.text.primary,
   },
   citation: {
     backgroundColor: colors.modules.aly + '15',

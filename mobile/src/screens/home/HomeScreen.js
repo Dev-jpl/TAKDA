@@ -1,32 +1,38 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useRef } from 'react'
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  ActivityIndicator, RefreshControl, Animated,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useFocusEffect, DrawerActions } from '@react-navigation/native'
+import { useFocusEffect } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../../services/supabase'
-import { spacesService } from '../../services/spaces'
-import { eventService } from '../../services/events'
 import { vaultService } from '../../services/vault'
 import { API_URL } from '../../services/apiConfig'
 import { useAlySheet } from '../../context/AlySheetContext'
 import { colors } from '../../constants/colors'
 import { ASSISTANT_NAME } from '../../constants/brand'
 import SpaceIcon from '../../components/common/SpaceIcon'
+import { MarkdownRenderer } from '../../components/common/MarkdownRenderer'
+import VaultCaptureSheet from '../vault/VaultCaptureSheet'
 import {
-  List, User, Tray, CalendarBlank, CheckSquare,
-  Sparkle, ArrowRight,
+  List, User, Sparkle, CheckCircle, ListChecks,
+  Tray, ArrowRight, CalendarBlank, PersonSimpleRun,
+  Lightning, Clock, ArrowSquareOut, Fire,
 } from 'phosphor-react-native'
 
 const PINNED_KEY = 'pinned_hubs'
 
+// ── Type config ───────────────────────────────────────────────────────────────
+const TYPE_CONFIG = {
+  task:   { label: 'Task',      color: '#F59E0B', Icon: ListChecks },
+  done:   { label: 'Completed', color: '#22C55E', Icon: CheckCircle },
+  vault:  { label: 'Captured',  color: '#3B82F6', Icon: Tray },
+  event:  { label: 'Event',     color: '#8B5CF6', Icon: CalendarBlank },
+  strava: { label: 'Activity',  color: '#FC4C02', Icon: PersonSimpleRun },
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function getGreeting() {
   const h = new Date().getHours()
   if (h < 12) return 'Good morning'
@@ -35,29 +41,155 @@ function getGreeting() {
 }
 
 function formatDate() {
-  return new Date().toLocaleDateString('en-US', {
+  return new Date().toLocaleDateString('en-PH', {
     weekday: 'long', month: 'long', day: 'numeric',
   })
 }
 
+function timeAgo(dateStr) {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+function timeUntil(dateStr) {
+  if (!dateStr) return ''
+  const diff = new Date(dateStr).getTime() - Date.now()
+  if (diff <= 0) return 'now'
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `in ${mins}m`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `in ${hrs}h`
+  return `in ${Math.floor(hrs / 24)}d`
+}
+
+function isToday(dateStr) {
+  if (!dateStr) return false
+  return new Date(dateStr).toDateString() === new Date().toDateString()
+}
+
+function getContextualPrompt(overdueTasks, vaultCount, nextUp) {
+  if (overdueTasks > 0)
+    return `${overdueTasks} task${overdueTasks > 1 ? 's' : ''} overdue — help prioritize?`
+  if (nextUp?.type === 'event')
+    return `Prep notes for "${nextUp.title}"?`
+  if (vaultCount > 0)
+    return `Sort your ${vaultCount} capture${vaultCount > 1 ? 's' : ''}?`
+  return `Ask ${ASSISTANT_NAME} anything`
+}
+
+// ── Next Up Card ──────────────────────────────────────────────────────────────
+function NextUpCard({ item, onPress }) {
+  if (!item) return null
+  const isEvent = item.type === 'event'
+  const color = isEvent ? '#8B5CF6' : '#F59E0B'
+  const Icon = isEvent ? CalendarBlank : ListChecks
+  const until = timeUntil(item.ts)
+
+  return (
+    <TouchableOpacity style={[styles.nextUpCard, { borderColor: color + '40' }]} onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.nextUpIcon, { backgroundColor: color + '20' }]}>
+        <Icon size={18} color={color} weight="duotone" />
+      </View>
+      <View style={styles.nextUpContent}>
+        <Text style={styles.nextUpLabel}>NEXT UP</Text>
+        <Text style={styles.nextUpTitle} numberOfLines={1}>{item.title}</Text>
+        {item.subtitle ? <Text style={styles.nextUpSub} numberOfLines={1}>{item.subtitle}</Text> : null}
+      </View>
+      <View style={styles.nextUpRight}>
+        <Text style={[styles.nextUpTime, { color }]}>{until}</Text>
+        <ArrowSquareOut size={14} color={color} />
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+// ── Timeline Item ─────────────────────────────────────────────────────────────
+function TimelineItem({ item, onPress, onComplete }) {
+  const key = item.type === 'task' && item.status === 'done' ? 'done' : item.type
+  const { label, color, Icon } = TYPE_CONFIG[key] || TYPE_CONFIG.task
+  const isDone = key === 'done'
+  const isActiveTask = item.type === 'task' && !isDone
+  const [completing, setCompleting] = useState(false)
+
+  const handleComplete = async () => {
+    setCompleting(true)
+    await onComplete?.(item.id)
+  }
+
+  return (
+    <TouchableOpacity style={styles.timelineItem} onPress={onPress} activeOpacity={0.75}>
+      <View style={styles.timelineLeft}>
+        <View style={[styles.timelineDot, { backgroundColor: color + '25' }]}>
+          <Icon size={14} color={color} weight={isDone ? 'fill' : 'regular'} />
+        </View>
+        <View style={styles.timelineLine} />
+      </View>
+      <View style={styles.timelineContent}>
+        <View style={styles.timelineHeader}>
+          <Text style={[styles.timelineType, { color }]}>{label}</Text>
+          <Text style={styles.timelineTime}>{timeAgo(item.ts)}</Text>
+        </View>
+        <Text style={styles.timelineTitle} numberOfLines={2}>{item.title}</Text>
+        {item.subtitle ? (
+          <Text style={styles.timelineSubtitle} numberOfLines={1}>{item.subtitle}</Text>
+        ) : null}
+        {item.priority && isActiveTask && (
+          <View style={[styles.priorityBadge, {
+            backgroundColor: item.priority === 'urgent' ? '#EF444425' :
+              item.priority === 'high' ? '#F9731625' : colors.border.primary
+          }]}>
+            <Text style={[styles.priorityText, {
+              color: item.priority === 'urgent' ? '#EF4444' :
+                item.priority === 'high' ? '#F97316' : colors.text.tertiary
+            }]}>{item.priority}</Text>
+          </View>
+        )}
+      </View>
+      {isActiveTask && (
+        <TouchableOpacity
+          style={[styles.checkBtn, completing && styles.checkBtnDone]}
+          onPress={handleComplete}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 4 }}
+        >
+          <CheckCircle
+            size={22}
+            color={completing ? '#22C55E' : colors.border.primary}
+            weight={completing ? 'fill' : 'regular'}
+          />
+        </TouchableOpacity>
+      )}
+    </TouchableOpacity>
+  )
+}
+
+// ── Main Screen ───────────────────────────────────────────────────────────────
 export default function HomeScreen({ navigation }) {
   const { openSheet } = useAlySheet()
   const [user, setUser] = useState(null)
   const [pinnedHubs, setPinnedHubs] = useState([])
-  const [spaces, setSpaces] = useState([])
   const [vaultCount, setVaultCount] = useState(0)
-  const [todayEvents, setTodayEvents] = useState([])
+  const [activeTaskCount, setActiveTaskCount] = useState(0)
+  const [overdueCount, setOverdueCount] = useState(0)
+  const [todayEventCount, setTodayEventCount] = useState(0)
+  const [weekDoneCount, setWeekDoneCount] = useState(0)
   const [dailyInsight, setDailyInsight] = useState('')
+  const [nextUp, setNextUp] = useState(null)
+  const [timeline, setTimeline] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [captureVisible, setCaptureVisible] = useState(false)
+  const insightOpacity = useRef(new Animated.Value(0)).current
 
   useFocusEffect(
     useCallback(() => {
       supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user) {
-          setUser(user)
-          loadData(user)
-        }
+        if (user) { setUser(user); loadData(user) }
       })
     }, [])
   )
@@ -66,25 +198,133 @@ export default function HomeScreen({ navigation }) {
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
     try {
-      const [raw, spacesData, events, vaultItems, insightRes] = await Promise.all([
+      const now = new Date()
+      const nowIso = now.toISOString()
+      const lookback12h = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString()
+      const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
+      const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999)
+      const weekStart = new Date(now); weekStart.setDate(now.getDate() - 7)
+
+      const [raw, vaultItems, insightRes] = await Promise.all([
         AsyncStorage.getItem(PINNED_KEY),
-        spacesService.getSpaces(u.id),
-        eventService.getEvents(u.id),
         vaultService.getItems(u.id, 'unprocessed').catch(() => []),
         fetch(`${API_URL}/aly/daily-insight?user_id=${u.id}`).then(r => r.json()).catch(() => ({})),
       ])
-      if (insightRes?.insight) setDailyInsight(insightRes.insight)
+
+      if (insightRes?.insight) {
+        setDailyInsight(insightRes.insight)
+        Animated.timing(insightOpacity, { toValue: 1, duration: 600, useNativeDriver: true }).start()
+      }
 
       setPinnedHubs(raw ? JSON.parse(raw) : [])
-      setSpaces(spacesData)
-      setVaultCount(Array.isArray(vaultItems) ? vaultItems.length : 0)
+      const vaultArr = Array.isArray(vaultItems) ? vaultItems : []
+      setVaultCount(vaultArr.length)
 
-      const today = new Date().toDateString()
-      const upcoming = (events || []).filter(e => {
-        const d = new Date(e.start_time || e.start)
-        return d.toDateString() === today || d > new Date()
-      }).slice(0, 3)
-      setTodayEvents(upcoming)
+      // Today's events count
+      const { data: eventsToday = [] } = await supabase
+        .from('events').select('id')
+        .eq('user_id', u.id)
+        .gte('start_at', lookback12h)
+        .lte('start_at', todayEnd.toISOString())
+      setTodayEventCount((eventsToday || []).length)
+
+      // Tasks
+      const { data: allTasks = [] } = await supabase
+        .from('tasks').select('id,title,status,priority,due_date,created_at,updated_at')
+        .eq('user_id', u.id)
+        .order('updated_at', { ascending: false })
+        .limit(20)
+
+      const active = (allTasks || []).filter(t => t.status !== 'done')
+      const overdue = active.filter(t => t.due_date && new Date(t.due_date) < now)
+      setActiveTaskCount(active.length)
+      setOverdueCount(overdue.length)
+
+      // Tasks done this week
+      const { data: weekDone = [] } = await supabase
+        .from('tasks').select('id')
+        .eq('user_id', u.id).eq('status', 'done')
+        .gte('updated_at', weekStart.toISOString())
+      setWeekDoneCount((weekDone || []).length)
+
+      // Next upcoming event
+      const { data: nextEvents = [] } = await supabase
+        .from('events').select('id,title,start_at,location')
+        .eq('user_id', u.id)
+        .gte('start_at', nowIso)
+        .order('start_at', { ascending: true })
+        .limit(1)
+
+      // Next due task
+      const nextTask = active
+        .filter(t => t.due_date)
+        .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))[0]
+
+      const nextEvent = nextEvents?.[0]
+      let nextUpItem = null
+      if (nextEvent && nextTask) {
+        nextUpItem = new Date(nextEvent.start_at) < new Date(nextTask.due_date)
+          ? { type: 'event', id: nextEvent.id, title: nextEvent.title, subtitle: nextEvent.location, ts: nextEvent.start_at }
+          : { type: 'task',  id: nextTask.id,  title: nextTask.title,  subtitle: `Due ${nextTask.due_date}`, ts: nextTask.due_date }
+      } else if (nextEvent) {
+        nextUpItem = { type: 'event', id: nextEvent.id, title: nextEvent.title, subtitle: nextEvent.location, ts: nextEvent.start_at }
+      } else if (nextTask) {
+        nextUpItem = { type: 'task', id: nextTask.id, title: nextTask.title, subtitle: `Due ${nextTask.due_date}`, ts: nextTask.due_date }
+      }
+      setNextUp(nextUpItem)
+
+      // Recent vault items
+      const { data: recentVault = [] } = await supabase
+        .from('vault_items').select('id,content,created_at')
+        .eq('user_id', u.id)
+        .order('created_at', { ascending: false }).limit(3)
+
+      // Today's events for timeline
+      const { data: recentEvents = [] } = await supabase
+        .from('events').select('id,title,start_at,location')
+        .eq('user_id', u.id)
+        .gte('start_at', lookback12h)
+        .lte('start_at', todayEnd.toISOString())
+        .order('start_at', { ascending: false }).limit(3)
+
+      // Recent Strava
+      const { data: stravaRes = [] } = await supabase
+        .from('strava_activities')
+        .select('id,name,sport_type,distance_meters,moving_time_seconds,start_date')
+        .eq('user_id', u.id)
+        .order('start_date', { ascending: false }).limit(2)
+
+      // Build today-only timeline, max 5
+      const todayTasks = (allTasks || [])
+        .filter(t => isToday(t.updated_at || t.created_at))
+        .map(t => ({ type: 'task', id: t.id, title: t.title, status: t.status, priority: t.priority, ts: t.updated_at || t.created_at }))
+
+      const todayVault = (recentVault || [])
+        .filter(v => isToday(v.created_at))
+        .map(v => ({ type: 'vault', id: v.id, title: v.content?.slice(0, 80) || 'Vault item', ts: v.created_at }))
+
+      const todayEvents = (recentEvents || []).map(e => ({
+        type: 'event', id: e.id, title: e.title, subtitle: e.location, ts: e.start_at,
+      }))
+
+      const todayStrava = (stravaRes || [])
+        .filter(s => isToday(s.start_date))
+        .map(s => {
+          const km = s.distance_meters ? (s.distance_meters / 1000).toFixed(1) : null
+          const mins = s.moving_time_seconds ? Math.round(s.moving_time_seconds / 60) : null
+          return {
+            type: 'strava', id: s.id,
+            title: s.name || s.sport_type || 'Activity',
+            subtitle: [km && `${km} km`, mins && `${mins} min`].filter(Boolean).join(' · '),
+            ts: s.start_date,
+          }
+        })
+
+      const merged = [...todayTasks, ...todayVault, ...todayEvents, ...todayStrava]
+        .sort((a, b) => new Date(b.ts) - new Date(a.ts))
+        .slice(0, 5)
+
+      setTimeline(merged)
     } catch (e) {
       console.warn('HomeScreen loadData error:', e)
     } finally {
@@ -93,22 +333,25 @@ export default function HomeScreen({ navigation }) {
     }
   }
 
-  const navigateToHub = async (hub) => {
-    try {
-      const allSpaces = spaces.length > 0 ? spaces : await spacesService.getSpaces(user.id)
-      const space = allSpaces.find(s => s.id === hub.space_id) || { id: hub.space_id }
-      navigation.navigate('Main', {
-        screen: hub.space_id,
-        params: { screen: 'Hub', params: { hub, space } },
-      })
-    } catch (e) {
-      console.warn('navigateToHub error:', e)
-    }
+  const completeTask = async (taskId) => {
+    // Optimistic update
+    setTimeline(prev => prev.map(t =>
+      t.id === taskId ? { ...t, status: 'done' } : t
+    ))
+    setActiveTaskCount(c => Math.max(0, c - 1))
+    await supabase.from('tasks').update({ status: 'done', updated_at: new Date().toISOString() }).eq('id', taskId)
+    setWeekDoneCount(c => c + 1)
   }
 
-  const displayName = user?.user_metadata?.full_name?.split(' ')[0]
-    || user?.email?.split('@')[0]
-    || 'there'
+  const navigateToHub = (hub) => {
+    navigation.navigate('Main', {
+      screen: hub.space_id,
+      params: { screen: 'Hub', params: { hub, space: { id: hub.space_id } } },
+    })
+  }
+
+  const displayName = user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'there'
+  const contextualPrompt = getContextualPrompt(overdueCount, vaultCount, nextUp)
 
   if (loading) {
     return (
@@ -120,126 +363,98 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Top Bar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.openDrawer()} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} style={styles.menuBtn}>
+          <List color={colors.text.secondary} size={22} weight="light" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate('Profile')} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
+          <User color={colors.text.secondary} size={20} weight="light" />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadData(user, true)}
-            tintColor={colors.text.tertiary}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadData(user, true)} tintColor={colors.text.tertiary} />}
       >
-        {/* Top bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <List color={colors.text.secondary} size={22} weight="light" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Profile')}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <User color={colors.text.secondary} size={20} weight="light" />
-          </TouchableOpacity>
+        {/* ── STATUS CARD ─────────────────────────────────────────── */}
+        <View style={styles.statusCard}>
+          <View style={styles.statusHeader}>
+            <View>
+              <Text style={styles.greetingText}>{getGreeting()}, {displayName}</Text>
+              <Text style={styles.greetingDate}>{formatDate()}</Text>
+            </View>
+          </View>
+
+          {/* Stats */}
+          <View style={styles.statsRow}>
+            <View style={[styles.statChip, { backgroundColor: '#F59E0B20', borderColor: '#F59E0B50' }]}>
+              <ListChecks size={13} color="#F59E0B" weight="bold" />
+              <Text style={[styles.statValue, { color: '#F59E0B' }]}>{activeTaskCount}</Text>
+              <Text style={[styles.statLabel, { color: '#F59E0BAA' }]}>active</Text>
+            </View>
+            {todayEventCount > 0 && (
+              <TouchableOpacity style={[styles.statChip, { backgroundColor: '#8B5CF620', borderColor: '#8B5CF650' }]} onPress={() => navigation.navigate('Calendar')}>
+                <CalendarBlank size={13} color="#8B5CF6" weight="bold" />
+                <Text style={[styles.statValue, { color: '#8B5CF6' }]}>{todayEventCount}</Text>
+                <Text style={[styles.statLabel, { color: '#8B5CF6AA' }]}>today</Text>
+              </TouchableOpacity>
+            )}
+            {vaultCount > 0 && (
+              <TouchableOpacity style={[styles.statChip, { backgroundColor: '#3B82F620', borderColor: '#3B82F650' }]} onPress={() => navigation.navigate('Vault')}>
+                <Tray size={13} color="#3B82F6" weight="bold" />
+                <Text style={[styles.statValue, { color: '#3B82F6' }]}>{vaultCount}</Text>
+                <Text style={[styles.statLabel, { color: '#3B82F6AA' }]}>to sort</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Aly Insight */}
+          {dailyInsight ? (
+            <Animated.View style={[styles.insightBlock, { opacity: insightOpacity }]}>
+              <View style={styles.insightLabel}>
+                <Lightning size={11} color={colors.modules.aly} weight="fill" />
+                <Text style={styles.insightLabelText}>{ASSISTANT_NAME}'s take</Text>
+              </View>
+              <MarkdownRenderer content={dailyInsight} />
+            </Animated.View>
+          ) : null}
         </View>
 
-        {/* 1. Greeting */}
-        <View style={styles.greeting}>
-          <Text style={styles.greetingText}>{getGreeting()}, {displayName}</Text>
-          <Text style={styles.greetingDate}>{formatDate()}</Text>
-        </View>
-
-        {/* 1b. Aly daily insight */}
-        {dailyInsight ? (
-          <Text style={styles.insight}>{dailyInsight}</Text>
-        ) : null}
-
-        {/* 2. Vault summary */}
-        {vaultCount > 0 && (
-          <TouchableOpacity
-            style={styles.vaultBanner}
-            onPress={() => navigation.navigate('Vault')}
-            activeOpacity={0.8}
-          >
-            <Tray color={colors.text.tertiary} size={16} weight="light" />
-            <Text style={styles.vaultBannerText}>
-              {vaultCount} {vaultCount === 1 ? 'item needs' : 'items need'} sorting
-            </Text>
-            <ArrowRight color={colors.text.tertiary} size={14} weight="light" style={{ marginLeft: 'auto' }} />
-          </TouchableOpacity>
+        {/* ── NEXT UP ─────────────────────────────────────────────── */}
+        {nextUp && (
+          <NextUpCard
+            item={nextUp}
+            onPress={() => {
+              if (nextUp.type === 'event') navigation.navigate('Calendar')
+            }}
+          />
         )}
 
-        {/* 3. Daily brief */}
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Today</Text>
-          {todayEvents.length > 0 ? (
-            <View style={styles.briefList}>
-              {todayEvents.map(event => (
-                <View key={event.id} style={styles.briefRow}>
-                  <View style={[styles.briefDot, { backgroundColor: event.color || colors.modules.track }]} />
-                  <Text style={styles.briefText} numberOfLines={1}>{event.title || event.summary}</Text>
-                  <Text style={styles.briefTime}>
-                    {new Date(event.start_time || event.start).toLocaleTimeString([], {
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.briefEmpty}>
-              <Sparkle color={colors.modules.aly} size={14} weight="fill" />
-              <Text style={styles.briefEmptyText}>Nothing scheduled. A good day to get ahead.</Text>
-            </View>
-          )}
+        {/* ── QUICK ACTIONS ───────────────────────────────────────── */}
+        <View style={styles.quickActions}>
           <TouchableOpacity
-            style={styles.briefLink}
-            onPress={() => navigation.navigate('Calendar')}
+            style={[styles.quickBtn, styles.quickBtnPrimary]}
+            onPress={() => openSheet(contextualPrompt !== `Ask ${ASSISTANT_NAME} anything` ? contextualPrompt : undefined)}
+            activeOpacity={0.85}
           >
-            <CalendarBlank color={colors.text.tertiary} size={13} weight="light" />
-            <Text style={styles.briefLinkText}>Open calendar</Text>
+            <Sparkle size={15} color="#fff" weight="fill" />
+            <Text style={styles.quickBtnTextPrimary} numberOfLines={1}>{contextualPrompt}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtnSecondary} onPress={() => setCaptureVisible(true)}>
+            <Tray size={18} color={colors.text.secondary} />
           </TouchableOpacity>
         </View>
 
-        {/* 4. Pinned hubs / Talk to Aly card */}
-        {pinnedHubs.length === 0 && (
-          <TouchableOpacity
-            style={styles.alyCard}
-            onPress={openSheet}
-            activeOpacity={0.8}
-          >
-            <Sparkle color={colors.modules.aly} size={20} weight="fill" />
-            <Text style={styles.alyCardText}>Talk to Aly to get started</Text>
-            <ArrowRight color={colors.modules.aly} size={14} weight="light" />
-          </TouchableOpacity>
-        )}
-
+        {/* ── PINNED HUBS ─────────────────────────────────────────── */}
         {pinnedHubs.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>PINNED</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.pinnedRow}
-            >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pinnedRow}>
               {pinnedHubs.map(hub => (
-                <TouchableOpacity
-                  key={hub.id}
-                  style={styles.pinnedItem}
-                  onPress={() => navigateToHub(hub)}
-                  activeOpacity={0.75}
-                >
-                  <SpaceIcon
-                    icon={hub.icon || 'Folder'}
-                    color={hub.color || colors.modules.track}
-                    size={44}
-                    iconSize={20}
-                    weight="light"
-                  />
+                <TouchableOpacity key={hub.id} style={styles.pinnedItem} onPress={() => navigateToHub(hub)} activeOpacity={0.75}>
+                  <SpaceIcon icon={hub.icon || 'Folder'} color={hub.color || colors.modules.track} size={44} iconSize={20} weight="light" />
                   <Text style={styles.pinnedName} numberOfLines={1}>{hub.name}</Text>
                   <Text style={styles.pinnedSpace} numberOfLines={1}>{hub.space_name || ''}</Text>
                 </TouchableOpacity>
@@ -248,275 +463,173 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
-        {/* 5. Recent activity — spaces as proxy */}
-        {spaces.length > 0 && (
+        {/* ── TIMELINE ────────────────────────────────────────────── */}
+        {timeline.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionRow}>
-              <Text style={styles.sectionLabel}>SPACES</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Spaces')}>
-                <Text style={styles.sectionLink}>See all</Text>
-              </TouchableOpacity>
+              <Text style={styles.sectionLabel}>TODAY</Text>
+              <View style={styles.sectionRowRight}>
+                {weekDoneCount > 0 && (
+                  <View style={styles.momentumBadge}>
+                    <Fire size={11} color="#F59E0B" weight="fill" />
+                    <Text style={styles.momentumText}>{weekDoneCount} done this week</Text>
+                  </View>
+                )}
+              </View>
             </View>
-            {spaces.slice(0, 5).map(space => (
-              <TouchableOpacity
-                key={space.id}
-                style={styles.spaceRow}
-                onPress={() => navigation.navigate('Main', {
-                  screen: space.id,
-                  params: { space },
-                })}
-                activeOpacity={0.75}
-              >
-                <SpaceIcon icon={space.icon || 'Folder'} color={space.color} size={36} iconSize={18} weight="light" />
-                <View style={styles.spaceInfo}>
-                  <Text style={styles.spaceName}>{space.name}</Text>
-                  <Text style={styles.spaceSub}>
-                    {space.hubs?.length ?? 0} {space.hubs?.length === 1 ? 'hub' : 'hubs'}
-                  </Text>
-                </View>
-                <CheckSquare color={colors.text.tertiary} size={16} weight="light" />
-              </TouchableOpacity>
+
+            {timeline.map(item => (
+              <TimelineItem
+                key={`${item.type}-${item.id}`}
+                item={item}
+                onComplete={item.type === 'task' ? completeTask : undefined}
+                onPress={() => {
+                  if (item.type === 'vault') navigation.navigate('Vault')
+                  else if (item.type === 'event') navigation.navigate('Calendar')
+                  else if (item.type === 'strava') navigation.navigate('Strava')
+                }}
+              />
             ))}
+
+            <TouchableOpacity style={styles.viewMoreBtn} onPress={() => navigation.navigate('History')}>
+              <Text style={styles.viewMoreText}>View full history</Text>
+              <ArrowRight size={12} color={colors.text.tertiary} />
+            </TouchableOpacity>
           </View>
         )}
 
-        {spaces.length === 0 && (
-          <TouchableOpacity
-            style={styles.emptySpaces}
-            onPress={() => navigation.navigate('CreateSpace')}
-          >
-            <Text style={styles.emptySpacesText}>Create your first space to get started</Text>
-            <ArrowRight color={colors.modules.aly} size={14} weight="light" />
+        {timeline.length === 0 && (
+          <TouchableOpacity style={styles.emptyTimeline} onPress={openSheet} activeOpacity={0.85}>
+            <Sparkle size={20} color={colors.modules.aly} weight="fill" />
+            <Text style={styles.emptyTimelineText}>Talk to {ASSISTANT_NAME} to get started</Text>
+            <ArrowRight size={14} color={colors.modules.aly} weight="light" />
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      <VaultCaptureSheet
+        visible={captureVisible}
+        onClose={() => setCaptureVisible(false)}
+        onCapture={() => { setCaptureVisible(false); loadData(user, true) }}
+      />
     </SafeAreaView>
   )
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  scroll: {
-    paddingHorizontal: 20,
-    paddingBottom: 120,
-  },
+  container: { flex: 1, backgroundColor: colors.background.primary },
+  scroll: { paddingHorizontal: 16, paddingBottom: 120, gap: 12 },
   topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 12, paddingHorizontal: 16,
   },
+  menuBtn: { padding: 4, marginLeft: -4 },
 
-  // Greeting
-  greeting: {
-    paddingTop: 8,
-    paddingBottom: 20,
-    gap: 4,
-  },
-  greetingText: {
-    fontSize: 22,
-    fontWeight: '500',
-    color: colors.text.primary,
-  },
-  greetingDate: {
-    fontSize: 13,
-    color: colors.text.tertiary,
-  },
-
-  insight: {
-    fontSize: 13,
-    color: colors.modules.aly,
-    fontStyle: 'italic',
-    marginTop: -8,
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  alyCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: 0.5,
-    borderColor: colors.modules.aly + '50',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 24,
-    backgroundColor: colors.modules.aly + '08',
-  },
-  alyCardText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.modules.aly,
-  },
-
-  // Vault banner
-  vaultBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  // Status Card
+  statusCard: {
     backgroundColor: colors.background.secondary,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 16,
+    borderRadius: 20, borderWidth: 0.5, borderColor: colors.border.primary,
+    padding: 20, gap: 14,
   },
-  vaultBannerText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.text.primary,
+  statusHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  greetingText: { fontSize: 20, fontWeight: '600', color: colors.text.primary },
+  greetingDate: { fontSize: 12, color: colors.text.tertiary, marginTop: 2 },
+
+  // Stats
+  statsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  statChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1,
+  },
+  statValue: { fontSize: 15, fontWeight: '800' },
+  statLabel: { fontSize: 11, fontWeight: '500' },
+
+  // Insight
+  insightBlock: { borderTopWidth: 0.5, borderTopColor: colors.border.primary, paddingTop: 14, gap: 8 },
+  insightLabel: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  insightLabelText: {
+    fontSize: 10, fontWeight: '700', color: colors.modules.aly,
+    letterSpacing: 0.5, textTransform: 'uppercase',
   },
 
-  // Daily brief card
-  card: {
+  // Next Up Card
+  nextUpCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: colors.background.secondary,
-    borderRadius: 14,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    padding: 16,
-    marginBottom: 24,
-    gap: 12,
+    borderRadius: 16, borderWidth: 1, padding: 14,
   },
-  cardLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: colors.text.tertiary,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
+  nextUpIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  nextUpContent: { flex: 1, gap: 2 },
+  nextUpLabel: { fontSize: 9, fontWeight: '800', color: colors.text.tertiary, letterSpacing: 1, textTransform: 'uppercase' },
+  nextUpTitle: { fontSize: 14, fontWeight: '600', color: colors.text.primary },
+  nextUpSub: { fontSize: 11, color: colors.text.tertiary },
+  nextUpRight: { alignItems: 'flex-end', gap: 4 },
+  nextUpTime: { fontSize: 12, fontWeight: '700' },
+
+  // Quick Actions
+  quickActions: { flexDirection: 'row', gap: 8 },
+  quickBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16,
   },
-  briefList: {
-    gap: 8,
+  quickBtnPrimary: { backgroundColor: colors.modules.aly },
+  quickBtnSecondary: {
+    width: 50, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 14, borderWidth: 0.5, borderColor: colors.border.primary,
   },
-  briefRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  briefDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  briefText: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.text.primary,
-  },
-  briefTime: {
-    fontSize: 11,
-    color: colors.text.tertiary,
-  },
-  briefEmpty: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  briefEmptyText: {
-    fontSize: 13,
-    color: colors.text.secondary,
-    fontStyle: 'italic',
-  },
-  briefLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingTop: 4,
-    borderTopWidth: 0.5,
-    borderTopColor: colors.border.primary,
-  },
-  briefLinkText: {
-    fontSize: 12,
-    color: colors.text.tertiary,
-  },
+  quickBtnTextPrimary: { fontSize: 13, fontWeight: '600', color: '#fff', flex: 1 },
 
   // Section
-  section: {
-    marginBottom: 24,
-    gap: 12,
-  },
-  sectionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: colors.text.tertiary,
-    letterSpacing: 1.5,
-  },
-  sectionLink: {
-    fontSize: 11,
-    color: colors.modules.aly,
-  },
+  section: { gap: 10 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionRowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: colors.text.tertiary, letterSpacing: 1.5 },
 
-  // Pinned hubs
-  pinnedRow: {
-    gap: 12,
-    paddingRight: 4,
+  // Momentum
+  momentumBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#F59E0B15', borderRadius: 20,
+    paddingHorizontal: 8, paddingVertical: 3,
   },
-  pinnedItem: {
-    alignItems: 'center',
-    width: 70,
-    gap: 6,
-  },
-  pinnedName: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: colors.text.primary,
-    textAlign: 'center',
-  },
-  pinnedSpace: {
-    fontSize: 10,
-    color: colors.text.tertiary,
-    textAlign: 'center',
-  },
+  momentumText: { fontSize: 10, color: '#F59E0B', fontWeight: '600' },
 
-  // Spaces list
-  spaceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    padding: 12,
-    gap: 12,
-    marginBottom: 8,
+  // Pinned
+  pinnedRow: { gap: 12, paddingRight: 4 },
+  pinnedItem: { alignItems: 'center', width: 70, gap: 6 },
+  pinnedName: { fontSize: 11, fontWeight: '500', color: colors.text.primary, textAlign: 'center' },
+  pinnedSpace: { fontSize: 10, color: colors.text.tertiary, textAlign: 'center' },
+
+  // Timeline
+  timelineItem: { flexDirection: 'row', gap: 12, minHeight: 56 },
+  timelineLeft: { width: 28, alignItems: 'center' },
+  timelineDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  timelineLine: { flex: 1, width: 1, backgroundColor: colors.border.primary, marginVertical: 2 },
+  timelineContent: { flex: 1, paddingBottom: 14, gap: 3 },
+  timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  timelineType: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  timelineTime: { fontSize: 10, color: colors.text.tertiary },
+  timelineTitle: { fontSize: 13, fontWeight: '500', color: colors.text.primary, lineHeight: 18 },
+  timelineSubtitle: { fontSize: 11, color: colors.text.tertiary },
+  priorityBadge: { alignSelf: 'flex-start', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  priorityText: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  checkBtn: { paddingLeft: 4, justifyContent: 'center', alignSelf: 'flex-start', paddingTop: 14 },
+  checkBtnDone: { opacity: 0.6 },
+
+  // View more
+  viewMoreBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, borderTopWidth: 0.5, borderTopColor: colors.border.primary, marginTop: 4,
   },
-  spaceInfo: {
-    flex: 1,
-    gap: 3,
-  },
-  spaceName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text.primary,
-  },
-  spaceSub: {
-    fontSize: 11,
-    color: colors.text.tertiary,
-  },
+  viewMoreText: { fontSize: 12, color: colors.text.tertiary },
 
   // Empty
-  emptySpaces: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: colors.background.secondary,
-    borderRadius: 14,
-    borderWidth: 0.5,
-    borderColor: colors.border.primary,
-    padding: 20,
+  emptyTimeline: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 0.5, borderColor: colors.modules.aly + '40',
+    borderRadius: 16, paddingHorizontal: 20, paddingVertical: 18,
+    backgroundColor: colors.modules.aly + '08',
   },
-  emptySpacesText: {
-    fontSize: 13,
-    color: colors.text.tertiary,
-  },
+  emptyTimelineText: { flex: 1, fontSize: 14, fontWeight: '500', color: colors.modules.aly },
 })

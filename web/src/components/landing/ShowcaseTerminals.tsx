@@ -1,11 +1,11 @@
 "use client";
 
 import React from 'react';
-import { 
-  Sparkle, 
-  FileText, 
-  Folder, 
-  Brain, 
+import {
+  Sparkle,
+  FileText,
+  Folder,
+  Brain,
   ChartLineUp,
   User,
   CaretRight
@@ -16,15 +16,15 @@ import { motion } from 'framer-motion';
 export const TrackShowcase = () => (
   <div className="p-6 space-y-4 font-mono">
     <div className="flex items-center justify-between text-[10px] text-text-tertiary uppercase tracking-widest border-b border-border-primary pb-2">
-      <span>Mission Registry</span>
+      <span>Tasks</span>
       <span>Status</span>
     </div>
     {[
-      { name: "Deploy Neural Bridge", status: "Active", color: "var(--modules-track)" },
-      { name: "Context Synthesis Phase II", status: "Pending", color: "var(--status-high)" },
-      { name: "Identity Node Restoration", status: "Complete", color: "var(--status-success)" },
+      { name: "Finish product brief", status: "Active", color: "var(--modules-track)" },
+      { name: "Review team feedback", status: "Pending", color: "var(--status-high)" },
+      { name: "Set up weekly review", status: "Done", color: "var(--status-success)" },
     ].map((m, i) => (
-      <motion.div 
+      <motion.div
         key={i}
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
@@ -49,16 +49,16 @@ export const VaultShowcase = () => (
   <div className="p-6 space-y-4">
     <div className="flex items-center gap-3 mb-4">
         <Folder size={20} className="text-modules-knowledge" weight="fill" />
-        <span className="text-xs font-bold text-text-primary uppercase tracking-widest">Knowledge Registry / 2026 / Missions</span>
+        <span className="text-xs font-bold text-text-primary uppercase tracking-widest">Vault / 2026 / Work</span>
     </div>
     <div className="grid grid-cols-2 gap-4">
       {[
-        { name: "Mission_04_Audit.pdf", size: "2.4 MB" },
-        { name: "Intelligence_Sync.docx", size: "1.1 MB" },
-        { name: "Context_Restoration.py", size: "14 KB" },
-        { name: "Aly_Protocols.json", size: "48 KB" },
+        { name: "Q2_Strategy.pdf", size: "2.4 MB" },
+        { name: "Meeting_Notes.docx", size: "1.1 MB" },
+        { name: "deploy_script.py", size: "14 KB" },
+        { name: "aly_config.json", size: "48 KB" },
       ].map((f, i) => (
-        <motion.div 
+        <motion.div
           key={i}
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -80,15 +80,15 @@ export const VaultShowcase = () => (
 export const AnnotateShowcase = () => (
   <div className="p-6 space-y-4">
     <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Active Reflections</span>
+        <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Recent reflections</span>
         <Brain size={18} className="text-modules-annotate animate-pulse" />
     </div>
     {[
-      { text: "Identified core architectural discrepancy in the coordinator logic. Restructuring protocols.", cat: "Logic" },
-      { text: "Synthesis of daily missions complete. Velocity increased by 14% this registry cycle.", cat: "Performance" },
+      { text: "I notice I do my best work in the morning. Scheduling deep work before 11am has made a big difference.", cat: "Habits" },
+      { text: "Finished the week 14% ahead of target. Keeping up the momentum into next sprint.", cat: "Progress" },
     ].map((r, i) => (
-      <motion.div 
-        key={i} 
+      <motion.div
+        key={i}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: i * 0.1 }}
@@ -108,20 +108,20 @@ export const AutomateShowcase = () => (
   <div className="p-6">
     <div className="mb-8 text-center bg-modules-automate/5 border border-modules-automate/20 p-6 rounded-2xl">
         <Sparkle size={32} className="text-modules-automate mx-auto mb-4 animate-spin-slow" />
-        <h4 className="text-sm font-bold text-text-primary uppercase tracking-[0.1em]">Intelligence Briefing Ready</h4>
-        <p className="text-[10px] text-text-tertiary font-bold mt-1 uppercase">Restored 14 Registry Shards</p>
+        <h4 className="text-sm font-bold text-text-primary uppercase tracking-widest">Daily briefing ready</h4>
+        <p className="text-[10px] text-text-tertiary font-bold mt-1 uppercase">14 items summarized</p>
     </div>
     <div className="space-y-3">
         <div className="h-2 w-full bg-background-tertiary rounded-full overflow-hidden">
-            <motion.div 
+            <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: "85%" }}
                 transition={{ duration: 1.5, ease: "easeOut" }}
-                className="h-full bg-modules-automate" 
+                className="h-full bg-modules-automate"
             />
         </div>
         <div className="flex justify-between text-[10px] text-text-tertiary font-bold uppercase tracking-widest">
-            <span>Synthesis Oversight</span>
+            <span>Processing</span>
             <span className="text-modules-automate">85% COMPLETE</span>
         </div>
     </div>
@@ -137,18 +137,18 @@ export const AlyShowcase = () => (
                 <Sparkle size={12} className="text-modules-aly" weight="fill" />
             </div>
             <div className="p-3 bg-background-secondary border border-border-primary rounded-2xl rounded-tl-none max-w-[80%]">
-                <p className="text-[10px] text-text-secondary leading-relaxed font-medium">Coordinate the Identifying of mission fragments across the Vault Domain?</p>
+                <p className="text-[10px] text-text-secondary leading-relaxed font-medium">You have 3 overdue tasks and a meeting at 2pm. Want me to reschedule anything?</p>
             </div>
         </div>
         <div className="flex justify-end items-start gap-3">
             <div className="p-3 bg-modules-aly text-white rounded-2xl rounded-tr-none max-w-[80%] shadow-lg shadow-modules-aly/10">
-                <p className="text-[10px] leading-relaxed font-bold">Yes. Execute the restoration protocol now.</p>
+                <p className="text-[10px] leading-relaxed font-bold">Yes, push the review to tomorrow morning.</p>
             </div>
             <div className="w-6 h-6 rounded-lg bg-background-secondary border border-border-primary flex items-center justify-center shrink-0">
                 <User size={12} className="text-text-tertiary" />
             </div>
         </div>
-        <motion.div 
+        <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
@@ -167,7 +167,7 @@ export const AlyShowcase = () => (
         </motion.div>
     </div>
     <div className="mt-4 p-3 bg-background-secondary border border-border-primary rounded-xl flex items-center justify-between text-text-tertiary">
-        <span className="text-[10px] font-bold tracking-widest uppercase">Awaiting Registry Input...</span>
+        <span className="text-[10px] font-bold tracking-widest uppercase">Ask Aly anything...</span>
         <CaretRight size={14} />
     </div>
   </div>

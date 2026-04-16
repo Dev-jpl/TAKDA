@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -43,6 +43,12 @@ interface StravaActivity {
   max_heartrate: number | null;
   kudos_count: number;
 }
+
+type StravaMetadata = {
+  firstname?: string;
+  lastname?: string;
+  username?: string;
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -89,12 +95,11 @@ function SportIcon({ type, size = 18 }: { type: string; size?: number }) {
 
 function sportColor(type: string): string {
   const t = type?.toLowerCase() ?? "";
-  if (t.includes("run"))   return "#FC4C02";
-  if (t.includes("ride"))  return "#3B82F6";
-  if (t.includes("swim"))  return "#06B6D4";
-  if (t.includes("walk"))  return "#10B981";
-  if (t.includes("hike"))  return "#8B5CF6";
-  if (t.includes("weight") || t.includes("workout")) return "#F59E0B";
+  if (t.includes("run"))                              return "#EF4444"; // red
+  if (t.includes("ride") || t.includes("cycling"))   return "#3B82F6"; // blue
+  if (t.includes("walk") || t.includes("hike"))      return "#22C55E"; // green
+  if (t.includes("swim"))                             return "#06B6D4"; // cyan
+  if (t.includes("weight") || t.includes("workout")) return "#F59E0B"; // amber
   return "#6B7280";
 }
 
@@ -235,9 +240,24 @@ function IntegrationCard({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+function OAuthCallbackHandler({ onSuccess }: { onSuccess: () => void }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const integration = searchParams.get("integration");
+    const status = searchParams.get("status");
+    if (integration && status === "success") {
+      onSuccess();
+      router.replace("/integrations");
+    }
+  }, [searchParams, onSuccess, router]);
+
+  return null;
+}
+
 export default function IntegrationsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [userId, setUserId] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<UserIntegration[]>([]);
@@ -281,17 +301,6 @@ export default function IntegrationsPage() {
     });
   }, [fetchIntegrations, fetchActivities]);
 
-  // Handle OAuth callback redirect
-  useEffect(() => {
-    const integration = searchParams.get("integration");
-    const status = searchParams.get("status");
-    if (integration && status === "success") {
-      showToast(`${integration.charAt(0).toUpperCase() + integration.slice(1)} connected!`);
-      fetchIntegrations();
-      router.replace("/integrations");
-    }
-  }, [searchParams, fetchIntegrations, router]);
-
   const handleSyncStrava = async () => {
     if (!userId || syncingStrava) return;
     setSyncingStrava(true);
@@ -307,6 +316,7 @@ export default function IntegrationsPage() {
   };
 
   const stravaIntegration = integrations.find(i => i.provider === "strava");
+  const stravaMeta = stravaIntegration?.metadata as StravaMetadata | undefined;
   const googleIntegration = integrations.find(i => i.provider === "google");
 
   // Compute totals from activities
@@ -320,6 +330,14 @@ export default function IntegrationsPage() {
 
   return (
     <div className="min-h-screen bg-background-primary">
+      <Suspense>
+        <OAuthCallbackHandler onSuccess={() => {
+          const params = new URLSearchParams(window.location.search);
+          const integration = params.get("integration");
+          if (integration) showToast(`${integration.charAt(0).toUpperCase() + integration.slice(1)} connected!`);
+          fetchIntegrations();
+        }} />
+      </Suspense>
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -355,36 +373,6 @@ export default function IntegrationsPage() {
 
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-12">
 
-        {/* ── Connected Services ── */}
-        <section className="space-y-4">
-          <h2 className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Connected Services</h2>
-          <div className="space-y-3">
-            <IntegrationCard
-              name="Google Calendar"
-              description="Sync events and schedule"
-              connected={!!googleIntegration}
-              accentColor="#4285F4"
-              icon={<Calendar size={20} weight="bold" />}
-              onConnect={() => userId && integrationsService.initiateGoogleAuth(userId)}
-              onDisconnect={() => googleIntegration && integrationsService.removeIntegration(googleIntegration.id).then(fetchIntegrations)}
-              meta={googleIntegration?.metadata?.email as string | undefined}
-            />
-            <IntegrationCard
-              name="Strava"
-              description="Activities, runs, rides, and workouts"
-              connected={!!stravaIntegration}
-              accentColor="#FC4C02"
-              icon={<PersonSimpleRun size={20} weight="bold" />}
-              onConnect={() => userId && integrationsService.initiateStravaAuth(userId)}
-              onDisconnect={() => stravaIntegration && integrationsService.removeIntegration(stravaIntegration.id).then(fetchIntegrations)}
-              onSync={handleSyncStrava}
-              syncing={syncingStrava}
-              meta={stravaIntegration
-                ? [stravaIntegration.metadata?.firstname, stravaIntegration.metadata?.lastname].filter(Boolean).join(" ") || "Connected"
-                : undefined}
-            />
-          </div>
-        </section>
 
         {/* ── Strava Journey ── */}
         {stravaIntegration && (
@@ -393,10 +381,10 @@ export default function IntegrationsPage() {
               <div>
                 <h2 className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-1">My Strava Journey</h2>
                 <p className="text-xl font-bold text-text-primary">
-                  {[stravaIntegration.metadata?.firstname, stravaIntegration.metadata?.lastname].filter(Boolean).join(" ")}
+                  {[stravaMeta?.firstname, stravaMeta?.lastname].filter(Boolean).join(" ")}
                 </p>
-                {stravaIntegration.metadata?.username && (
-                  <p className="text-xs text-text-tertiary">@{stravaIntegration.metadata.username as string}</p>
+                {stravaMeta?.username && (
+                  <p className="text-xs text-text-tertiary">@{stravaMeta.username as string}</p>
                 )}
               </div>
               <button

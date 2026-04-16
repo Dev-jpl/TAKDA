@@ -1,4 +1,4 @@
-package com.takda
+package com.patrick.takda
 
 import android.os.Build
 import android.os.Bundle

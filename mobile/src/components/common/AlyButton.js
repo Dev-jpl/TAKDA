@@ -8,8 +8,10 @@ import {
 import { Sparkle } from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
 
-export default function AlyButton({ onOpen, hasProactiveSuggestion = false }) {
+export default function AlyButton({ onOpen, visible = true, hasProactiveSuggestion = false }) {
   const breathAnim = useRef(new Animated.Value(0.85)).current
+
+  if (!visible) return null
 
   useEffect(() => {
     Animated.loop(

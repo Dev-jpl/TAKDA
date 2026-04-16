@@ -10,6 +10,8 @@ import {
   Tray,
   CaretDown,
   Plugs,
+  ClockCounterClockwise,
+  TreeStructure,
 } from '@phosphor-icons/react';
 import { ASSISTANT_NAME } from '@/constants/brand';
 import { ProfileMenuPopup } from '@/components/profile/ProfileMenuPopup';
@@ -158,9 +160,11 @@ export const Sidebar: React.FC = () => {
 
       {/* Main nav */}
       <nav className="flex flex-col gap-0.5">
-        <NavItem href="/dashboard" icon={House}      label="Home"   active={pathname === "/dashboard"} />
-        <NavItem href="/spaces"    icon={FolderOpen} label="Spaces" active={pathname.startsWith("/spaces")} />
-        <NavItem href="/vault"     icon={Tray}       label="Vault"  active={pathname === "/vault"} />
+        <NavItem href="/dashboard" icon={House}      label="Home"    active={pathname === "/dashboard"} />
+        <NavItem href="/spaces"    icon={FolderOpen} label="Spaces"  active={pathname.startsWith("/spaces")} />
+        <NavItem href="/vault"     icon={Tray}       label="Vault"   active={pathname === "/vault"} />
+        <NavItem href="/automate"  icon={TreeStructure} label="Automate" active={pathname.startsWith("/automate")} />
+        <NavItem href="/history"   icon={ClockCounterClockwise} label="History" active={pathname === "/history"} />
         <NavGroup
           icon={Plugs}
           label="Integrations"
@@ -176,7 +180,8 @@ export const Sidebar: React.FC = () => {
 
       {/* Ask Aly */}
       <nav className="flex flex-col gap-0.5">
-        <NavItem href="/chat" icon={Sparkle} label={`Ask ${ASSISTANT_NAME}`} active={pathname.startsWith("/chat")} />
+        <p className="text-[10px] font-semibold text-text-tertiary/50 uppercase tracking-wider mb-1 px-3">Assistant</p>
+        <NavItem href="/chat" icon={Sparkle} label={`Ask ${ASSISTANT_NAME}`} active={pathname === "/chat"} />
       </nav>
 
       {/* Profile */}

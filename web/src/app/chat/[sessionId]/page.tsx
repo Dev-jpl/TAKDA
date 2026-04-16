@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import { MarkdownRenderer } from '@/components/aly/MarkdownRenderer';
+import {
   PaperPlaneRight, 
   Sparkle, 
   DotsThreeVertical,
@@ -27,7 +28,7 @@ import {
 import { supabase } from '@/services/supabase';
 import { ASSISTANT_NAME } from '@/constants/brand';
 
-// ── Components Replicated from AlyAssistant ──────────────────────────────────
+// ── Components ───────────────────────────────────────────────────────────────
 
 function confirmationText(actionType: string, label: string): string {
   switch (actionType) {
@@ -42,51 +43,6 @@ function confirmationText(actionType: string, label: string): string {
     case 'CREATE_HUB':    return `Hub "${label}" created!`;
     default:              return `Done!`;
   }
-}
-
-function BoldParser({ text }: { text: string }) {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
-  return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={i} className="font-semibold text-text-primary">{part.slice(2, -2)}</strong>;
-        }
-        return <span key={i}>{part}</span>;
-      })}
-    </>
-  );
-}
-
-function MarkdownRenderer({ content }: { content: string }) {
-  const lines = content.split('\n');
-  return (
-    <div className="space-y-1">
-      {lines.map((line, i) => {
-        if (line.startsWith('### ')) {
-          return <p key={i} className="text-sm font-semibold text-text-primary mt-2">{line.slice(4)}</p>;
-        }
-        if (line.startsWith('## ')) {
-          return <p key={i} className="text-sm font-bold text-text-primary mt-2">{line.slice(3)}</p>;
-        }
-        if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
-          const text = line.trim().slice(2);
-          return (
-            <div key={i} className="flex gap-2">
-              <span className="text-text-tertiary shrink-0 mt-0.5">•</span>
-              <span className="text-sm text-text-secondary leading-relaxed"><BoldParser text={text} /></span>
-            </div>
-          );
-        }
-        if (line.trim() === '') return <div key={i} className="h-1" />;
-        return (
-          <p key={i} className="text-sm text-text-secondary leading-relaxed">
-            <BoldParser text={line} />
-          </p>
-        );
-      })}
-    </div>
-  );
 }
 
 function ActionCard({ action, userId, onConfirmed }: { action: any; userId: string; onConfirmed: (type: string, label: string) => void }) {

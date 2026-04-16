@@ -16,11 +16,6 @@ export default function ChatEntryPage() {
       if (user) {
         try {
           await coordinatorService.getSessions(user.id);
-          // Optional: automatically redirect to latest session
-          // if (sessions.length > 0) {
-          //   router.replace(`/chat/${sessions[0].id}`);
-          //   return;
-          // }
         } catch (e) {
           console.error('Failed to fetch sessions:', e);
         }
@@ -38,6 +33,5 @@ export default function ChatEntryPage() {
     );
   }
 
-  // Render the chat page in "new conversation" mode
   return <ChatSessionPage />;
 }

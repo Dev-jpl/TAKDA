@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { motion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -169,9 +169,24 @@ const IntegrationItem: React.FC<IntegrationItemProps> = ({
   );
 };
 
+function OAuthCallbackHandler({ onSuccess }: { onSuccess: (integration: string) => void }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const integration = searchParams.get("integration");
+    const status = searchParams.get("status");
+    if (integration && status === "success") {
+      onSuccess(integration);
+      router.replace("/settings");
+    }
+  }, [searchParams, onSuccess, router]);
+
+  return null;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<SettingsTab>("integrations");
 
   // Integration States
@@ -213,17 +228,6 @@ export default function SettingsPage() {
     }
   };
 
-  // Handle OAuth redirect back to settings
-  useEffect(() => {
-    const integration = searchParams.get("integration");
-    const status = searchParams.get("status");
-    if (integration && status === "success") {
-      showToast(`${integration.charAt(0).toUpperCase() + integration.slice(1)} connected!`);
-      fetchIntegrations();
-      // Clean up URL params
-      router.replace("/settings");
-    }
-  }, [searchParams, fetchIntegrations, router]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -244,6 +248,12 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-background-primary">
+      <Suspense>
+        <OAuthCallbackHandler onSuccess={(integration) => {
+          showToast(`${integration.charAt(0).toUpperCase() + integration.slice(1)} connected!`);
+          fetchIntegrations();
+        }} />
+      </Suspense>
       {/* Toast */}
       {toast && (
         <motion.div
@@ -383,7 +393,7 @@ export default function SettingsPage() {
                             .filter(Boolean).join(" ") || "Connected"}
                         </p>
                         <p className="text-xs text-text-tertiary mt-0.5">
-                          @{stravaIntegration.metadata?.username || "strava"}
+                          @{String(stravaIntegration.metadata?.username || "strava")}
                         </p>
                       </div>
                       <div className="flex items-center gap-3">

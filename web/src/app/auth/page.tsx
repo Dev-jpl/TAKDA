@@ -1,484 +1,388 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Envelope,
   Lock,
   ArrowRight,
-  Target,
-  PencilSimple,
-  BookOpen,
-  PaperPlaneTilt,
-  Cpu,
+  User,
+  Eye,
+  EyeSlash,
+  Sparkle,
   GoogleLogo,
-  FacebookLogo,
 } from "@phosphor-icons/react";
 import { supabase } from "@/services/supabase";
 import { useRouter } from "next/navigation";
-import { LandingNavbar } from "@/components/layout/LandingNavbar";
+import Link from "next/link";
+
+type Mode = "login" | "register";
 
 export default function AuthPage() {
+  const router = useRouter();
+  const [mode, setMode] = useState<Mode>("login");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const router = useRouter();
+  // Background particles — generated once
+  const particles = useMemo(() =>
+    [...Array(18)].map((_, i) => ({
+      x: `${(i * 37 + 11) % 100}%`,
+      y: `${(i * 53 + 7) % 100}%`,
+      duration: 18 + (i % 7) * 4,
+      delay: i * 1.1,
+      size: 1 + (i % 3),
+    })), []
+  );
 
-  // Generate particle data once to avoid hydration mismatch
-  const particles = useMemo(() => {
-    return [...Array(15)].map((_, i) => ({
-      initial: {
-        x: `${Math.random() * 100}%`,
-        y: `${Math.random() * 100}%`,
-        opacity: 0.1 + Math.random() * 0.2,
-        scale: 0.5 + Math.random() * 1.5,
-      },
-      animate: {
-        x: [`${Math.random() * 100}%`, `${Math.random() * 100}%`],
-        y: [`${Math.random() * 100}%`, `${Math.random() * 100}%`],
-        opacity: [0.1, 0.3, 0.1],
-      },
-      transition: {
-        duration: 20 + Math.random() * 40,
-        repeat: Infinity,
-        ease: "linear" as any,
-      },
-    }));
-  }, []);
-
-  // Generate SVG paths once to avoid hydration mismatch
-  const svgPaths = useMemo(() => {
-    return [...Array(4)].map((_, i) => ({
-      points: (() => {
-        const steps = 8;
-        let currentX = Math.floor(Math.random() * 20) * 40;
-        let currentY = Math.floor(Math.random() * 15) * 40;
-        let points = `${currentX},${currentY}`;
-
-        for (let s = 1; s < steps; s++) {
-          const isXMove = s % 2 === 0;
-          if (isXMove) {
-            currentX += Math.random() > 0.5 ? 120 : -120;
-          } else {
-            currentY += Math.random() > 0.5 ? 120 : -120;
-          }
-          points += ` ${currentX},${currentY}`;
-        }
-        return points;
-      })(),
-      transition: {
-        duration: 6 + Math.random() * 6,
-        repeat: Infinity,
-        delay: Math.random() * 10,
-        ease: "linear" as any,
-      },
-    }));
-  }, []);
-
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setSuccess(null);
 
+    if (mode === "register") {
+      if (!name.trim()) { setError("Please enter your name."); return; }
+      if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+      if (password !== confirmPassword) { setError("Passwords don't match."); return; }
+    }
+
+    setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) throw error;
-      router.push("/");
+      if (mode === "login") {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        router.push("/dashboard");
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: name.trim() } },
+        });
+        if (error) throw error;
+        setSuccess("Account created! Check your email to confirm, then sign in.");
+        setMode("login");
+        setPassword("");
+        setConfirmPassword("");
+      }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Auth failure: Logic denied.",
-      );
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  const switchMode = (next: Mode) => {
+    setError(null);
+    setSuccess(null);
+    setMode(next);
+  };
+
   return (
-    <main className="min-h-screen bg-background-primary relative overflow-hidden pt-20">
-      <LandingNavbar />
-      {/* Neural Voids (Random Holes in the Lattice) */}
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[15%] left-[10%] w-[400px] h-[400px] bg-black rounded-full blur-[120px] opacity-60" />
-        <div className="absolute bottom-[10%] right-[15%] w-[500px] h-[500px] bg-black rounded-full blur-[150px] opacity-70" />
-        <div className="absolute top-[40%] right-[5%] w-[300px] h-[300px] bg-black rounded-full blur-[100px] opacity-50" />
-        <div className="absolute bottom-[30%] left-[20%] w-[350px] h-[350px] bg-black rounded-full blur-[110px] opacity-60" />
+    <main className="min-h-screen bg-background-primary flex items-center justify-center relative overflow-hidden px-4">
+
+      {/* Ambient glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <motion.div
+          animate={{ scale: [1, 1.15, 1], opacity: [0.12, 0.2, 0.12] }}
+          transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-[-10%] left-[10%] w-[50%] h-[50%] bg-modules-aly/30 rounded-full blur-[140px]"
+        />
+        <motion.div
+          animate={{ scale: [1, 1.2, 1], opacity: [0.08, 0.15, 0.08] }}
+          transition={{ duration: 18, repeat: Infinity, ease: "easeInOut", delay: 4 }}
+          className="absolute bottom-[-5%] right-[10%] w-[40%] h-[40%] bg-modules-track/20 rounded-full blur-[120px]"
+        />
       </div>
 
-      {/* flying particles (Neural Nodes) */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        {particles.map((particle, i) => (
+      {/* Subtle grid */}
+      <div
+        className="absolute inset-0 opacity-[0.04] pointer-events-none"
+        style={{
+          backgroundImage: `linear-gradient(var(--border-primary) 1px, transparent 1px), linear-gradient(90deg, var(--border-primary) 1px, transparent 1px)`,
+          backgroundSize: "60px 60px",
+        }}
+      />
+
+      {/* Floating particles */}
+      <div className="absolute inset-0 pointer-events-none">
+        {particles.map((p, i) => (
           <motion.div
             key={i}
-            initial={particle.initial}
-            animate={particle.animate}
-            transition={particle.transition}
-            className="absolute w-1 h-1 bg-[#888888] rounded-full"
-            style={{
-              filter: "blur(2.09923px)",
-              boxShadow: "0 0 10px rgba(136, 136, 136, 0.5)",
-              opacity: 0.17919426121767867,
-            }}
-            suppressHydrationWarning
+            className="absolute rounded-full bg-modules-aly/40"
+            style={{ left: p.x, top: p.y, width: p.size, height: p.size }}
+            animate={{ y: [0, -30, 0], opacity: [0.2, 0.5, 0.2] }}
+            transition={{ duration: p.duration, repeat: Infinity, delay: p.delay, ease: "easeInOut" }}
           />
         ))}
       </div>
 
-      {/* Ultra-Thin Snake Pulse Racers (SVG Path Tracers) */}
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-30">
-        <svg className="w-full h-full">
-          {svgPaths.map((pathData, i) => (
-            <motion.polyline
-              key={i}
-              points={pathData.points}
-              fill="none"
-              stroke="#888888"
-              strokeWidth="0.5"
-              strokeDasharray="100 400"
-              initial={{ strokeDashoffset: 500, opacity: 0 }}
-              animate={{ strokeDashoffset: -500, opacity: [0, 1, 1, 0] }}
-              transition={pathData.transition}
-              suppressHydrationWarning
-            />
-          ))}
-        </svg>
-      </div>
-
-      {/* Noise/Grain Overlay (Intensified) */}
-      <div
-        className="absolute inset-0 z-10 pointer-events-none opacity-[0.06] mix-blend-overlay shadow-inner"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-        }}
-      />
-
-      {/* 3D Depth Perspective Container */}
-      <div
-        className="absolute inset-0 z-0 pointer-events-none"
-        style={{ perspective: "1200px" }}
+      {/* Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative z-10 w-full max-w-md"
       >
-        <motion.div
-          initial={{ rotateX: 0, rotateY: 0 }}
-          animate={{ rotateX: 5, rotateY: -2 }}
-          className="absolute inset-0 origin-center scale-[1.1]"
-        >
-          {/* Base Grid & Intersection Dots */}
-          <div className="absolute inset-0 opacity-[0.08]">
-            <div
-              className="absolute inset-0"
-              style={{
-                backgroundImage: `
-                  linear-gradient(to right, rgba(0,0,0,0.5) 1px, transparent 1px, var(--border-primary) 1px, transparent 2px),
-                  linear-gradient(to bottom, rgba(0,0,0,0.5) 1px, transparent 1px, var(--border-primary) 1px, transparent 2px),
-                  radial-gradient(circle at 1px 1px, var(--border-primary) 1.5px, transparent 0)
-                `,
-                backgroundSize: "40px 40px, 40px 40px, 40px 40px",
-              }}
-            />
+        {/* Brand */}
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-2xl bg-modules-aly/10 border border-modules-aly/20 flex items-center justify-center">
+            <Sparkle size={20} color="var(--modules-aly)" weight="fill" />
           </div>
-
-          {/* Radiant Masked Grid & Glowing Nodes (Static Grid, Moving Shine) */}
-          <motion.div
-            animate={{
-              "--registry-shimmer-x": ["10%", "90%", "10%"],
-              "--registry-shimmer-y": ["10%", "90%", "10%"],
-            }}
-            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-            className="absolute inset-0"
-            style={
-              {
-                backgroundImage: `
-                linear-gradient(to right, #888888 1px, transparent 1px), 
-                linear-gradient(to bottom, #888888 1px, transparent 1px),
-                radial-gradient(circle at 1px 1px, #888888 2px, transparent 0)
-              `,
-                backgroundSize: "40px 40px, 40px 40px, 40px 40px",
-                maskImage:
-                  "radial-gradient(600px circle at var(--registry-shimmer-x) var(--registry-shimmer-y), black 0%, transparent 100%)",
-                WebkitMaskImage:
-                  "radial-gradient(600px circle at var(--registry-shimmer-x) var(--registry-shimmer-y), black 0%, transparent 100%)",
-                opacity: 0.08,
-              } as React.CSSProperties
-            }
-          />
-
-          {/* Glare-Reactive Shadow (Follows the glare with an offset for 3D depth) */}
-          <motion.div
-            animate={{
-              "--registry-shimmer-x": ["10%", "90%", "10%"],
-              "--registry-shimmer-y": ["10%", "90%", "10%"],
-            }}
-            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-            className="absolute inset-0"
-            style={
-              {
-                backgroundImage: `linear-gradient(to right, black 2px, transparent 2px), linear-gradient(to bottom, black 2px, transparent 2px)`,
-                backgroundSize: "40px 40px",
-                maskImage:
-                  "radial-gradient(600px circle at calc(var(--registry-shimmer-x) + 4px) calc(var(--registry-shimmer-y) + 4px), black 0%, transparent 100%)",
-                WebkitMaskImage:
-                  "radial-gradient(600px circle at calc(var(--registry-shimmer-x) + 4px) calc(var(--registry-shimmer-y) + 4px), black 0%, transparent 100%)",
-                opacity: 0.02,
-              } as React.CSSProperties
-            }
-          />
-        </motion.div>
-      </div>
-
-      {/*Main Content Container  */}
-      <div className="w-full max-w-7xl mx-auto px-6 flex lg:flex-row items-center justify-center gap-12 z-10 pointer-events-auto transform-gpu">
-        {/* 2. LEFT PANEL: ATMOSPHERIC BRANDING (col-8) */}
-        <div className="hidden lg:flex flex-col items-center justify-center lg:w-[66.6%] h-full relative z-20 pointer-events-none p-12">
-          <div className="flex flex-col items-center opacity-70 relative">
-            {/* The Acronym (Medium & Focused) */}
-            <div className="flex gap-4 mb-6 text-text-primary relative z-10 transition-all duration-700">
-              {["T", "A", "K", "D", "A"].map((letter, idx) => (
-                <span
-                  key={idx}
-                  className="text-6xl font-black tracking-tighter"
-                >
-                  {letter}
-                </span>
-              ))}
-            </div>
-
-            {/* Mission Descriptions (Centered Metadata) */}
-            <div className="flex flex-col items-center space-y-1 mb-10 transition-all duration-700">
-              <p className="text-[10px] font-medium text-text-tertiary uppercase tracking-[0.6em] opacity-60">
-                Track • Anotate • Knowledge • Deliver • Automate
-              </p>
-              <div className="h-[0.5px] w-16 bg-border-primary opacity-20 mt-2" />
-            </div>
-
-            {/* Neural Nest (Refined Icons "Playing" outside TAKDA boundary - Wide Orbit) */}
-            <div className="absolute inset-x-[-180px] inset-y-[-180px] pointer-events-none">
-              <motion.div
-                animate={{
-                  x: [0, 6, -4, 3, 0],
-                  y: [0, -5, 6, -3, 0],
-                  opacity: [0.3, 0.5, 0.3],
-                }}
-                transition={{
-                  duration: 18,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-                className="absolute top-[15%] left-[15%]"
-              >
-                <div className="p-2.5 rounded-full border-[0.5px] border-border-primary bg-background-secondary text-text-secondary">
-                  <Target size={18} weight="light" />
-                </div>
-              </motion.div>
-
-              <motion.div
-                animate={{
-                  x: [0, -6, 5, -4, 0],
-                  y: [0, 4, -6, 5, 0],
-                  opacity: [0.2, 0.4, 0.2],
-                }}
-                transition={{
-                  duration: 22,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: 2,
-                }}
-                className="absolute top-[40%] right-[10%]"
-              >
-                <div className="p-2.5 rounded-full border-[0.5px] border-border-primary bg-background-secondary text-text-secondary">
-                  <PencilSimple size={16} weight="light" />
-                </div>
-              </motion.div>
-
-              <motion.div
-                animate={{
-                  x: [0, 5, -7, 4, 0],
-                  y: [0, 7, -5, 6, 0],
-                  opacity: [0.3, 0.6, 0.3],
-                }}
-                transition={{
-                  duration: 20,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: 5,
-                }}
-                className="absolute bottom-[25%] left-[10%]"
-              >
-                <div className="p-2.5 rounded-full border-[0.5px] border-border-primary bg-background-secondary text-text-secondary">
-                  <BookOpen size={16} weight="light" />
-                </div>
-              </motion.div>
-
-              <motion.div
-                animate={{
-                  x: [0, -5, 8, -4, 0],
-                  y: [0, -7, 5, -8, 0],
-                  opacity: [0.2, 0.5, 0.2],
-                }}
-                transition={{
-                  duration: 25,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: 8,
-                }}
-                className="absolute bottom-[15%] right-[15%]"
-              >
-                <div className="p-2.5 rounded-full border-[0.5px] border-border-primary bg-background-secondary text-text-secondary">
-                  <PaperPlaneTilt size={16} weight="light" />
-                </div>
-              </motion.div>
-
-              <motion.div
-                animate={{
-                  scale: [1, 1.02, 0.98, 1],
-                  opacity: [0.1, 0.2, 0.1],
-                }}
-                transition={{ duration: 45, repeat: Infinity, ease: "linear" }}
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 scale-[1.05]"
-              >
-                <div className="p-4 rounded-full border-[0.5px] border-border-primary bg-background-secondary/20 text-text-tertiary">
-                  <Cpu size={22} weight="light" />
-                </div>
-              </motion.div>
-            </div>
-          </div>
+          <span className="text-sm font-bold tracking-[0.4em] text-text-primary">TAKDA</span>
         </div>
 
-        {/* 3. RIGHT PANEL: INDUCTION REGISTRY (col-4) */}
-        <div className="lg:w-[33.3%] w-full min-h-[calc(100vh-5rem)] flex items-center justify-center relative z-20">
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="w-full max-w-5xl mx-auto bg-background-secondary border-[0.5px] border-border-primary rounded-[14px] p-6 sm:p-8 lg:p-10 relative overflow-hidden"
-          >
-            <div className="flex flex-col items-center mb-12">
-              {/* Induction Header (Design Guide Compliance - Centered) */}
-              <h2 className="text-2xl font-medium text-text-primary tracking-tight mb-4 leading-none text-center">
-                Login
-              </h2>
-              <div className="flex items-center gap-4">
-                <div className="h-[0.5px] w-6 bg-border-primary" />
-                <p className="text-[11px] font-medium text-text-tertiary uppercase tracking-[0.2em] text-center">
-                  System Induction
-                </p>
-                <div className="h-[0.5px] w-6 bg-border-primary" />
-              </div>
-            </div>
+        <div className="bg-background-secondary border border-border-primary rounded-2xl p-8 shadow-2xl shadow-black/40">
+          {/* Mode toggle */}
+          <div className="flex rounded-xl bg-background-tertiary p-1 mb-8 border border-border-primary">
+            {(["login", "register"] as Mode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => switchMode(m)}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all capitalize ${
+                  mode === m
+                    ? "bg-background-secondary text-text-primary shadow-sm border border-border-primary"
+                    : "text-text-tertiary hover:text-text-secondary"
+                }`}
+              >
+                {m === "login" ? "Sign in" : "Create account"}
+              </button>
+            ))}
+          </div>
 
-            <form onSubmit={handleAuth} className="space-y-6">
-              <div className="space-y-4">
-                <div className="group relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary group-focus-within:text-modules-aly transition-colors">
-                    <Envelope size={18} weight="light" />
-                  </div>
-                  <input
-                    type="email"
-                    placeholder="Registry Identifier"
-                    className="w-full bg-background-tertiary border-[0.5px] border-border-primary rounded-[10px] py-2.5 pl-12 pr-4 text-[13px] text-text-primary outline-none focus:border-modules-aly/60 transition-all placeholder:text-text-tertiary/60 font-normal"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
+          {/* Success message */}
+          <AnimatePresence>
+            {success && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="mb-4 p-3 rounded-xl bg-modules-annotate/10 border border-modules-annotate/20 text-xs text-modules-annotate text-center"
+              >
+                {success}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <AnimatePresence mode="popLayout">
+              {/* Name field — register only */}
+              {mode === "register" && (
+                <motion.div
+                  key="name"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <Field
+                    icon={<User size={16} />}
+                    type="text"
+                    placeholder="Your name"
+                    value={name}
+                    onChange={setName}
+                    autoComplete="name"
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="group relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary group-focus-within:text-modules-aly transition-colors">
-                      <Lock size={18} weight="light" />
-                    </div>
-                    <input
-                      type="password"
-                      placeholder="Validation Protocol"
-                      className="w-full bg-background-tertiary border-[0.5px] border-border-primary rounded-[10px] py-2.5 pl-12 pr-4 text-[13px] text-text-primary outline-none focus:border-modules-aly/60 transition-all placeholder:text-text-tertiary/60 font-normal"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      className="text-[11px] font-medium text-text-tertiary uppercase tracking-[0.1em] hover:text-text-secondary transition-colors"
-                    >
-                      Forgot Protocol?
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-modules-aly text-white font-medium py-3 rounded-[10px] flex items-center justify-center gap-3 hover:opacity-90 active:opacity-100 transition-all disabled:opacity-40 shadow-none"
-                >
-                  <span className="uppercase tracking-[0.1em] text-[13px]">
-                    {loading ? "Verifying..." : "Login"}
-                  </span>
-                  <ArrowRight size={16} weight="light" />
-                </button>
-
-                <div className="flex flex-col items-center gap-4">
-                  <button
-                    type="button"
-                    className="text-[12px] font-normal text-text-tertiary hover:text-text-primary transition-colors"
-                  >
-                    Identity not registered?{" "}
-                    <span className="text-modules-aly font-medium">Signup</span>
-                  </button>
-
-                  <div className="flex items-center gap-4 w-full">
-                    <div className="h-[0.5px] flex-1 bg-border-primary opacity-50" />
-                    <span className="text-[10px] font-medium text-text-tertiary uppercase tracking-[0.2em]">
-                      Matrix Registry
-                    </span>
-                    <div className="h-[0.5px] flex-1 bg-border-primary opacity-50" />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 w-full">
-                    <button
-                      type="button"
-                      className="flex items-center justify-center gap-2 bg-background-tertiary border-[0.5px] border-border-primary rounded-[10px] py-2.5 hover:bg-background-secondary transition-all"
-                    >
-                      <GoogleLogo
-                        size={18}
-                        weight="light"
-                        className="text-text-secondary"
-                      />
-                      <span className="text-[11px] font-medium text-text-secondary uppercase tracking-[0.1em]">
-                        Gmail
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="flex items-center justify-center gap-2 bg-background-tertiary border-[0.5px] border-border-primary rounded-[10px] py-2.5 hover:bg-background-secondary transition-all"
-                    >
-                      <FacebookLogo
-                        size={18}
-                        weight="light"
-                        className="text-text-secondary"
-                      />
-                      <span className="text-[11px] font-medium text-text-secondary uppercase tracking-[0.1em]">
-                        Facebook
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {error && (
-                <p className="text-urgent text-[11px] uppercase font-medium tracking-[0.2em] text-center">
-                  Registry Error: {error}
-                </p>
+                </motion.div>
               )}
-            </form>
-          </motion.div>
+            </AnimatePresence>
+
+            <Field
+              icon={<Envelope size={16} />}
+              type="email"
+              placeholder="Email address"
+              value={email}
+              onChange={setEmail}
+              autoComplete="email"
+            />
+
+            <PasswordField
+              placeholder="Password"
+              value={password}
+              onChange={setPassword}
+              show={showPassword}
+              onToggleShow={() => setShowPassword(s => !s)}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+            />
+
+            <AnimatePresence mode="popLayout">
+              {mode === "register" && (
+                <motion.div
+                  key="confirm"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <PasswordField
+                    placeholder="Confirm password"
+                    value={confirmPassword}
+                    onChange={setConfirmPassword}
+                    show={showPassword}
+                    onToggleShow={() => setShowPassword(s => !s)}
+                    autoComplete="new-password"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {mode === "login" && (
+              <div className="flex justify-end -mt-1">
+                <button
+                  type="button"
+                  className="text-[11px] text-text-tertiary hover:text-modules-aly transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
+
+            {/* Error */}
+            <AnimatePresence>
+              {error && (
+                <motion.p
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-xs text-red-400 text-center bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2"
+                >
+                  {error}
+                </motion.p>
+              )}
+            </AnimatePresence>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-modules-aly text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50 text-sm mt-2"
+            >
+              {loading ? (
+                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>{mode === "login" ? "Sign in" : "Create account"}</span>
+                  <ArrowRight size={15} weight="bold" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Divider + Google */}
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-border-primary" />
+              <span className="text-[11px] text-text-tertiary">or</span>
+              <div className="flex-1 h-px bg-border-primary" />
+            </div>
+
+            <button
+              type="button"
+              className="w-full flex items-center justify-center gap-2.5 bg-background-tertiary border border-border-primary rounded-xl py-2.5 hover:bg-background-secondary/80 transition-colors text-sm text-text-secondary font-medium"
+            >
+              <GoogleLogo size={17} />
+              <span>Continue with Google</span>
+            </button>
+          </div>
+
+          {/* Switch mode footer */}
+          <p className="mt-6 text-center text-xs text-text-tertiary">
+            {mode === "login" ? (
+              <>
+                Don't have an account?{" "}
+                <button onClick={() => switchMode("register")} className="text-modules-aly font-semibold hover:opacity-80 transition-opacity">
+                  Sign up
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button onClick={() => switchMode("login")} className="text-modules-aly font-semibold hover:opacity-80 transition-opacity">
+                  Sign in
+                </button>
+              </>
+            )}
+          </p>
         </div>
-      </div>
+
+        <p className="mt-6 text-center text-[11px] text-text-tertiary/50">
+          By signing in, you agree to our{" "}
+          <Link href="#" className="hover:text-text-tertiary transition-colors">Terms</Link>
+          {" "}and{" "}
+          <Link href="#" className="hover:text-text-tertiary transition-colors">Privacy Policy</Link>
+        </p>
+      </motion.div>
     </main>
+  );
+}
+
+// ─── Field components ─────────────────────────────────────────────────────────
+
+function Field({
+  icon, type, placeholder, value, onChange, autoComplete,
+}: {
+  icon: React.ReactNode;
+  type: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete?: string;
+}) {
+  return (
+    <div className="relative group">
+      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-tertiary group-focus-within:text-modules-aly transition-colors">
+        {icon}
+      </div>
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        autoComplete={autoComplete}
+        required
+        className="w-full bg-background-tertiary border border-border-primary rounded-xl py-3 pl-10 pr-4 text-sm text-text-primary outline-none focus:border-modules-aly/50 transition-all placeholder:text-text-tertiary/50"
+      />
+    </div>
+  );
+}
+
+function PasswordField({
+  placeholder, value, onChange, show, onToggleShow, autoComplete,
+}: {
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  show: boolean;
+  onToggleShow: () => void;
+  autoComplete?: string;
+}) {
+  return (
+    <div className="relative group">
+      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-tertiary group-focus-within:text-modules-aly transition-colors">
+        <Lock size={16} />
+      </div>
+      <input
+        type={show ? "text" : "password"}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        autoComplete={autoComplete}
+        required
+        className="w-full bg-background-tertiary border border-border-primary rounded-xl py-3 pl-10 pr-10 text-sm text-text-primary outline-none focus:border-modules-aly/50 transition-all placeholder:text-text-tertiary/50"
+      />
+      <button
+        type="button"
+        onClick={onToggleShow}
+        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors"
+      >
+        {show ? <EyeSlash size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
   );
 }

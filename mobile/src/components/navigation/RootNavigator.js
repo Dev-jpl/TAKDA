@@ -14,11 +14,15 @@ import CoordinatorScreen from '../../screens/coordinator/CoordinatorScreen'
 import AssistantQuiz from '../../screens/coordinator/QuizScreen'
 import CalendarScreen from '../../screens/calendar/CalendarScreen'
 import VaultScreen from '../../screens/vault/VaultScreen'
+import StravaScreen from '../../screens/integrations/StravaScreen'
+import FitnessScreen from '../../screens/integrations/FitnessScreen'
+import HistoryScreen from '../../screens/home/HistoryScreen'
 import BottomNav from './BottomNav'
 import AlyButton from '../common/AlyButton'
 import AlySheet from '../common/AlySheet'
 import QuickToolsDrawer from '../../screens/quicktools/QuickToolsDrawer'
 import { AlySheetProvider } from '../../context/AlySheetContext'
+import { useFitnessSync } from '../../hooks/useFitnessSync'
 
 const Stack = createNativeStackNavigator()
 
@@ -39,6 +43,7 @@ function isDrawerOpen(state) {
 }
 
 function AppShell({ session }) {
+  useFitnessSync()
   const [activeRouteName, setActiveRouteName] = useState('Home')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [quickToolsVisible, setQuickToolsVisible] = useState(false)
@@ -79,6 +84,9 @@ function AppShell({ session }) {
                 <Stack.Screen name="AssistantQuiz" component={AssistantQuiz} />
                 <Stack.Screen name="Calendar" component={CalendarScreen} />
                 <Stack.Screen name="Vault" component={VaultScreen} />
+                <Stack.Screen name="Strava" component={StravaScreen} />
+                <Stack.Screen name="Fitness" component={FitnessScreen} />
+                <Stack.Screen name="History" component={HistoryScreen} />
               </>
             ) : (
               <>
@@ -96,8 +104,12 @@ function AppShell({ session }) {
                 onHomePress={() => navigationRef.isReady() && navigationRef.navigate('Main', { screen: 'Home' })}
                 onQuickToolsPress={() => setQuickToolsVisible(true)}
                 onSpacesPress={() => navigationRef.isReady() && navigationRef.navigate('Main', { screen: 'Spaces' })}
+                onAlyPress={() => setAlySheetVisible(true)}
               />
-              <AlyButton onOpen={() => setAlySheetVisible(true)} />
+              <AlyButton 
+                visible={!bottomNavVisible} 
+                onOpen={() => setAlySheetVisible(true)} 
+              />
               <AlySheet
                 visible={alySheetVisible}
                 onClose={() => setAlySheetVisible(false)}

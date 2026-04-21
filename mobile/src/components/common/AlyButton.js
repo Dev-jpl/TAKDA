@@ -11,10 +11,9 @@ import { colors } from '../../constants/colors'
 export default function AlyButton({ onOpen, visible = true, hasProactiveSuggestion = false }) {
   const breathAnim = useRef(new Animated.Value(0.85)).current
 
-  if (!visible) return null
-
   useEffect(() => {
-    Animated.loop(
+    if (!visible) return;
+    const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(breathAnim, {
           toValue: 1.0,
@@ -27,8 +26,12 @@ export default function AlyButton({ onOpen, visible = true, hasProactiveSuggesti
           useNativeDriver: true,
         }),
       ])
-    ).start()
-  }, [])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [visible])
+
+  if (!visible) return null
 
   return (
     <Animated.View style={[styles.fab, { opacity: breathAnim }]}>

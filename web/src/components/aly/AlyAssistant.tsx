@@ -261,10 +261,9 @@ export const AlyAssistant: React.FC<AlyAssistantProps> = ({ isOpen, onClose }) =
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
       setUserId(user.id);
-      supabase.from('profiles').select('display_name').eq('id', user.id).single()
-        .then(({ data }) => {
-          if (data?.display_name) setUserName(data.display_name.split(' ')[0]);
-        });
+      const full = user.user_metadata?.full_name || user.email || '';
+      const first = full.split(' ')[0];
+      if (first) setUserName(first);
       coordinatorService.getSessions(user.id).then(data => {
         setSessions(data);
         if (data.length > 0 && !activeSession) loadSession(data[0]);

@@ -189,10 +189,9 @@ export default function ChatSessionPage() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         setUserId(user.id);
-        supabase.from('profiles').select('display_name').eq('id', user.id).single()
-          .then(({ data }) => {
-            if (data?.display_name) setUserName(data.display_name.split(' ')[0]);
-          });
+        const full = user.user_metadata?.full_name || user.email || '';
+        const first = full.split(' ')[0];
+        if (first) setUserName(first);
       }
     });
   }, []);
@@ -394,12 +393,25 @@ export default function ChatSessionPage() {
                     </div>
                   )}
                   <div className={`max-w-[85%] lg:max-w-[75%] ${message.role === 'user' ? 'bg-background-tertiary p-5 rounded-3xl rounded-tr-sm border border-border-primary' : 'flex-1'}`}>
-                    {message.role === 'assistant' && (
+                    {message.role === 'assistant' && message.content && (
                       <p className="text-[10px] font-bold text-modules-aly uppercase tracking-[.2em] mb-2">{ASSISTANT_NAME}</p>
                     )}
                     <div className={message.role === 'user' ? 'text-[15px] font-medium leading-relaxed' : ''}>
                       {message.role === 'assistant' ? (
-                        <MarkdownRenderer content={message.content} />
+                        message.content ? (
+                          <MarkdownRenderer content={message.content} />
+                        ) : (
+                          <div className="flex gap-1.5 py-1">
+                            {[0, 0.15, 0.3].map(d => (
+                              <motion.div
+                                key={d}
+                                className="w-2 h-2 rounded-full bg-modules-aly/60"
+                                animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1, 0.8] }}
+                                transition={{ repeat: Infinity, duration: 1.2, delay: d }}
+                              />
+                            ))}
+                          </div>
+                        )
                       ) : (
                         message.content
                       )}

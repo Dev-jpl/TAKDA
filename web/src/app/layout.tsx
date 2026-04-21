@@ -44,7 +44,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" data-scroll-behavior="smooth">
       <body className={`${inter.className} bg-background-primary text-text-primary antialiased selection:bg-modules-aly/30 overflow-x-hidden`}>
         <AppWrapper>
           {children}

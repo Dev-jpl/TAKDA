@@ -2,20 +2,26 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  X, 
-  Rocket, 
-  PuzzlePiece, 
-  Cube, 
-  Target, 
-  Compass, 
-  Crosshair, 
-  Strategy, 
-  Graph, 
-  Files, 
-  ListChecks,
-  Plus,
-  Circle
+import {
+  XIcon,
+  RocketIcon,
+  PuzzlePieceIcon,
+  CubeIcon,
+  TargetIcon,
+  CompassIcon,
+  CrosshairIcon,
+  GraphIcon,
+  FilesIcon,
+  ListChecksIcon,
+  PlusIcon,
+  CircleIcon,
+  CheckCircleIcon,
+  PencilSimpleIcon,
+  FileTextIcon,
+  PaperPlaneRightIcon,
+  GitBranchIcon,
+  ForkKnifeIcon,
+  CurrencyDollarIcon,
 } from '@phosphor-icons/react';
 import { Hub, hubsService as hubsServiceType } from '@/services/hubs.service';
 
@@ -30,77 +36,101 @@ interface CreateHubModalProps {
 }
 
 const ICONS = [
-  { id: 'PuzzlePiece', icon: PuzzlePiece },
-  { id: 'Cube', icon: Cube },
-  { id: 'Target', icon: Target },
-  { id: 'Compass', icon: Compass },
-  { id: 'Crosshair', icon: Crosshair },
-  { id: 'Strategy', icon: Strategy },
-  { id: 'Graph', icon: Graph },
-  { id: 'Files', icon: Files },
-  { id: 'ListChecks', icon: ListChecks },
-  { id: 'Rocket', icon: Rocket },
-  { id: 'Circle', icon: Circle },
+  { id: 'PuzzlePiece', icon: PuzzlePieceIcon },
+  { id: 'Cube',        icon: CubeIcon },
+  { id: 'Target',      icon: TargetIcon },
+  { id: 'Compass',     icon: CompassIcon },
+  { id: 'Crosshair',   icon: CrosshairIcon },
+  { id: 'Graph',       icon: GraphIcon },
+  { id: 'Files',       icon: FilesIcon },
+  { id: 'ListChecks',  icon: ListChecksIcon },
+  { id: 'Rocket',      icon: RocketIcon },
+  { id: 'Circle',      icon: CircleIcon },
 ];
 
 const COLORS = [
-  { id: 'track', value: '#7F77DD', label: 'Track' },
-  { id: 'aly', value: '#BA7517', label: 'Aly' },
+  { id: 'track',     value: '#7F77DD', label: 'Track' },
+  { id: 'aly',       value: '#BA7517', label: 'Aly' },
   { id: 'knowledge', value: '#378ADD', label: 'Knowledge' },
-  { id: 'deliver', value: '#D85A30', label: 'Deliver' },
-  { id: 'success', value: '#1D9E75', label: 'Success' },
-  { id: 'urgent', value: '#E24B4A', label: 'Urgent' },
+  { id: 'deliver',   value: '#D85A30', label: 'Deliver' },
+  { id: 'success',   value: '#1D9E75', label: 'Success' },
+  { id: 'urgent',    value: '#E24B4A', label: 'Urgent' },
 ];
 
-export const CreateHubModal: React.FC<CreateHubModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  onCreated, 
+interface ModuleDef {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  color: string;
+  group: 'core' | 'data';
+}
+
+const MODULE_CATALOG: ModuleDef[] = [
+  { id: 'track',           label: 'Tasks',          description: 'Manage to-dos and missions',      icon: CheckCircleIcon,      color: 'var(--modules-track)',     group: 'core' },
+  { id: 'annotate',        label: 'Notes',          description: 'Write and organize notes',         icon: PencilSimpleIcon,     color: 'var(--modules-aly)',       group: 'core' },
+  { id: 'knowledge',       label: 'Resources',      description: 'Upload PDFs and links',            icon: FileTextIcon,         color: 'var(--modules-knowledge)', group: 'core' },
+  { id: 'deliver',         label: 'Outcomes',       description: 'Track deliverables and goals',     icon: PaperPlaneRightIcon,  color: 'var(--modules-deliver)',   group: 'core' },
+  { id: 'automate',        label: 'Automations',    description: 'Connect n8n workflows',            icon: GitBranchIcon,        color: '#a78bfa',                  group: 'core' },
+  { id: 'calorie_counter', label: 'Calorie Counter',description: 'Log food and track calories',      icon: ForkKnifeIcon,        color: '#22c55e',                  group: 'data' },
+  { id: 'expense_tracker', label: 'Expense Tracker',description: 'Log spending by category',         icon: CurrencyDollarIcon,   color: '#f59e0b',                  group: 'data' },
+];
+
+export const CreateHubModal: React.FC<CreateHubModalProps> = ({
+  isOpen,
+  onClose,
+  onCreated,
   userId,
   spaceId,
   defaultColor = '#7F77DD',
-  hubsService 
+  hubsService
 }) => {
-  const [name, setName] = useState('');
-  const [selectedIcon, setSelectedIcon] = useState('PuzzlePiece');
-  const [selectedColor, setSelectedColor] = useState('track');
-  const [description, setDescription] = useState('');
-  const [isDeploying, setIsDeploying] = useState(false);
+  const [name,            setName]            = useState('');
+  const [selectedIcon,    setSelectedIcon]    = useState('PuzzlePiece');
+  const [selectedColor,   setSelectedColor]   = useState('track');
+  const [description,     setDescription]     = useState('');
+  const [selectedModules, setSelectedModules] = useState<Set<string>>(new Set());
+  const [saving,          setSaving]          = useState(false);
 
   if (!isOpen) return null;
 
-  const handleDeploy = async () => {
+  function toggleModule(id: string) {
+    setSelectedModules(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleCreate() {
     if (!name.trim()) return;
-    
-    setIsDeploying(true);
+    setSaving(true);
     try {
       const colorValue = COLORS.find(c => c.id === selectedColor)?.value || defaultColor;
+      const coreModules = MODULE_CATALOG.filter(m => m.group === 'core' && selectedModules.has(m.id)).map(m => m.id);
+      const addonModules = MODULE_CATALOG.filter(m => m.group === 'data' && selectedModules.has(m.id)).map(m => m.id);
       const newHub = await hubsService.createHub(
-        spaceId,
-        userId,
-        name,
-        description,
-        selectedIcon,
-        colorValue
+        spaceId, userId, name.trim(), description, selectedIcon, colorValue,
+        coreModules, addonModules,
       );
       onCreated(newHub);
       onClose();
-      // Reset state
-      setName('');
-      setSelectedIcon('PuzzlePiece');
-      setSelectedColor('track');
-      setDescription('');
+      setName(''); setSelectedIcon('PuzzlePiece'); setSelectedColor('track');
+      setDescription(''); setSelectedModules(new Set());
     } catch (err) {
-      console.error('Hub Deployment failure:', err);
+      console.error('Failed to create hub:', err);
     } finally {
-      setIsDeploying(false);
+      setSaving(false);
     }
-  };
+  }
+
+  const coreModules = MODULE_CATALOG.filter(m => m.group === 'core');
+  const dataModules = MODULE_CATALOG.filter(m => m.group === 'data');
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <motion.div 
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -108,145 +138,206 @@ export const CreateHubModal: React.FC<CreateHubModalProps> = ({
         className="absolute inset-0 bg-background-primary/80 backdrop-blur-sm"
       />
 
-      {/* Modal Content */}
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="relative w-full max-w-xl bg-background-secondary border border-border-primary/50 rounded-3xl shadow-2xl overflow-hidden shadow-modules-track/5"
+        exit={{ opacity: 0, scale: 0.97, y: 12 }}
+        className="relative w-full max-w-xl bg-background-secondary border border-border-primary rounded-xl overflow-hidden"
       >
         {/* Header */}
-        <div className="p-6 border-b border-border-primary/50 flex items-center justify-between bg-background-tertiary/20">
+        <div className="px-6 py-4 border-b border-border-primary flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-modules-track/20 flex items-center justify-center border border-modules-track/30 shadow-lg shadow-modules-track/10">
-              <Plus size={24} weight="bold" className="text-modules-track" />
+            <div className="w-9 h-9 rounded-xl bg-modules-track/10 flex items-center justify-center border border-modules-track/20">
+              <PlusIcon size={18} weight="bold" className="text-modules-track" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-text-primary leading-tight">Initialize Focus Hub</h2>
-              <p className="text-text-tertiary text-[11px] uppercase tracking-widest font-bold">New Mission Registry</p>
+              <h2 className="text-base font-bold text-text-primary">New Hub</h2>
+              <p className="text-[11px] text-text-tertiary">Add a focus area to this space</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
-            className="p-2 hover:bg-background-tertiary rounded-xl transition-all text-text-tertiary hover:text-text-primary"
+            className="p-1.5 hover:bg-background-tertiary rounded-lg transition-all text-text-tertiary hover:text-text-primary"
           >
-            <X size={20} />
+            <XIcon size={16} />
           </button>
         </div>
 
-        {/* Scrollable Body */}
-        <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          <div className="space-y-8">
-            {/* Basic Info */}
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest ml-1">Hub Identifier</label>
-                <input 
-                  autoFocus
-                  type="text" 
-                  placeholder="e.g. Project 'Takda'..."
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-background-tertiary border border-border-primary rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-modules-track/50 focus:border-modules-track/50 transition-all font-bold placeholder:text-text-tertiary/30"
-                />
-              </div>
+        {/* Body */}
+        <div className="p-6 max-h-[75vh] overflow-y-auto flex flex-col gap-6">
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest ml-1">Context Intelligence (Objectives)</label>
-                <textarea 
-                  placeholder="Define area mission parameters..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-background-tertiary border border-border-primary rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-modules-track/50 focus:border-modules-track/50 transition-all font-medium h-24 resize-none placeholder:text-text-tertiary/30"
-                />
+          {/* Name */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Name</label>
+            <input
+              autoFocus
+              type="text"
+              placeholder="e.g. Q3 Goals, Morning Routine…"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) handleCreate(); }}
+              className="bg-background-tertiary border border-border-primary rounded-xl px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-modules-track/40 transition-all placeholder:text-text-tertiary"
+            />
+          </div>
+
+          {/* Description */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">
+              Description <span className="normal-case font-normal">(optional)</span>
+            </label>
+            <textarea
+              placeholder="What is this hub for?"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={2}
+              className="bg-background-tertiary border border-border-primary rounded-xl px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-modules-track/40 transition-all resize-none placeholder:text-text-tertiary"
+            />
+          </div>
+
+          {/* Icon + Color */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Icon</label>
+              <div className="grid grid-cols-5 gap-1.5 bg-background-tertiary p-2 rounded-xl border border-border-primary">
+                {ICONS.map(item => {
+                  const IconComp = item.icon;
+                  const isSelected = selectedIcon === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setSelectedIcon(item.id)}
+                      className={`p-2.5 rounded-lg flex items-center justify-center transition-all ${
+                        isSelected
+                          ? 'bg-modules-track text-white'
+                          : 'text-text-tertiary hover:text-text-primary hover:bg-background-secondary'
+                      }`}
+                    >
+                      <IconComp size={16} weight={isSelected ? 'fill' : 'regular'} />
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Visual Coordinates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Icon Picker */}
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest ml-1">Tactical Symbol</label>
-                <div className="grid grid-cols-4 gap-2 bg-background-tertiary/30 p-2 rounded-2xl border border-border-primary/30">
-                  {ICONS.map(item => {
-                    const IconComp = item.icon;
-                    const isSelected = selectedIcon === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => setSelectedIcon(item.id)}
-                        className={`
-                          p-3 rounded-xl flex items-center justify-center transition-all group
-                          ${isSelected 
-                            ? 'bg-modules-track text-white shadow-lg shadow-modules-track/20' 
-                            : 'bg-background-tertiary text-text-tertiary hover:text-text-primary hover:bg-background-tertiary/80'}
-                        `}
-                      >
-                        <IconComp size={20} weight={isSelected ? "fill" : "bold"} className="group-hover:scale-110 transition-transform" />
-                      </button>
-                    );
-                  })}
-                </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Color</label>
+              <div className="grid grid-cols-3 gap-2 bg-background-tertiary p-2 rounded-xl border border-border-primary">
+                {COLORS.map(color => {
+                  const isSelected = selectedColor === color.id;
+                  return (
+                    <button
+                      key={color.id}
+                      onClick={() => setSelectedColor(color.id)}
+                      title={color.label}
+                      className={`h-9 rounded-lg flex items-center justify-center transition-all border-2 ${
+                        isSelected ? 'border-white/50' : 'border-transparent opacity-60 hover:opacity-90'
+                      }`}
+                      style={{ backgroundColor: color.value }}
+                    >
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+          </div>
 
-              {/* Color Picker */}
-              <div className="space-y-4">
-                <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest ml-1">Mission Color</label>
-                <div className="grid grid-cols-3 gap-3 bg-background-tertiary/30 p-3 rounded-2xl border border-border-primary/30 h-full max-h-[148px]">
-                  {COLORS.map(color => {
-                    const isSelected = selectedColor === color.id;
-                    return (
-                      <button
-                        key={color.id}
-                        onClick={() => setSelectedColor(color.id)}
-                        className={`
-                          h-full rounded-xl flex items-center justify-center transition-all group border-2
-                          ${isSelected 
-                            ? 'border-white/40 shadow-lg shadow-black/20' 
-                            : 'border-transparent opacity-60 hover:opacity-100'}
-                        `}
-                        style={{ backgroundColor: color.value }}
-                      >
-                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+          {/* Module selection */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Modules</label>
+              {selectedModules.size > 0 && (
+                <span className="text-[10px] text-text-tertiary">{selectedModules.size} selected</span>
+              )}
+            </div>
+            <p className="text-xs text-text-tertiary -mt-1">Choose what this hub needs. You can add more later from the Marketplace.</p>
+
+            <p className="text-[10px] font-semibold text-text-tertiary/60 uppercase tracking-widest">Core</p>
+            <div className="grid grid-cols-2 gap-2">
+              {coreModules.map(mod => {
+                const Icon = mod.icon;
+                const isOn = selectedModules.has(mod.id);
+                return (
+                  <button
+                    key={mod.id}
+                    onClick={() => toggleModule(mod.id)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                      isOn ? '' : 'border-border-primary hover:bg-background-tertiary'
+                    }`}
+                    style={isOn ? { borderColor: `${mod.color}50`, backgroundColor: `${mod.color}0d` } : {}}
+                  >
+                    <Icon
+                      size={15}
+                      weight={isOn ? 'fill' : 'regular'}
+                      style={{ color: isOn ? mod.color : undefined }}
+                      className={isOn ? '' : 'text-text-tertiary'}
+                    />
+                    <div className="min-w-0">
+                      <p className={`text-xs font-semibold leading-none ${isOn ? '' : 'text-text-secondary'}`}
+                        style={isOn ? { color: mod.color } : {}}>
+                        {mod.label}
+                      </p>
+                      <p className="text-[10px] text-text-tertiary leading-tight mt-0.5 truncate">{mod.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] font-semibold text-text-tertiary/60 uppercase tracking-widest mt-1">Data Tracking</p>
+            <div className="grid grid-cols-2 gap-2">
+              {dataModules.map(mod => {
+                const Icon = mod.icon;
+                const isOn = selectedModules.has(mod.id);
+                return (
+                  <button
+                    key={mod.id}
+                    onClick={() => toggleModule(mod.id)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                      isOn ? '' : 'border-border-primary hover:bg-background-tertiary'
+                    }`}
+                    style={isOn ? { borderColor: `${mod.color}50`, backgroundColor: `${mod.color}0d` } : {}}
+                  >
+                    <Icon
+                      size={15}
+                      weight={isOn ? 'fill' : 'regular'}
+                      style={{ color: isOn ? mod.color : undefined }}
+                      className={isOn ? '' : 'text-text-tertiary'}
+                    />
+                    <div className="min-w-0">
+                      <p className={`text-xs font-semibold leading-none ${isOn ? '' : 'text-text-secondary'}`}
+                        style={isOn ? { color: mod.color } : {}}>
+                        {mod.label}
+                      </p>
+                      <p className="text-[10px] text-text-tertiary leading-tight mt-0.5 truncate">{mod.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-background-tertiary/30 border-t border-border-primary/50 flex items-center justify-between">
-          <p className="text-[9px] text-text-tertiary uppercase font-black tracking-[0.2em] max-w-[240px]">
-            Intelligence modules automatically synchronized. Focus registry ready.
-          </p>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={onClose}
-              className="px-6 py-3 text-sm font-bold text-text-tertiary hover:text-text-primary transition-colors"
-            >
-              Abort
-            </button>
-            <button 
-              disabled={!name.trim() || isDeploying}
-              onClick={handleDeploy}
-              className={`
-                flex items-center gap-2 px-8 py-3 rounded-xl font-bold text-sm transition-all shadow-xl
-                ${!name.trim() || isDeploying
-                  ? 'bg-background-tertiary text-text-tertiary cursor-not-allowed opacity-50 shadow-none'
-                  : 'bg-modules-track text-white hover:bg-modules-track/90 shadow-modules-track/20 active:scale-95'}
-              `}
-            >
-              {isDeploying ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Target size={18} weight="bold" />
-              )}
-              Initialize Hub
-            </button>
-          </div>
+        <div className="px-6 py-4 border-t border-border-primary flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-5 py-2 text-sm font-bold text-text-tertiary hover:text-text-primary transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={!name.trim() || saving}
+            onClick={handleCreate}
+            className="flex items-center gap-2 px-6 py-2 rounded-xl font-bold text-sm bg-modules-track text-white hover:bg-modules-track/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {saving ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <PlusIcon size={15} weight="bold" />
+            )}
+            Create Hub
+          </button>
         </div>
       </motion.div>
     </div>

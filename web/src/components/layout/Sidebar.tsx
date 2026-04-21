@@ -12,6 +12,8 @@ import {
   Plugs,
   ClockCounterClockwise,
   TreeStructure,
+  AppWindow,
+  HandbagIcon,
 } from '@phosphor-icons/react';
 import { ASSISTANT_NAME } from '@/constants/brand';
 import { ProfileMenuPopup } from '@/components/profile/ProfileMenuPopup';
@@ -134,10 +136,10 @@ export const Sidebar: React.FC = () => {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
-        const full = user.user_metadata?.full_name || user.email || "";
+        const full  = user.user_metadata?.full_name || user.email || "";
         const parts = full.split(" ");
         const first = parts[0] || "";
-        const last = parts[1] || "";
+        const last  = parts[1] || "";
         setUserName(first || full);
         setInitials(
           first && last
@@ -149,9 +151,9 @@ export const Sidebar: React.FC = () => {
   }, []);
 
   return (
-    <aside className="w-60 bg-background-secondary border-r border-border-primary px-4 py-6 hidden lg:flex flex-col gap-6 z-50">
-      {/* Brand */}
-      <div className="flex items-center gap-2.5 px-1 mb-2">
+    <aside className="w-60 bg-background-secondary border-r border-border-primary hidden lg:flex flex-col z-50">
+      {/* Brand — matches TopNav h-12 exactly */}
+      <div className="h-12 flex items-center gap-2.5 px-5 border-b border-border-primary shrink-0">
         <div className="w-7 h-7 rounded-lg bg-modules-aly/15 flex items-center justify-center border border-modules-aly/25">
           <Sparkle size={15} color="var(--modules-aly)" weight="fill" />
         </div>
@@ -159,12 +161,15 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Main nav */}
-      <nav className="flex flex-col gap-0.5">
-        <NavItem href="/dashboard" icon={House}      label="Home"    active={pathname === "/dashboard"} />
-        <NavItem href="/spaces"    icon={FolderOpen} label="Spaces"  active={pathname.startsWith("/spaces")} />
-        <NavItem href="/vault"     icon={Tray}       label="Vault"   active={pathname === "/vault"} />
-        <NavItem href="/automate"  icon={TreeStructure} label="Automate" active={pathname.startsWith("/automate")} />
-        <NavItem href="/history"   icon={ClockCounterClockwise} label="History" active={pathname === "/history"} />
+      <div className="flex flex-col gap-6 px-4 py-6 flex-1 overflow-y-auto">
+        <nav className="flex flex-col gap-0.5">
+        <NavItem href="/dashboard" icon={House}                  label="Home"     active={pathname === "/dashboard"} />
+        <NavItem href="/spaces"    icon={FolderOpen}             label="Spaces"   active={pathname.startsWith("/spaces")} />
+        <NavItem href="/screens"   icon={AppWindow}              label="Screens"  active={pathname.startsWith("/screens")} />
+        <NavItem href="/vault"     icon={Tray}                   label="Vault"    active={pathname === "/vault"} />
+        <NavItem href="/automate"     icon={TreeStructure}          label="Automate"     active={pathname.startsWith("/automate")} />
+        <NavItem href="/marketplace"  icon={HandbagIcon}            label="Marketplace"  active={pathname.startsWith("/marketplace")} />
+        <NavItem href="/history"      icon={ClockCounterClockwise}  label="History"      active={pathname === "/history"} />
         <NavGroup
           icon={Plugs}
           label="Integrations"
@@ -203,6 +208,7 @@ export const Sidebar: React.FC = () => {
           isOpen={isProfileMenuOpen}
           onClose={() => setIsProfileMenuOpen(false)}
         />
+      </div>
       </div>
     </aside>
   );

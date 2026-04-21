@@ -62,4 +62,18 @@ export const hubsService = {
     });
     return response.json();
   },
+
+  // Enable a core module on a hub
+  async addModule(hubId, moduleName) {
+    const res = await fetch(`${API_URL}/hubs/${hubId}/modules/${moduleName}`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to add module');
+    return res.json();
+  },
+
+  // Disable a core module on a hub
+  async removeModule(hubId, moduleName) {
+    const res = await fetch(`${API_URL}/hubs/${hubId}/modules/${moduleName}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to remove module');
+    return res.json();
+  },
 };

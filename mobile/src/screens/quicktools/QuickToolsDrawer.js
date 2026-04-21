@@ -10,20 +10,20 @@ import {
   ScrollView,
   TextInput,
   Platform,
+  Pressable,
   Keyboard,
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { 
-  X, Tray, CurrencyDollar, ForkKnife, Note, 
-  CalendarBlank, Lightning, ArrowsClockwise 
+import {
+  X, Tray, CurrencyDollar, ForkKnife, Note,
+  CalendarBlank, Lightning,
 } from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
 import { vaultService } from '../../services/vault'
 import { integrationsService } from '../../services/integrations'
 import { supabase } from '../../services/supabase'
-import { API_URL } from '../../services/apiConfig'
 import VaultCaptureSheet from '../vault/VaultCaptureSheet'
 
 const CATEGORIZED_TOOLS = [
@@ -77,60 +77,31 @@ const CATEGORIZED_TOOLS = [
 
 // ─── Tool forms ───────────────────────────────────────────────────────────────
 
-function VaultForm({ userId, onDone }) {
-  const [text, setText] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const submit = async () => {
-    if (!text.trim()) return
-    setLoading(true)
-    try {
-      await vaultService.createItem(userId, text.trim(), 'text')
-      onDone()
-    } catch (e) {
-      console.warn('VaultForm error:', e)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <View style={styles.form}>
-      <TextInput
-        style={styles.formInput}
-        placeholder="What's on your mind?"
-        placeholderTextColor={colors.text.tertiary}
-        value={text}
-        onChangeText={setText}
-        multiline
-        autoFocus
-      />
-      <SubmitBtn label="Drop to Vault" loading={loading} disabled={!text.trim()} onPress={submit} />
-    </View>
-  )
-}
+const EXPENSE_CATEGORIES = ['General', 'Food', 'Transport', 'Health', 'Entertainment', 'Shopping', 'Utilities', 'Other']
 
 function ExpenseForm({ userId, onDone }) {
-  const [amount, setAmount] = useState('')
+  const [amount,   setAmount]   = useState('')
+  const [item,     setItem]     = useState('')
   const [merchant, setMerchant] = useState('')
-  const [category, setCategory] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [category, setCategory] = useState('General')
+  const [loading,  setLoading]  = useState(false)
 
   const submit = async () => {
-    if (!amount) return
+    const amt = parseFloat(amount)
+    if (!amt || isNaN(amt) || amt <= 0) return
     setLoading(true)
     try {
-      await fetch(`${API_URL}/expenses/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          amount: parseFloat(amount),
-          merchant,
-          category,
-          currency: 'PHP',
-        }),
+      const { error } = await supabase.from('expenses').insert({
+        user_id:  userId,
+        hub_id:   null,
+        amount:   amt,
+        item:     item.trim()     || null,
+        merchant: merchant.trim() || null,
+        category,
+        currency: 'PHP',
+        date:     new Date().toISOString().split('T')[0],
       })
+      if (error) throw error
       onDone()
     } catch (e) {
       console.warn('ExpenseForm error:', e)
@@ -143,29 +114,55 @@ function ExpenseForm({ userId, onDone }) {
     <View style={styles.form}>
       <TextInput style={styles.formInput} placeholder="Amount (PHP)" placeholderTextColor={colors.text.tertiary}
         value={amount} onChangeText={setAmount} keyboardType="decimal-pad" autoFocus />
+      <TextInput style={styles.formInput} placeholder="Item (e.g. Fried Chicken, Gas)" placeholderTextColor={colors.text.tertiary}
+        value={item} onChangeText={setItem} />
       <TextInput style={styles.formInput} placeholder="Merchant (optional)" placeholderTextColor={colors.text.tertiary}
         value={merchant} onChangeText={setMerchant} />
-      <TextInput style={styles.formInput} placeholder="Category (optional)" placeholderTextColor={colors.text.tertiary}
-        value={category} onChangeText={setCategory} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+        {EXPENSE_CATEGORIES.map(c => (
+          <Pressable key={c} onPress={() => setCategory(c)}
+            style={[styles.categoryPill, category === c && styles.categoryPillActive]}>
+            <Text style={[styles.categoryPillText, category === c && styles.categoryPillTextActive]}>{c}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
       <SubmitBtn label="Log Expense" loading={loading} disabled={!amount} onPress={submit} />
     </View>
   )
 }
 
+const MEAL_TYPES = [
+  { key: 'breakfast', label: 'Breakfast', color: '#F59E0B' },
+  { key: 'lunch',     label: 'Lunch',     color: '#10B981' },
+  { key: 'dinner',    label: 'Dinner',    color: '#6366F1' },
+  { key: 'snack',     label: 'Snacks',    color: '#EC4899' },
+]
+
 function FoodForm({ userId, onDone }) {
-  const [food, setFood] = useState('')
+  const [meal,     setMeal]     = useState('breakfast')
+  const [food,     setFood]     = useState('')
   const [calories, setCalories] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [fat,      setFat]      = useState('')
+  const [carbs,    setCarbs]    = useState('')
+  const [protein,  setProtein]  = useState('')
+  const [loading,  setLoading]  = useState(false)
 
   const submit = async () => {
     if (!food.trim()) return
     setLoading(true)
     try {
-      await fetch(`${API_URL}/food-logs/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, food_name: food.trim(), calories: parseFloat(calories) || 0 }),
+      const { error } = await supabase.from('food_logs').insert({
+        user_id:   userId,
+        hub_id:    null,
+        food_name: food.trim(),
+        meal_type: meal,
+        calories:  calories ? parseFloat(calories)  : null,
+        fat_g:     fat      ? parseFloat(fat)       : null,
+        carbs_g:   carbs    ? parseFloat(carbs)     : null,
+        protein_g: protein  ? parseFloat(protein)   : null,
+        logged_at: new Date().toISOString(),
       })
+      if (error) throw error
       onDone()
     } catch (e) {
       console.warn('FoodForm error:', e)
@@ -176,10 +173,27 @@ function FoodForm({ userId, onDone }) {
 
   return (
     <View style={styles.form}>
-      <TextInput style={styles.formInput} placeholder="Food name" placeholderTextColor={colors.text.tertiary}
+      {/* Meal picker */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+        {MEAL_TYPES.map(m => (
+          <Pressable key={m.key} onPress={() => setMeal(m.key)}
+            style={[styles.categoryPill, meal === m.key && { backgroundColor: m.color + '25', borderColor: m.color }]}>
+            <Text style={[styles.categoryPillText, meal === m.key && { color: m.color }]}>{m.label}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+      <TextInput style={styles.formInput} placeholder="Food (e.g. Banana, Fried Chicken)" placeholderTextColor={colors.text.tertiary}
         value={food} onChangeText={setFood} autoFocus />
-      <TextInput style={styles.formInput} placeholder="Calories (optional)" placeholderTextColor={colors.text.tertiary}
+      <TextInput style={styles.formInput} placeholder="Calories (kcal)" placeholderTextColor={colors.text.tertiary}
         value={calories} onChangeText={setCalories} keyboardType="decimal-pad" />
+      <View style={styles.macroRow}>
+        <TextInput style={[styles.formInput, styles.macroInput]} placeholder="Fat (g)" placeholderTextColor={colors.text.tertiary}
+          value={fat} onChangeText={setFat} keyboardType="decimal-pad" />
+        <TextInput style={[styles.formInput, styles.macroInput]} placeholder="Carbs (g)" placeholderTextColor={colors.text.tertiary}
+          value={carbs} onChangeText={setCarbs} keyboardType="decimal-pad" />
+        <TextInput style={[styles.formInput, styles.macroInput]} placeholder="Protein (g)" placeholderTextColor={colors.text.tertiary}
+          value={protein} onChangeText={setProtein} keyboardType="decimal-pad" />
+      </View>
       <SubmitBtn label="Log Food" loading={loading} disabled={!food.trim()} onPress={submit} />
     </View>
   )
@@ -517,5 +531,35 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     color: '#fff',
+  },
+  categoryPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 0.5,
+    borderColor: colors.border.primary,
+    backgroundColor: colors.background.tertiary,
+    marginHorizontal: 3,
+  },
+  categoryPillActive: {
+    backgroundColor: colors.modules.aly + '20',
+    borderColor: colors.modules.aly,
+  },
+  categoryPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text.tertiary,
+  },
+  categoryPillTextActive: {
+    color: colors.modules.aly,
+  },
+  macroRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  macroInput: {
+    flex: 1,
+    paddingHorizontal: 10,
+    fontSize: 13,
   },
 })

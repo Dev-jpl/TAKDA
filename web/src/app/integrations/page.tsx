@@ -293,11 +293,10 @@ export default function IntegrationsPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const uid = data.user?.id;
-      if (uid) {
-        setUserId(uid);
-        fetchIntegrations();
-        fetchActivities(uid);
-      }
+      if (!uid) return;
+      setUserId(uid);
+      fetchIntegrations();
+      fetchActivities(uid);
     });
   }, [fetchIntegrations, fetchActivities]);
 

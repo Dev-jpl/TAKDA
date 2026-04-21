@@ -276,9 +276,35 @@ export default function VaultCaptureSheet({ visible, onClose, onCapture, editIte
 
   useEffect(() => {
     if (editItem) {
-      const initial = newLine({ text: editItem.content || '' })
-      setLines([initial])
-      setActiveLineId(initial.id)
+      const rawLines = (editItem.content || '').split('\n')
+      const parsed = rawLines.map(raw => {
+        let text = raw
+        let type = 'normal'
+        let checked = false
+        let bold = false
+        let italic = false
+        let indent = 0
+
+        // Count leading spaces for indent (2 spaces per level)
+        const indentMatch = text.match(/^( +)/)
+        if (indentMatch) {
+          indent = Math.floor(indentMatch[1].length / 2)
+          text = text.trimStart()
+        }
+
+        if (text.startsWith('# '))  { type = 'heading';  text = text.slice(2) }
+        else if (text.startsWith('• '))  { type = 'bullet';   text = text.slice(2) }
+        else if (text.startsWith('☑ ')) { type = 'checkbox'; text = text.slice(2); checked = true }
+        else if (text.startsWith('☐ ')) { type = 'checkbox'; text = text.slice(2) }
+
+        if (text.startsWith('**') && text.endsWith('**')) { bold = true; text = text.slice(2, -2) }
+        if (text.startsWith('_')  && text.endsWith('_'))  { italic = true; text = text.slice(1, -1) }
+
+        return newLine({ text, type, checked, bold, italic, indent, tags: parseTags(text) })
+      })
+      const firstId = parsed[0]?.id ?? null
+      setLines(parsed)
+      setActiveLineId(firstId)
     } else {
       const initial = newLine()
       setLines([initial])

@@ -75,7 +75,7 @@ export const coordinatorService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: userId,
-        session_id: sessionId || `session_${Date.now()}`,
+        session_id: sessionId || null,
         message,
         space_ids: [],
         hub_ids: [],

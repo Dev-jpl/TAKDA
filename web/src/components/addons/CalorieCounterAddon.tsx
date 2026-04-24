@@ -45,11 +45,12 @@ interface AddFoodFormProps {
   mealId: MealId;
   hubId: string;
   userId: string;
+  date: string;
   onAdded: (log: FoodLog) => void;
   onClose: () => void;
 }
 
-function AddFoodForm({ mealId, hubId, userId, onAdded, onClose }: AddFoodFormProps) {
+function AddFoodForm({ mealId, hubId, userId, date, onAdded, onClose }: AddFoodFormProps) {
   const [name, setName]         = useState('');
   const [calories, setCalories] = useState('');
   const [protein, setProtein]   = useState('');
@@ -69,6 +70,7 @@ function AddFoodForm({ mealId, hubId, userId, onAdded, onClose }: AddFoodFormPro
         carbs_g:   carbs     ? parseFloat(carbs)     : undefined,
         fat_g:     fat       ? parseFloat(fat)       : undefined,
         meal_type: mealId,
+        logged_at: date + 'T12:00:00Z',
       });
       onAdded(entry);
     } catch (e) {
@@ -141,13 +143,13 @@ export function CalorieCounterAddon({ hubId, userId, config }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setLogs(await getFoodLogs(hubId, date));
+      setLogs(await getFoodLogs(hubId, date, userId));
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [hubId, date]);
+  }, [hubId, date, userId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -169,6 +171,7 @@ export function CalorieCounterAddon({ hubId, userId, config }: Props) {
     try {
       await deleteFoodLog(id);
       setLogs(prev => prev.filter(l => l.id !== id));
+      window.dispatchEvent(new CustomEvent('takda:data_updated'));
     } catch (e) {
       console.error(e);
     }
@@ -177,6 +180,7 @@ export function CalorieCounterAddon({ hubId, userId, config }: Props) {
   function handleAdded(log: FoodLog) {
     setLogs(prev => [...prev, log]);
     setOpenForm(null);
+    window.dispatchEvent(new CustomEvent('takda:data_updated'));
   }
 
   return (
@@ -241,9 +245,9 @@ export function CalorieCounterAddon({ hubId, userId, config }: Props) {
         {/* Macros */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'Carbs',   val: totalCarbs,   goal: carbsGoal,   color: '#f59e0b' },
-            { label: 'Fat',     val: totalFat,     goal: fatGoal,     color: '#ef4444' },
-            { label: 'Protein', val: totalProtein, goal: proteinGoal, color: '#3b82f6' },
+            { label: 'Protein', val: totalProtein, goal: proteinGoal, color: '#60A5FA' },
+            { label: 'Carbs',   val: totalCarbs,   goal: carbsGoal,   color: '#F59E0B' },
+            { label: 'Fat',     val: totalFat,     goal: fatGoal,     color: '#EC4899' },
           ].map(m => {
             const pct = Math.min((m.val / m.goal) * 100, 100);
             return (
@@ -329,6 +333,7 @@ export function CalorieCounterAddon({ hubId, userId, config }: Props) {
                       mealId={meal.id}
                       hubId={hubId}
                       userId={userId}
+                      date={date}
                       onAdded={handleAdded}
                       onClose={() => setOpenForm(null)}
                     />
@@ -355,9 +360,9 @@ export function CalorieCounterAddon({ hubId, userId, config }: Props) {
           <div className="grid grid-cols-4 gap-2 text-center">
             {[
               { label: 'Calories', val: `${Math.round(totalCal)}`, unit: 'kcal' },
+              { label: 'Protein',  val: `${Math.round(totalProtein)}`, unit: 'g' },
               { label: 'Carbs',    val: `${Math.round(totalCarbs)}`,   unit: 'g' },
               { label: 'Fat',      val: `${Math.round(totalFat)}`,     unit: 'g' },
-              { label: 'Protein',  val: `${Math.round(totalProtein)}`, unit: 'g' },
             ].map(t => (
               <div key={t.label}>
                 <p className="text-sm font-bold text-text-primary">{t.val}<span className="text-[10px] text-text-tertiary font-normal ml-0.5">{t.unit}</span></p>

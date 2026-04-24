@@ -3,7 +3,7 @@
     "name": "takda",
     "slug": "takda",
     "version": "1.0.0",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/takda-logo.png",
     "plugins": [
       "expo-secure-store",
       [
@@ -25,7 +25,7 @@
     "ios": {
       "bundleIdentifier": "com.patrick.takda",
       "supportsTablet": true,
-      "icon": "./assets/icon.png",
+      "icon": "./assets/takda-logo.png",
       "infoPlist": {
         "NSHealthShareUsageDescription": "TAKDA needs access to your health data to track your steps and activity levels.",
         "NSHealthUpdateUsageDescription": "TAKDA needs permission to sync your activity data with your health profile."
@@ -39,8 +39,9 @@
         "android.permission.health.READ_DISTANCE",
         "android.permission.health.READ_HEART_RATE"
       ],
+      "icon": "./assets/takda-logo.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/takda-logo.png",
         "backgroundColor": "#0A0A0A"
       }
     },

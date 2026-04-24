@@ -106,9 +106,9 @@ function AppShell({ session }) {
                 onSpacesPress={() => navigationRef.isReady() && navigationRef.navigate('Main', { screen: 'Spaces' })}
                 onAlyPress={() => setAlySheetVisible(true)}
               />
-              <AlyButton 
-                visible={!bottomNavVisible} 
-                onOpen={() => setAlySheetVisible(true)} 
+              <AlyButton
+                visible={!bottomNavVisible && !isInHub}
+                onOpen={() => setAlySheetVisible(true)}
               />
               <AlySheet
                 visible={alySheetVisible}

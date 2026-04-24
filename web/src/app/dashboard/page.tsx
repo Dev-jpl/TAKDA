@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import {
-  SparkleIcon, ArrowRightIcon, ArrowSquareOutIcon, AppWindowIcon,
+  SparkleIcon, ArrowRightIcon, ArrowSquareOutIcon, AppWindowIcon, ArrowClockwiseIcon,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { supabase } from "@/services/supabase";
@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const [loading,          setLoading]          = useState(true);
   const [dailyInsight,     setDailyInsight]     = useState("");
   const [insightLoading,   setInsightLoading]   = useState(true);
+  const [insightRefreshing, setInsightRefreshing] = useState(false);
 
   // Screens
   const [screens,          setScreens]          = useState<Screen[]>([]);
@@ -73,17 +74,38 @@ export default function DashboardPage() {
       .finally(() => setWidgetsLoading(false));
   }, [selectedScreenId]);
 
+  const fetchInsight = async (uid: string, force = false): Promise<string> => {
+    const today    = new Date().toISOString().split("T")[0];
+    const cacheKey = `aly_insight_${uid}_${today}`;
+    if (!force) {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) return cached;
+    }
+    const res     = await fetch(`${API_URL}/aly/daily-insight?user_id=${uid}`).then(r => r.json()).catch(() => ({}));
+    const insight = (res as Record<string, string>)?.insight ?? "";
+    if (insight) localStorage.setItem(cacheKey, insight);
+    return insight;
+  };
+
+  const refreshInsight = async () => {
+    if (!userId || insightRefreshing) return;
+    setInsightRefreshing(true);
+    const insight = await fetchInsight(userId, true);
+    if (insight) setDailyInsight(insight);
+    setInsightRefreshing(false);
+  };
+
   const loadData = async (uid: string) => {
     try {
       // Fetch insight + screens + spaces in parallel
-      const [insightRes, screensData, spacesData] = await Promise.all([
-        fetch(`${API_URL}/aly/daily-insight?user_id=${uid}`).then(r => r.json()).catch(() => ({})),
+      const [insight, screensData, spacesData] = await Promise.all([
+        fetchInsight(uid),
         screensService.getUserScreens(uid).catch(() => [] as Screen[]),
         spacesService.getSpaces(uid).catch(() => [] as Space[]),
       ]);
 
-      if ((insightRes as Record<string, string>)?.insight) {
-        setDailyInsight((insightRes as Record<string, string>).insight);
+      if (insight) {
+        setDailyInsight(insight);
       }
 
       const loadedScreens = screensData.slice(0, 10);
@@ -136,9 +158,19 @@ export default function DashboardPage() {
       <section className={`${tile} relative overflow-hidden`}>
         <div className="absolute inset-0 bg-linear-to-br from-modules-aly/8 to-transparent rounded-2xl pointer-events-none" />
         <div className="relative flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <SparkleIcon size={14} color="var(--modules-aly)" weight="fill" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-modules-aly">Aly&apos;s Insights</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <SparkleIcon size={14} color="var(--modules-aly)" weight="fill" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-modules-aly">Aly&apos;s Insights</span>
+            </div>
+            <button
+              onClick={refreshInsight}
+              disabled={insightRefreshing || insightLoading}
+              className="p-1 rounded-md text-text-tertiary hover:text-modules-aly hover:bg-modules-aly/10 transition-all disabled:opacity-40"
+              title="Refresh insight"
+            >
+              <ArrowClockwiseIcon size={13} className={insightRefreshing ? "animate-spin" : ""} />
+            </button>
           </div>
           {insightLoading ? (
             <div className="space-y-2">

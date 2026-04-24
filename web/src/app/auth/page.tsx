@@ -131,8 +131,12 @@ export default function AuthPage() {
       >
         {/* Brand */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-2xl bg-modules-aly/10 border border-modules-aly/20 flex items-center justify-center">
-            <Sparkle size={20} color="var(--modules-aly)" weight="fill" />
+          <div className="w-10 h-10 rounded-2xl bg-modules-aly/10 border border-modules-aly/20 flex items-center justify-center overflow-hidden">
+            <img 
+              src="/favicon.ico" 
+              alt="TAKDA Logo" 
+              className="w-7 h-7 object-contain"
+            />
           </div>
           <span className="text-sm font-bold tracking-[0.4em] text-text-primary">TAKDA</span>
         </div>

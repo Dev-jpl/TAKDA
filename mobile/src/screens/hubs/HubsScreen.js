@@ -1,16 +1,26 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, Alert,
   Modal, TextInput, Animated, Platform, Keyboard,
   useWindowDimensions,
 } from 'react-native'
+import Shimmer from '../../components/common/Shimmer'
+
+function HubsSkeletonGrid() {
+  return (
+    <View style={{ paddingHorizontal: 16, paddingTop: 16, gap: 12 }}>
+      {[0, 1, 2, 3].map(i => <Shimmer.HubPair key={i} />)}
+    </View>
+  )
+}
 import { useFocusEffect, DrawerActions } from '@react-navigation/native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { supabase } from '../../services/supabase'
 import { hubsService } from '../../services/hubs'
 import { spacesService } from '../../services/spaces'
 import { colors } from '../../constants/colors'
+import { hubStore } from '../../services/hubStore'
 import SpaceIcon from '../../components/common/SpaceIcon'
 import { CaretLeft, CaretDown, Plus, MagnifyingGlass, Check, X } from 'phosphor-react-native'
 
@@ -179,12 +189,21 @@ export default function HubsScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [switcherVisible, setSwitcherVisible] = useState(false)
+  const hasLoadedRef = useRef(false)
 
   useFocusEffect(
     useCallback(() => {
-      loadHubs()
+      if (!hasLoadedRef.current) {
+        hasLoadedRef.current = true
+        loadHubs()
+      }
     }, [space?.id])
   )
+
+  // Reset load flag when space changes so we fetch fresh data
+  useEffect(() => {
+    hasLoadedRef.current = false
+  }, [space?.id])
 
   const loadHubs = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -192,6 +211,13 @@ export default function HubsScreen({ navigation, route }) {
     try {
       const data = await hubsService.getHubs(space.id)
       setHubs(data)
+      // Pre-populate store
+      data.forEach(hub => {
+        hubStore.setHubData(hub.id, {
+          modules: hub.hub_modules || [],
+          addons: hub.hub_addons || [],
+        });
+      });
     } catch (e) {
       console.warn('loadHubs error:', e)
     } finally {
@@ -256,42 +282,51 @@ export default function HubsScreen({ navigation, route }) {
     </TouchableOpacity>
   )
 
+  const header = (
+    <View style={styles.header}>
+      <TouchableOpacity
+        style={styles.backBtn}
+        onPress={() => navigation.goBack()}
+        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+      >
+        <CaretLeft color={colors.text.secondary} size={22} weight="light" />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.spaceChip}
+        onPress={() => setSwitcherVisible(true)}
+        activeOpacity={0.7}
+      >
+        <SpaceIcon icon={space.icon} color={space.color} size={26} iconSize={13} weight="light" />
+        <View style={styles.spaceTextWrap}>
+          <Text style={styles.title} numberOfLines={1}>{space.name}</Text>
+          <Text style={styles.spaceSubtitle}>
+            {loading ? '—' : `${hubs.length} ${hubs.length === 1 ? 'hub' : 'hubs'}`}
+          </Text>
+        </View>
+        <CaretDown color={colors.text.tertiary} size={12} weight="bold" />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.addBtn}
+        onPress={handleAddHub}
+        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+      >
+        <Plus color={colors.text.secondary} size={20} weight="light" />
+      </TouchableOpacity>
+    </View>
+  )
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-        >
-          <CaretLeft color={colors.text.secondary} size={22} weight="light" />
-        </TouchableOpacity>
+      {header}
 
-        <TouchableOpacity
-          style={styles.spaceChip}
-          onPress={() => setSwitcherVisible(true)}
-          activeOpacity={0.7}
-        >
-          <SpaceIcon icon={space.icon} color={space.color} size={26} iconSize={13} weight="light" />
-          <View style={styles.spaceTextWrap}>
-            <Text style={styles.title} numberOfLines={1}>{space.name}</Text>
-            <Text style={styles.spaceSubtitle}>
-              {hubs.length} {hubs.length === 1 ? 'hub' : 'hubs'}
-            </Text>
-          </View>
-          <CaretDown color={colors.text.tertiary} size={12} weight="bold" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={handleAddHub}
-          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-        >
-          <Plus color={colors.text.secondary} size={20} weight="light" />
-        </TouchableOpacity>
-      </View>
+      {loading ? (
+        <HubsSkeletonGrid />
+      ) : null}
 
       <FlatList
+        style={loading ? { display: 'none' } : undefined}
         data={hubs}
         keyExtractor={(item) => item.id}
         renderItem={renderHub}

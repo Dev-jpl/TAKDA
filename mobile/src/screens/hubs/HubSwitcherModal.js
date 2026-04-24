@@ -13,6 +13,7 @@ import {
 import { colors } from '../../constants/colors'
 import { hubsService } from '../../services/hubs'
 import SpaceIcon from '../../components/common/SpaceIcon'
+import { hubStore } from '../../services/hubStore'
 import { MagnifyingGlass, X } from 'phosphor-react-native'
 
 export default function HubSwitcherModal({ 
@@ -39,6 +40,13 @@ export default function HubSwitcherModal({
     try {
       const data = await hubsService.getHubs(currentSpace.id)
       setHubs(data)
+      // Pre-populate store
+      data.forEach(hub => {
+        hubStore.setHubData(hub.id, {
+          modules: hub.hub_modules || [],
+          addons: hub.hub_addons || [],
+        });
+      });
     } catch (e) {
       console.warn('Switcher load error:', e)
     } finally {

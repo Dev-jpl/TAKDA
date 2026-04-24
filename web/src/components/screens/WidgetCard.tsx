@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   TrashIcon, CheckCircleIcon, PencilSimpleIcon, FileTextIcon,
   PaperPlaneRightIcon, PuzzlePieceIcon, CircleIcon, ForkKnifeIcon,
   CurrencyDollarIcon, CalendarCheckIcon, MoonIcon, LightningIcon,
   ChartPieSliceIcon, ClockIcon, TrendUpIcon, BicycleIcon,
+  CaretRightIcon,
 } from '@phosphor-icons/react';
 import { ScreenWidget, WidgetType } from '@/services/screens.service';
 import { Space } from '@/services/spaces.service';
@@ -14,9 +16,10 @@ import { trackService, Task } from '@/services/track.service';
 import { annotateService, Annotation } from '@/services/annotate.service';
 import { knowledgeService, KnowledgeDocument } from '@/services/knowledge.service';
 import { deliverService, Delivery } from '@/services/deliver.service';
-import { getFoodLogs, getExpenses } from '@/services/addons.service';
 import { eventsService, CalendarEvent } from '@/services/events.service';
 import { integrationsService, StravaActivity } from '@/services/integrations.service';
+import { DynamicModuleView } from '@/components/modules/DynamicModuleView';
+import { getModuleDefinitions, ModuleDefinition } from '@/services/modules.service';
 
 // ── Icon + label per type ─────────────────────────────────────────────────────
 
@@ -173,330 +176,21 @@ function HubOverviewWidget({ hubId }: { hubId: string }) {
   );
 }
 
-function CalorieCounterWidget({ hubId }: { hubId: string }) {
-  const [logs,    setLogs]    = useState<Array<{ calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null }>>([]);
+function GenericModuleWidget({ hubId, slug, userId }: { hubId: string, slug: string, userId?: string }) {
+  const [def, setDef] = useState<ModuleDefinition | null>(null);
   const [loading, setLoading] = useState(true);
-  const goal = 2000;
 
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    getFoodLogs(hubId, today)
-      .then(data => setLogs(data))
-      .catch(() => setLogs([]))
-      .finally(() => setLoading(false));
-  }, [hubId]);
+    getModuleDefinitions().then(defs => {
+      const found = defs.find(d => d.slug === slug);
+      if (found) setDef(found);
+    }).finally(() => setLoading(false));
+  }, [slug]);
 
   if (loading) return <WidgetSkeleton rows={3} />;
+  if (!def) return <WidgetEmpty label="Module definition not found" />;
 
-  const total   = logs.reduce((s, l) => s + (l.calories ?? 0), 0);
-  const protein = logs.reduce((s, l) => s + (l.protein_g ?? 0), 0);
-  const carbs   = logs.reduce((s, l) => s + (l.carbs_g ?? 0), 0);
-  const fat     = logs.reduce((s, l) => s + (l.fat_g ?? 0), 0);
-
-  const pct      = Math.min((total / goal) * 100, 100);
-  const remaining = goal - total;
-  const over      = remaining < 0;
-
-  const macros = [
-    { label: 'Protein', val: protein, color: '#60a5fa', goal: 150 },
-    { label: 'Carbs',   val: carbs,   color: '#fb923c', goal: 250 },
-    { label: 'Fat',     val: fat,     color: '#f472b6', goal: 65  },
-  ];
-
-  return (
-    <div className="px-4 py-4 flex flex-col gap-3">
-      <div className="grid grid-cols-5 gap-1 text-center">
-        <div>
-          <p className="text-base font-bold text-text-primary">{goal}</p>
-          <p className="text-[9px] text-text-tertiary">Goal</p>
-        </div>
-        <div className="flex items-center justify-center text-text-tertiary text-sm">−</div>
-        <div>
-          <p className="text-base font-bold text-text-primary">{Math.round(total)}</p>
-          <p className="text-[9px] text-text-tertiary">Eaten</p>
-        </div>
-        <div className="flex items-center justify-center text-text-tertiary text-sm">=</div>
-        <div>
-          <p className={`text-base font-bold ${over ? 'text-red-400' : 'text-green-400'}`}>
-            {Math.abs(Math.round(remaining))}
-          </p>
-          <p className="text-[9px] text-text-tertiary">{over ? 'Over' : 'Left'}</p>
-        </div>
-      </div>
-      <div className="h-2 bg-background-tertiary rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: over ? '#f87171' : '#22c55e' }}
-        />
-      </div>
-      {/* Macros */}
-      <div className="flex flex-col gap-1.5 pt-1 border-t border-border-primary/40">
-        {macros.map(m => (
-          <div key={m.label} className="flex items-center gap-2">
-            <p className="text-[9px] text-text-tertiary w-10 shrink-0">{m.label}</p>
-            <div className="flex-1 h-1.5 bg-background-tertiary rounded-full overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${Math.min((m.val / m.goal) * 100, 100)}%`, backgroundColor: m.color }} />
-            </div>
-            <p className="text-[9px] text-text-secondary w-10 text-right shrink-0">{Math.round(m.val)}g</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const EXP_CAT_COLORS: Record<string, string> = {
-  General: '#94a3b8', Food: '#fb923c', Transport: '#60a5fa',
-  Health: '#f87171', Entertainment: '#c084fc', Shopping: '#f472b6',
-  Utilities: '#facc15', Other: '#6b7280',
-};
-
-type ExpRow = { amount: number; category: string; date: string };
-type TrendPeriod = 'week' | 'month' | 'year';
-
-function ExpTrendBar({ bars, labels, hex, currency }: { bars: number[]; labels: string[]; hex: string; currency: string }) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  const H = 72; const count = bars.length; const maxVal = Math.max(...bars, 1);
-  const barW = Math.max(8, Math.floor(280 / count)); const W = barW * count;
-  const fmtK = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(Math.round(v));
-  const fmtFull = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  return (
-    <div className="w-full overflow-x-auto relative">
-      {/* Tooltip */}
-      {hovered !== null && bars[hovered] > 0 && (() => {
-        const x = hovered * barW + barW * 0.12; const bw = barW * 0.76;
-        const cx = x + bw / 2; const pct = (cx / W) * 100;
-        return (
-          <div
-            className="absolute -top-8 z-10 pointer-events-none"
-            style={{ left: `${pct}%`, transform: 'translateX(-50%)' }}
-          >
-            <div className="bg-background-primary border border-border-primary rounded-md px-2 py-1 shadow-lg whitespace-nowrap">
-              <p className="text-[9px] font-semibold text-text-tertiary">{labels[hovered]}</p>
-              <p className="text-[11px] font-bold text-text-primary">{currency} {fmtFull(bars[hovered])}</p>
-            </div>
-            <div className="w-1.5 h-1.5 bg-background-primary border-r border-b border-border-primary rotate-45 mx-auto -mt-1" />
-          </div>
-        );
-      })()}
-      <svg viewBox={`0 0 ${W} ${H + 20}`} style={{ minWidth: Math.min(W, 240), width: '100%' }}>
-        {bars.map((val, i) => {
-          const bh = val > 0 ? Math.max(2, (val / maxVal) * H) : 0;
-          const x = i * barW + barW * 0.12; const bw = barW * 0.76;
-          const isHov = hovered === i;
-          return (
-            <g key={i}
-              onMouseEnter={() => setHovered(i)}
-              onMouseLeave={() => setHovered(null)}
-              style={{ cursor: val > 0 ? 'pointer' : 'default' }}
-            >
-              <rect x={x} y={0} width={bw} height={H} rx={2} fill={hex} opacity={isHov ? 0.15 : 0.08} />
-              {bh > 0 && <rect x={x} y={H - bh} width={bw} height={bh} rx={2} fill={hex} opacity={isHov ? 1 : 0.85} />}
-              <text x={x + bw / 2} y={H + 13} textAnchor="middle" fontSize={Math.max(6, Math.min(9, barW * 0.55))} fill={isHov ? hex : '#6b7280'}>{labels[i]}</text>
-            </g>
-          );
-        })}
-      </svg>
-      <div className="flex justify-between mt-0.5">
-        <span className="text-[9px] text-text-tertiary">{currency} 0</span>
-        <span className="text-[9px] text-text-tertiary">{currency} {fmtK(maxVal)}</span>
-      </div>
-    </div>
-  );
-}
-
-function ExpenseTrackerWidget({ hubId }: { hubId: string }) {
-  const [monthExp,   setMonthExp]   = useState<ExpRow[]>([]);
-  const [allExp,     setAllExp]     = useState<ExpRow[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [trendPer,   setTrendPer]   = useState<TrendPeriod>('month');
-  const [allLoaded,  setAllLoaded]  = useState(false);
-  const [allLoading, setAllLoading] = useState(false);
-  const currency = 'PHP';
-  const hex = '#D85A30';
-
-  const now = new Date();
-  const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  useEffect(() => {
-    getExpenses(hubId, curMonth)
-      .then(exps => setMonthExp(exps as ExpRow[]))
-      .catch(() => setMonthExp([]))
-      .finally(() => setLoading(false));
-  }, [hubId]);
-
-  // Lazy-load all expenses when week or year tab is first opened
-  useEffect(() => {
-    if ((trendPer === 'week' || trendPer === 'year') && !allLoaded && !allLoading) {
-      setAllLoading(true);
-      getExpenses(hubId)
-        .then(exps => { setAllExp(exps as ExpRow[]); setAllLoaded(true); })
-        .catch(() => setAllLoaded(true))
-        .finally(() => setAllLoading(false));
-    }
-  }, [trendPer, hubId, allLoaded, allLoading]);
-
-  const trendData = useMemo(() => {
-    if (trendPer === 'week') {
-      const day = now.getDay();
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-      weekStart.setHours(0, 0, 0, 0);
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      const bars = days.map((_, i) => {
-        const d = new Date(weekStart); d.setDate(d.getDate() + i);
-        const ds = d.toISOString().split('T')[0];
-        return allExp.filter(e => e.date === ds).reduce((s, e) => s + e.amount, 0);
-      });
-      return { bars, labels: days };
-    }
-    if (trendPer === 'month') {
-      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-      const bars = Array.from({ length: daysInMonth }, (_, i) => {
-        const d = String(i + 1).padStart(2, '0');
-        const ds = `${curMonth}-${d}`;
-        return monthExp.filter(e => e.date === ds).reduce((s, e) => s + e.amount, 0);
-      });
-      const labels = Array.from({ length: daysInMonth }, (_, i) => (i + 1) % 5 === 1 ? String(i + 1) : '');
-      return { bars, labels };
-    }
-    // year
-    const bars = Array.from({ length: 12 }, (_, i) => {
-      const m = `${now.getFullYear()}-${String(i + 1).padStart(2, '0')}`;
-      return allExp.filter(e => e.date?.startsWith(m)).reduce((s, e) => s + e.amount, 0);
-    });
-    const labels = ['J','F','M','A','M','J','J','A','S','O','N','D'];
-    return { bars, labels };
-  }, [trendPer, monthExp, allExp]);
-
-  // Daily totals for avg/high/low — must be before early return
-  const dayTotals = useMemo(() => {
-    const map: Record<string, number> = {};
-    monthExp.forEach(e => { map[e.date] = (map[e.date] ?? 0) + e.amount; });
-    return Object.entries(map).map(([date, amt]) => ({ date, amt }));
-  }, [monthExp]);
-
-  if (loading) return <WidgetSkeleton rows={2} />;
-
-  const total = monthExp.reduce((s, e) => s + e.amount, 0);
-  const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const avgSpend = dayTotals.length > 0 ? dayTotals.reduce((s, d) => s + d.amt, 0) / dayTotals.length : 0;
-  const highDay  = dayTotals.length > 0 ? dayTotals.reduce((a, b) => a.amt >= b.amt ? a : b) : null;
-  const lowDay   = dayTotals.length > 0 ? dayTotals.reduce((a, b) => a.amt <= b.amt ? a : b) : null;
-
-  // Category breakdown for donut
-  const catMap: Record<string, number> = {};
-  monthExp.forEach(e => { catMap[e.category || 'General'] = (catMap[e.category || 'General'] ?? 0) + e.amount; });
-  const cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
-
-  const R = 28; const CIRC = 2 * Math.PI * R;
-  let cumPct = 0;
-  const segments = cats.map(([cat, amt]) => {
-    const pct = total > 0 ? (amt / total) * 100 : 0;
-    const dash = (pct / 100) * CIRC; const gap = CIRC - dash;
-    const offset = CIRC - (cumPct / 100) * CIRC;
-    cumPct += pct;
-    return { cat, amt, pct, dash, gap, offset, color: EXP_CAT_COLORS[cat] ?? '#6b7280' };
-  });
-
-  const periods: { key: TrendPeriod; label: string }[] = [
-    { key: 'week', label: '7D' },
-    { key: 'month', label: '1M' },
-    { key: 'year', label: '1Y' },
-  ];
-
-  const fmtDay = (ds: string) => {
-    const d = new Date(ds + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  };
-
-  return (
-    <div className="px-4 py-4 flex flex-col gap-3">
-      {/* Header */}
-      <div>
-        <p className="text-[9px] font-bold text-text-tertiary uppercase tracking-widest">This Month</p>
-        <p className="text-2xl font-bold text-text-primary mt-0.5">{currency} {fmt(total)}</p>
-      </div>
-
-      {/* Donut + legend | Avg / Highest / Lowest */}
-      {cats.length > 0 && (
-        <div className="flex gap-3">
-          {/* Left: donut + legend */}
-          <div className="flex gap-2.5 items-center flex-1 min-w-0">
-            <svg width={64} height={64} viewBox="0 0 72 72" style={{ flexShrink: 0 }}>
-              <circle cx={36} cy={36} r={R} fill="none" stroke="var(--background-tertiary,#1f2937)" strokeWidth={10} />
-              {segments.map((seg, i) => (
-                <circle key={i} cx={36} cy={36} r={R} fill="none"
-                  stroke={seg.color} strokeWidth={10}
-                  strokeDasharray={`${seg.dash} ${seg.gap}`}
-                  strokeDashoffset={seg.offset}
-                  transform="rotate(-90 36 36)"
-                />
-              ))}
-            </svg>
-            <div className="flex flex-col gap-1 min-w-0">
-              {segments.slice(0, 4).map(seg => (
-                <div key={seg.cat} className="flex items-center gap-1.5 min-w-0">
-                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-                  <span className="text-[9px] text-text-secondary truncate flex-1">{seg.cat}</span>
-                  <span className="text-[9px] text-text-tertiary shrink-0">{fmt(seg.amt)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="w-px bg-border-primary/40 self-stretch" />
-
-          {/* Right: stats */}
-          <div className="flex flex-col justify-between gap-1.5 w-28 shrink-0">
-            {[
-              { label: 'Average', day: `${dayTotals.length}d avg`, amt: avgSpend },
-              { label: 'Highest', day: highDay ? fmtDay(highDay.date) : '—', amt: highDay?.amt ?? 0 },
-              { label: 'Lowest',  day: lowDay  ? fmtDay(lowDay.date)  : '—', amt: lowDay?.amt  ?? 0 },
-            ].map(({ label, day, amt }) => (
-              <div key={label}>
-                <p className="text-[8px] font-semibold text-text-tertiary uppercase tracking-wide">{label} · {day}</p>
-                <p className="text-[11px] font-bold text-text-primary">{fmt(amt)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {cats.length === 0 && <p className="text-[10px] text-text-tertiary">No expenses this month</p>}
-
-      {/* Trend bar chart */}
-      <div className="border-t border-border-primary/40 pt-3 flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <p className="text-[9px] font-bold text-text-tertiary uppercase tracking-widest">Trend</p>
-          <div className="flex gap-1">
-            {periods.map(p => (
-              <button key={p.key} onClick={() => setTrendPer(p.key)}
-                className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
-                  trendPer === p.key
-                    ? 'text-[#D85A30] bg-[#D85A30]/10'
-                    : 'text-text-tertiary hover:text-text-secondary'
-                }`}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {allLoading ? (
-          <div className="h-10 flex items-center justify-center">
-            <span className="text-[10px] text-text-tertiary">Loading…</span>
-          </div>
-        ) : (
-          <ExpTrendBar bars={trendData.bars} labels={trendData.labels} hex={hex} currency={currency} />
-        )}
-      </div>
-
-      {cats.length === 0 && <p className="text-[10px] text-text-tertiary">No expenses this month</p>}
-    </div>
-  );
+  return <DynamicModuleView definition={def} hubId={hubId} userId={userId} />;
 }
 
 // ── New hub widgets ─────────────────────────────────────────────────────────────
@@ -983,8 +677,14 @@ interface WidgetCardProps {
 }
 
 export function WidgetCard({ widget, hubName, spaceName, userId, spaces = [], hubs = [], onDelete, readOnly }: WidgetCardProps) {
+  const router = useRouter();
   const meta  = TYPE_META[widget.type];
   const title = widget.title || meta.label;
+
+  const handleNavToHub = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (widget.hub_id) router.push(`/hubs/${widget.hub_id}`);
+  };
 
   return (
     <div className="bg-background-secondary border border-border-primary rounded-xl overflow-hidden flex flex-col group h-full">
@@ -993,7 +693,18 @@ export function WidgetCard({ widget, hubName, spaceName, userId, spaces = [], hu
         <div className="flex items-start gap-2.5 min-w-0 flex-1">
           <span className={`mt-0.5 shrink-0 ${meta.accent}`}>{meta.icon}</span>
           <div className="flex flex-col min-w-0 flex-1">
-            <span className="text-xs font-bold text-text-primary truncate leading-tight">{title}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-text-primary truncate leading-tight">{title}</span>
+              {widget.hub_id && (
+                <button 
+                  onClick={handleNavToHub}
+                  className="p-0.5 -m-0.5 rounded hover:bg-background-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                  title="View Hub"
+                >
+                  <CaretRightIcon size={10} weight="bold" />
+                </button>
+              )}
+            </div>
             {hubName && (
               <span className="text-[10px] text-text-tertiary truncate mt-0.5 leading-tight">{hubName}</span>
             )}
@@ -1042,9 +753,9 @@ export function WidgetCard({ widget, hubName, spaceName, userId, spaces = [], hu
         ) : widget.type === 'hub_overview' ? (
           <HubOverviewWidget hubId={widget.hub_id} />
         ) : widget.type === 'calorie_counter' ? (
-          <CalorieCounterWidget hubId={widget.hub_id} />
+          <GenericModuleWidget hubId={widget.hub_id} slug="calorie_counter" userId={userId} />
         ) : widget.type === 'expense_tracker' ? (
-          <ExpenseTrackerWidget hubId={widget.hub_id} />
+          <GenericModuleWidget hubId={widget.hub_id} slug="expense_tracker" userId={userId} />
         ) : widget.type === 'upcoming_events' ? (
           <UpcomingEventsWidget hubId={widget.hub_id} userId={userId} />
         ) : widget.type === 'sleep_tracker' ? (

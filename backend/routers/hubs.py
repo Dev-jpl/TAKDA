@@ -29,7 +29,7 @@ class ReorderHubsBody(BaseModel):
 @router.get("/{space_id}")
 async def get_hubs(space_id: str):
     hubs = supabase.table("hubs") \
-        .select("*, hub_modules(*)") \
+        .select("*, hub_modules(*), hub_addons(*)") \
         .eq("space_id", space_id) \
         .order("order_index") \
         .execute()

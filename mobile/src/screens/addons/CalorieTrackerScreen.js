@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, ActivityIndicator, Alert, RefreshControl,
@@ -7,6 +7,9 @@ import {
 import { supabase } from '../../services/supabase';
 import { colors } from '../../constants/colors';
 import { ForkKnife, X, Check } from 'phosphor-react-native';
+
+// Module-level cache for module_def_id (survives re-renders, cleared on app restart)
+let _calorieDefId = null;
 
 const GOAL = 2000;
 
@@ -203,6 +206,7 @@ export default function CalorieTrackerScreen({ hub }) {
   const [refreshing, setRefreshing] = useState(false);
   const [userId,     setUserId]     = useState(null);
   const [showForm,   setShowForm]   = useState(false);
+  const [date,       setDate]       = useState(todayStr());
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -213,40 +217,73 @@ export default function CalorieTrackerScreen({ hub }) {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const today = todayStr();
-      const { data, error } = await supabase
-        .from('food_logs')
-        .select('*')
-        .eq('hub_id', hub.id)
-        .gte('logged_at', `${today}T00:00:00`)
-        .lte('logged_at', `${today}T23:59:59`)
-        .order('logged_at', { ascending: false });
-      if (!error) setLogs(data ?? []);
+      // Resolve module_def_id (cached after first fetch)
+      if (!_calorieDefId) {
+        const { data: def } = await supabase
+          .from('module_definitions').select('id').eq('slug', 'calorie_counter').single();
+        _calorieDefId = def?.id ?? null;
+      }
+      if (!_calorieDefId) { setLogs([]); return; }
+
+      let q = supabase
+        .from('module_entries')
+        .select('id, data, created_at, user_id, hub_id')
+        .eq('module_def_id', _calorieDefId)
+        .eq('hub_id', hub.id);
+
+      if (userId) q = q.eq('user_id', userId);
+      if (date) q = q.filter('data->>logged_at', 'like', `${date}%`);
+
+      const { data } = await q.order('created_at', { ascending: false }).limit(200);
+
+      // Flatten data JSONB column to match the shape used in UI
+      const flattened = (data ?? []).map(r => ({
+        id: r.id,
+        ...r.data,
+        created_at: r.created_at,
+        user_id: r.user_id,
+        hub_id: r.hub_id,
+      }));
+      setLogs(flattened);
+    } catch (err) {
+      console.error('[CalorieTracker] Load failed:', err);
+      setLogs([]);
     } finally {
       setLoading(false); setRefreshing(false);
     }
-  }, [hub.id]);
+  }, [hub.id, date, userId]);
 
   useEffect(() => { load(); }, [load]);
 
   async function handleSave(fields) {
-    const { data, error } = await supabase
-      .from('food_logs')
-      .insert({
-        user_id:   userId,
-        hub_id:    hub.id,
-        logged_at: new Date().toISOString(),
-        ...fields,
-      })
-      .select()
-      .single();
+    if (!userId) throw new Error('Not signed in');
+
+    if (!_calorieDefId) {
+      const { data: def } = await supabase
+        .from('module_definitions').select('id').eq('slug', 'calorie_counter').single();
+      _calorieDefId = def?.id ?? null;
+    }
+    if (!_calorieDefId) throw new Error('Module not found');
+
+    const entryData = {
+      ...fields,
+      logged_at: new Date().toISOString(),
+    };
+
+    const { data: rows, error } = await supabase
+      .from('module_entries')
+      .insert({ module_def_id: _calorieDefId, hub_id: hub.id, user_id: userId, data: entryData })
+      .select('id, data, created_at, user_id, hub_id');
+
     if (error) throw error;
-    setLogs(prev => [data, ...prev]);
+    const r = rows[0];
+    const flat = { id: r.id, ...r.data, created_at: r.created_at, user_id: r.user_id, hub_id: r.hub_id };
+    setLogs(prev => [flat, ...prev]);
   }
 
   async function handleDelete(id) {
     setLogs(prev => prev.filter(l => l.id !== id));
-    await supabase.from('food_logs').delete().eq('id', id);
+    await supabase.from('module_entries').delete().eq('id', id);
   }
 
   const totalCalories = logs.reduce((s, l) => s + (l.calories ?? 0), 0);
@@ -265,7 +302,20 @@ export default function CalorieTrackerScreen({ hub }) {
 
   if (loading) {
     return (
-      <View style={styles.center}><ActivityIndicator color="#10B981" /></View>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={[styles.skeleton, { width: '40%', height: 24, marginBottom: 8 }]} />
+          <View style={[styles.skeleton, { width: '30%', height: 16 }]} />
+        </View>
+        <View style={styles.summary}>
+          <View style={[styles.skeleton, { width: '100%', height: 120, borderRadius: 16 }]} />
+        </View>
+        <View style={[styles.group, { marginTop: 20 }]}>
+          <View style={[styles.skeleton, { width: '25%', height: 20, marginBottom: 12 }]} />
+          <View style={[styles.skeleton, { width: '100%', height: 50, marginBottom: 8 }]} />
+          <View style={[styles.skeleton, { width: '100%', height: 50 }]} />
+        </View>
+      </View>
     );
   }
 
@@ -374,8 +424,10 @@ export default function CalorieTrackerScreen({ hub }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background.primary },
   content:   { padding: 16, paddingBottom: 120, gap: 12 },
-  center:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
+  skeleton: {
+    backgroundColor: colors.background.tertiary,
+    borderRadius: 4,
+  },
   card: {
     backgroundColor: colors.background.secondary,
     borderRadius: 14, borderWidth: 0.5,

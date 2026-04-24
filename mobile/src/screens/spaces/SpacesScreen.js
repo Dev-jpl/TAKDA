@@ -1,11 +1,10 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useRef } from 'react'
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
   Alert,
   Modal,
@@ -19,6 +18,39 @@ import { colors } from '../../constants/colors'
 import { spacesService } from '../../services/spaces'
 import { supabase } from '../../services/supabase'
 import SpaceIcon from '../../components/common/SpaceIcon'
+import Shimmer from '../../components/common/Shimmer'
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+function SpaceRowSkeleton() {
+  return (
+    <View style={skelStyles.row}>
+      <Shimmer style={skelStyles.icon} />
+      <View style={{ flex: 1, gap: 7 }}>
+        <Shimmer style={{ height: 13, borderRadius: 4, width: '55%' }} />
+        <Shimmer style={{ height: 10, borderRadius: 4, width: '30%' }} />
+      </View>
+      <Shimmer style={{ width: 8, height: 16, borderRadius: 3 }} />
+    </View>
+  )
+}
+
+function SpacesSkeletonList() {
+  return (
+    <View style={{ paddingHorizontal: 20, paddingTop: 4, gap: 8 }}>
+      {[0, 1, 2, 3, 4].map(i => <SpaceRowSkeleton key={i} />)}
+    </View>
+  )
+}
+
+const skelStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: 14, borderWidth: 0.5, borderColor: colors.border.primary,
+    padding: 12, marginBottom: 8, gap: 12,
+  },
+  icon: { width: 38, height: 38, borderRadius: 10 },
+})
 
 export default function SpacesScreen({ navigation }) {
   const { openSheet } = useAlySheet()
@@ -29,9 +61,12 @@ export default function SpacesScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [editingSpace, setEditingSpace] = useState(null)
   const [newSpaceName, setNewSpaceName] = useState('')
+  const hasLoadedRef = useRef(false)
 
   useFocusEffect(
     useCallback(() => {
+      if (hasLoadedRef.current) return
+      hasLoadedRef.current = true
       supabase.auth.getUser().then(({ data: { user } }) => {
         if (user) {
           setUserId(user.id)
@@ -122,14 +157,6 @@ export default function SpacesScreen({ navigation }) {
     </TouchableOpacity>
   )
 
-  if (loading && !refreshing) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ActivityIndicator style={{ flex: 1 }} color={colors.text.tertiary} />
-      </SafeAreaView>
-    )
-  }
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -161,8 +188,12 @@ export default function SpacesScreen({ navigation }) {
         />
       </View>
 
+      {/* Skeleton while loading */}
+      {loading && <SpacesSkeletonList />}
+
       {/* List */}
       <FlatList
+        style={loading ? { display: 'none' } : undefined}
         data={filtered}
         keyExtractor={item => item.id}
         renderItem={renderItem}
@@ -171,22 +202,24 @@ export default function SpacesScreen({ navigation }) {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => loadSpaces(userId, true)}
+            onRefresh={() => { hasLoadedRef.current = false; loadSpaces(userId, true) }}
             tintColor={colors.text.tertiary}
           />
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Sparkle color={colors.modules.aly} size={32} weight="fill" />
-            <Text style={styles.emptyTitle}>Aly can set up your spaces</Text>
-            <Text style={styles.emptyBody}>Tell her what areas of life you want to organize</Text>
-            <TouchableOpacity
-              style={styles.emptyAlyBtn}
-              onPress={openSheet}
-            >
-              <Text style={styles.emptyAlyBtnText}>Talk to Aly</Text>
-            </TouchableOpacity>
-          </View>
+          !loading && (
+            <View style={styles.empty}>
+              <Sparkle color={colors.modules.aly} size={32} weight="fill" />
+              <Text style={styles.emptyTitle}>Aly can set up your spaces</Text>
+              <Text style={styles.emptyBody}>Tell her what areas of life you want to organize</Text>
+              <TouchableOpacity
+                style={styles.emptyAlyBtn}
+                onPress={openSheet}
+              >
+                <Text style={styles.emptyAlyBtnText}>Talk to Aly</Text>
+              </TouchableOpacity>
+            </View>
+          )
         }
       />
 

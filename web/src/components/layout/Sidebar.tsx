@@ -14,6 +14,8 @@ import {
   TreeStructure,
   AppWindow,
   HandbagIcon,
+  PencilLine,
+  ChartPie,
 } from '@phosphor-icons/react';
 import { ASSISTANT_NAME } from '@/constants/brand';
 import { ProfileMenuPopup } from '@/components/profile/ProfileMenuPopup';
@@ -130,6 +132,7 @@ export const Sidebar: React.FC = () => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string>("You");
   const [initials, setInitials] = useState<string>("—");
+  const [navPins, setNavPins] = useState<any[]>([]);
 
   const integrationsActive = pathname.startsWith("/integrations") || pathname === "/calendar";
 
@@ -146,9 +149,54 @@ export const Sidebar: React.FC = () => {
             ? `${first[0]}${last[0]}`.toUpperCase()
             : full.slice(0, 2).toUpperCase()
         );
+
+        // Upsert profile row then fetch nav_pins
+        supabase
+          .from("user_profiles")
+          .upsert({ id: user.id }, { onConflict: "id", ignoreDuplicates: true })
+          .then(() =>
+            supabase
+              .from("user_profiles")
+              .select("nav_pins")
+              .eq("id", user.id)
+              .maybeSingle()
+          )
+          .then(({ data }) => {
+            if (data?.nav_pins && Array.isArray(data.nav_pins)) {
+              setNavPins(data.nav_pins);
+            }
+          });
       }
     });
   }, []);
+
+  const ICONS: Record<string, React.ElementType> = {
+    House,
+    FolderOpen,
+    AppWindow,
+    Tray,
+    TreeStructure,
+    HandbagIcon,
+    ClockCounterClockwise,
+    Plugs,
+    Sparkle,
+    PencilLine,
+    ChartPie
+  };
+
+  const defaultNav = [
+    { type: 'item', href: '/dashboard', icon: 'House', label: 'Home' },
+    { type: 'item', href: '/spaces', icon: 'FolderOpen', label: 'Spaces' },
+    { type: 'item', href: '/screens', icon: 'AppWindow', label: 'Screens' },
+    { type: 'item', href: '/vault', icon: 'Tray', label: 'Vault' },
+    { type: 'item', href: '/automate', icon: 'TreeStructure', label: 'Automate' },
+    { type: 'item', href: '/marketplace', icon: 'HandbagIcon', label: 'Marketplace' },
+    { type: 'item', href: '/module-creator', icon: 'PencilLine', label: 'Creator' },
+    { type: 'item', href: '/creator/dashboard', icon: 'ChartPie', label: 'Earnings' },
+    { type: 'item', href: '/history', icon: 'ClockCounterClockwise', label: 'History' },
+  ];
+
+  const pinsToRender = navPins.length > 0 ? navPins : defaultNav;
 
   return (
     <aside className="w-60 bg-background-secondary border-r border-border-primary hidden lg:flex flex-col z-50">
@@ -163,13 +211,15 @@ export const Sidebar: React.FC = () => {
       {/* Main nav */}
       <div className="flex flex-col gap-6 px-4 py-6 flex-1 overflow-y-auto">
         <nav className="flex flex-col gap-0.5">
-        <NavItem href="/dashboard" icon={House}                  label="Home"     active={pathname === "/dashboard"} />
-        <NavItem href="/spaces"    icon={FolderOpen}             label="Spaces"   active={pathname.startsWith("/spaces")} />
-        <NavItem href="/screens"   icon={AppWindow}              label="Screens"  active={pathname.startsWith("/screens")} />
-        <NavItem href="/vault"     icon={Tray}                   label="Vault"    active={pathname === "/vault"} />
-        <NavItem href="/automate"     icon={TreeStructure}          label="Automate"     active={pathname.startsWith("/automate")} />
-        <NavItem href="/marketplace"  icon={HandbagIcon}            label="Marketplace"  active={pathname.startsWith("/marketplace")} />
-        <NavItem href="/history"      icon={ClockCounterClockwise}  label="History"      active={pathname === "/history"} />
+        {pinsToRender.map((pin, i) => {
+          if (pin.type === 'item') {
+            const active = pin.href === '/' ? pathname === '/' : pathname.startsWith(pin.href);
+            return (
+              <NavItem key={i} href={pin.href} icon={ICONS[pin.icon] || AppWindow} label={pin.label} active={active} />
+            );
+          }
+          return null;
+        })}
         <NavGroup
           icon={Plugs}
           label="Integrations"

@@ -26,7 +26,7 @@ export default function CoordinatorPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: any }) => setUserId(data.user?.id || null));
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null));
   }, []);
 
   const loadSessions = useCallback(async () => {

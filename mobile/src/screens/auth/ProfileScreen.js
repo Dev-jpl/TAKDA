@@ -1,31 +1,31 @@
 import React, { useEffect, useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native'
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, Alert, ActivityIndicator,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { supabase } from '../../services/supabase'
 import { spacesService } from '../../services/spaces'
 import { hubsService } from '../../services/hubs'
 import { colors } from '../../constants/colors'
-import { 
-  User, SignOut, CaretLeft, Bell, 
-  ShieldCheck, Database, Key, IdentificationCard 
+import {
+  CaretLeft, SignOut, User, EnvelopSimple,
+  FolderOpen, AppWindow, CalendarBlank,
 } from 'phosphor-react-native'
 
 export default function ProfileScreen({ navigation }) {
-  const [user, setUser] = useState(null)
-  const [stats, setStats] = useState({ spaces: 0, hubs: 0 })
+  const [user,    setUser]    = useState(null)
+  const [stats,   setStats]   = useState({ spaces: 0, hubs: 0 })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setUser(user)
-    
-    if (user) {
+    const { data: { user: u } } = await supabase.auth.getUser()
+    setUser(u)
+    if (u) {
       try {
-        const spaces = await spacesService.getSpaces(user.id)
+        const spaces = await spacesService.getSpaces(u.id)
         let hubCount = 0
         for (const s of spaces) {
           const hubs = await hubsService.getHubs(s.id)
@@ -39,268 +39,220 @@ export default function ProfileScreen({ navigation }) {
     setLoading(false)
   }
 
-  const handleLogout = async () => {
-    Alert.alert('Logout', 'Are you sure you want to sign out? Your local state will be cleared.', [
+  const handleLogout = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Logout', 
-        style: 'destructive', 
-        onPress: async () => {
-          await supabase.auth.signOut()
-        } 
-      },
+      { text: 'Sign Out', style: 'destructive', onPress: () => supabase.auth.signOut() },
     ])
   }
 
-  const initials = user?.user_metadata?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'
+  const fullName = user?.user_metadata?.full_name || ''
+  const initials = fullName
+    ? fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    : (user?.email?.[0] ?? 'U').toUpperCase()
+
+  const memberSince = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    : null
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator color={colors.modules.track} size="large" />
+      <View style={[s.container, s.centered]}>
+        <ActivityIndicator color={colors.text.tertiary} />
       </View>
     )
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
-          style={styles.backBtn}
-          hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
+    <SafeAreaView style={s.container} edges={['top']}>
+      {/* Header */}
+      <View style={s.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={s.backBtn}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
         >
-          <CaretLeft color={colors.text.primary} size={24} weight="regular" />
+          <CaretLeft color={colors.text.primary} size={22} />
         </TouchableOpacity>
-        <Text style={styles.title}>IDENTITY</Text>
-        <View style={{ width: 44 }} />
+        <Text style={s.headerTitle}>Profile</Text>
+        <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Profile Identity Card */}
-        <View style={styles.identitySection}>
-          <View style={styles.largeAvatar}>
-            <Text style={styles.largeAvatarText}>{initials}</Text>
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* Identity card */}
+        <View style={s.identityCard}>
+          <View style={s.avatar}>
+            <Text style={s.avatarText}>{initials}</Text>
           </View>
-          <Text style={styles.userName}>{user?.user_metadata?.full_name || 'TAKDA User'}</Text>
-          <Text style={styles.userEmail}>{user?.email}</Text>
-          <View style={styles.verifiedBadge}>
-            <ShieldCheck color={colors.modules.track} size={14} weight="fill" />
-            <Text style={styles.verifiedText}>SECURED CORE</Text>
+          <View style={s.identityInfo}>
+            <Text style={s.userName} numberOfLines={1}>
+              {fullName || 'No name set'}
+            </Text>
+            <Text style={s.userEmail} numberOfLines={1}>{user?.email}</Text>
+            {memberSince && (
+              <View style={s.memberRow}>
+                <CalendarBlank size={11} color={colors.text.tertiary} />
+                <Text style={s.memberText}>Member since {memberSince}</Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Quick Stats Dashboard */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{stats.spaces}</Text>
-            <Text style={styles.statLabel}>SPACES</Text>
+        {/* Stats */}
+        <View style={s.statsRow}>
+          <View style={s.statCard}>
+            <View style={[s.statIcon, { backgroundColor: colors.modules.track + '15' }]}>
+              <FolderOpen size={16} color={colors.modules.track} />
+            </View>
+            <Text style={s.statValue}>{stats.spaces}</Text>
+            <Text style={s.statLabel}>Spaces</Text>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>{stats.hubs}</Text>
-            <Text style={styles.statLabel}>HUBS</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>1.0</Text>
-            <Text style={styles.statLabel}>VERSION</Text>
-          </View>
-        </View>
-
-        {/* Account Control Center */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Control</Text>
-          <View style={styles.menu}>
-            <MenuLink icon={IdentificationCard} label="Edit Profile" />
-            <MenuLink icon={Key} label="Login & Security" />
-            <MenuLink icon={Bell} label="Notification Center" />
+          <View style={s.statCard}>
+            <View style={[s.statIcon, { backgroundColor: colors.modules.automate + '15' }]}>
+              <AppWindow size={16} color={colors.modules.automate} />
+            </View>
+            <Text style={s.statValue}>{stats.hubs}</Text>
+            <Text style={s.statLabel}>Hubs</Text>
           </View>
         </View>
 
-        {/* Data & Privacy */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Privacy & Data</Text>
-          <View style={styles.menu}>
-            <MenuLink icon={ShieldCheck} label="Privacy Management" />
-            <MenuLink icon={Database} label="Backup & Export" />
+        {/* Account info */}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Account</Text>
+          <View style={s.infoCard}>
+            <InfoRow icon={User} label="Name" value={fullName || '—'} />
+            <InfoRow icon={EnvelopSimple} label="Email" value={user?.email || '—'} last />
           </View>
         </View>
 
-        {/* Danger Zone */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Operations</Text>
-          <TouchableOpacity 
-            style={styles.logoutBtn} 
-            onPress={handleLogout}
-            activeOpacity={0.8}
-          >
-            <SignOut color={colors.status.high} size={20} weight="regular" />
-            <Text style={styles.logoutText}>Terminate Session</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Sign out */}
+        <TouchableOpacity style={s.signOutBtn} onPress={handleLogout} activeOpacity={0.75}>
+          <SignOut size={18} color="#f87171" />
+          <Text style={s.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
 
-        <Text style={styles.trademark}>TAKDA — SYSTEM OPERATIONAL</Text>
-        <View style={{ height: 60 }} />
       </ScrollView>
     </SafeAreaView>
   )
 }
 
-function MenuLink({ icon: Icon, label }) {
+function InfoRow({ icon: Icon, label, value, last }) {
   return (
-    <TouchableOpacity style={styles.menuItem}>
-      <View style={styles.menuLeft}>
-        <Icon color={colors.text.secondary} size={20} weight="light" />
-        <Text style={styles.menuLabel}>{label}</Text>
-      </View>
-      <Text style={styles.arrow}>›</Text>
-    </TouchableOpacity>
+    <View style={[s.infoRow, !last && s.infoRowBorder]}>
+      <Icon size={15} color={colors.text.tertiary} />
+      <Text style={s.infoLabel}>{label}</Text>
+      <Text style={s.infoValue} numberOfLines={1}>{value}</Text>
+    </View>
   )
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background.primary },
-  centered: { alignItems: 'center', justifyContent: 'center' },
+  centered:  { alignItems: 'center', justifyContent: 'center' },
+
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.border.primary,
   },
-  backBtn: { width: 44, height: 44, justifyContent: 'center' },
-  title: { 
-    fontSize: 12, 
-    fontWeight: '700', 
-    color: colors.text.tertiary, 
-    letterSpacing: 2, 
-    textTransform: 'uppercase' 
-  },
-  scroll: { padding: 20, gap: 32 },
-  identitySection: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 8,
-  },
-  largeAvatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.modules.track + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.modules.track + '30',
-    marginBottom: 12,
-  },
-  largeAvatarText: {
-    fontSize: 32,
-    fontWeight: '600',
-    color: colors.modules.track,
-  },
-  userName: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  userEmail: {
-    fontSize: 14,
-    color: colors.text.tertiary,
-    marginBottom: 8,
-  },
-  verifiedBadge: {
+  backBtn: { width: 36, height: 36, justifyContent: 'center' },
+  headerTitle: { fontSize: 15, fontWeight: '600', color: colors.text.primary },
+
+  scroll: { padding: 16, gap: 12, paddingBottom: 60 },
+
+  // Identity
+  identityCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 14,
     backgroundColor: colors.background.secondary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
+    padding: 16,
   },
-  verifiedText: {
-    fontSize: 10,
-    color: colors.text.tertiary,
-    fontWeight: '700',
-    letterSpacing: 1,
+  avatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.modules.aly + '15',
+    borderWidth: 1,
+    borderColor: colors.modules.aly + '25',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  statsRow: {
-    flexDirection: 'row',
+  avatarText: { fontSize: 20, fontWeight: '700', color: colors.modules.aly },
+  identityInfo: { flex: 1, minWidth: 0, gap: 3 },
+  userName:  { fontSize: 15, fontWeight: '600', color: colors.text.primary },
+  userEmail: { fontSize: 13, color: colors.text.tertiary },
+  memberRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  memberText: { fontSize: 11, color: colors.text.tertiary },
+
+  // Stats
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statCard: {
+    flex: 1,
     backgroundColor: colors.background.secondary,
     borderRadius: 16,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
-    padding: 20,
-    alignItems: 'center',
+    padding: 14,
+    alignItems: 'flex-start',
+    gap: 8,
   },
-  statBox: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  statLabel: {
-    fontSize: 10,
+  statIcon:  { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: 22, fontWeight: '700', color: colors.text.primary },
+  statLabel: { fontSize: 11, color: colors.text.tertiary, marginTop: -4 },
+
+  // Account section
+  section: { gap: 8 },
+  sectionTitle: {
+    fontSize: 11,
     fontWeight: '700',
     color: colors.text.tertiary,
-    letterSpacing: 1,
-    marginTop: 4,
-  },
-  statDivider: {
-    width: 0.5,
-    height: 24,
-    backgroundColor: colors.border.primary,
-  },
-  section: { gap: 12 },
-  sectionTitle: { 
-    fontSize: 11, 
-    fontWeight: '700', 
-    color: colors.text.tertiary, 
-    letterSpacing: 1, 
     textTransform: 'uppercase',
+    letterSpacing: 1,
     marginLeft: 4,
   },
-  menu: { 
-    backgroundColor: colors.background.secondary, 
-    borderRadius: 16, 
-    borderWidth: 0.5, 
+  infoCard: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 16,
+    borderWidth: 0.5,
     borderColor: colors.border.primary,
     overflow: 'hidden',
   },
-  menuItem: {
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 18,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border.primary,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
   },
-  menuLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  menuLabel: { fontSize: 15, color: colors.text.primary, fontWeight: '500' },
-  arrow: { fontSize: 20, color: colors.text.tertiary },
-  logoutBtn: {
+  infoRowBorder: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border.primary + '80',
+  },
+  infoLabel: { fontSize: 13, color: colors.text.tertiary, width: 52 },
+  infoValue: { flex: 1, fontSize: 13, color: colors.text.primary },
+
+  // Sign out
+  signOutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     backgroundColor: colors.background.secondary,
-    padding: 20,
     borderRadius: 16,
     borderWidth: 0.5,
-    borderColor: colors.status.high + '30',
-    gap: 12,
+    borderColor: '#f87171' + '30',
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    marginTop: 4,
   },
-  logoutText: { fontSize: 15, fontWeight: '600', color: colors.status.high },
-  trademark: { 
-    textAlign: 'center', 
-    fontSize: 10, 
-    color: colors.text.tertiary, 
-    marginTop: 40, 
-    letterSpacing: 1 
-  },
+  signOutText: { fontSize: 14, fontWeight: '600', color: '#f87171' },
 })

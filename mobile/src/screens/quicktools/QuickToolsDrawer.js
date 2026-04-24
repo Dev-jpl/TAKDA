@@ -12,12 +12,13 @@ import {
   Platform,
   Pressable,
   Keyboard,
+  Alert,
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
-  X, Tray, CurrencyDollar, ForkKnife, Note,
+  X, Check, Tray, CurrencyDollar, ForkKnife, Note,
   CalendarBlank, Lightning,
 } from 'phosphor-react-native'
 import { colors } from '../../constants/colors'
@@ -79,7 +80,18 @@ const CATEGORIZED_TOOLS = [
 
 const EXPENSE_CATEGORIES = ['General', 'Food', 'Transport', 'Health', 'Entertainment', 'Shopping', 'Utilities', 'Other']
 
-function ExpenseForm({ userId, onDone }) {
+const CAT_META = {
+  General:       { hex: '#6B7280' },
+  Food:          { hex: '#FB923C' },
+  Transport:     { hex: '#60A5FA' },
+  Health:        { hex: '#F87171' },
+  Entertainment: { hex: '#C084FC' },
+  Shopping:      { hex: '#F472B6' },
+  Utilities:     { hex: '#FACC15' },
+  Other:         { hex: '#6B7280' },
+}
+
+function ExpenseForm({ onDone }) {
   const [amount,   setAmount]   = useState('')
   const [item,     setItem]     = useState('')
   const [merchant, setMerchant] = useState('')
@@ -91,43 +103,105 @@ function ExpenseForm({ userId, onDone }) {
     if (!amt || isNaN(amt) || amt <= 0) return
     setLoading(true)
     try {
-      const { error } = await supabase.from('expenses').insert({
-        user_id:  userId,
-        hub_id:   null,
-        amount:   amt,
-        item:     item.trim()     || null,
-        merchant: merchant.trim() || null,
-        category,
-        currency: 'PHP',
-        date:     new Date().toISOString().split('T')[0],
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not signed in')
+
+      // Get module def
+      const { data: def } = await supabase.from('module_definitions').select('id').eq('slug', 'expense_tracker').single()
+      if (!def) throw new Error('Expense tracker module not found')
+
+      const { error } = await supabase.from('module_entries').insert({
+        module_def_id: def.id,
+        user_id:       user.id,
+        hub_id:        null,
+        data: {
+          amount:   amt,
+          item:     item.trim()     || null,
+          merchant: merchant.trim() || null,
+          category,
+          currency: '₱',
+          date:     new Date().toISOString().split('T')[0],
+        }
       })
       if (error) throw error
       onDone()
     } catch (e) {
       console.warn('ExpenseForm error:', e)
+      Alert.alert('Error', 'Could not save expense. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <View style={styles.form}>
-      <TextInput style={styles.formInput} placeholder="Amount (PHP)" placeholderTextColor={colors.text.tertiary}
-        value={amount} onChangeText={setAmount} keyboardType="decimal-pad" autoFocus />
-      <TextInput style={styles.formInput} placeholder="Item (e.g. Fried Chicken, Gas)" placeholderTextColor={colors.text.tertiary}
-        value={item} onChangeText={setItem} />
-      <TextInput style={styles.formInput} placeholder="Merchant (optional)" placeholderTextColor={colors.text.tertiary}
-        value={merchant} onChangeText={setMerchant} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
-        {EXPENSE_CATEGORIES.map(c => (
-          <Pressable key={c} onPress={() => setCategory(c)}
-            style={[styles.categoryPill, category === c && styles.categoryPillActive]}>
-            <Text style={[styles.categoryPillText, category === c && styles.categoryPillTextActive]}>{c}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-      <SubmitBtn label="Log Expense" loading={loading} disabled={!amount} onPress={submit} />
-    </View>
+    <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
+      {/* Amount */}
+      <Text style={styles.fieldLabel}>Amount</Text>
+      <View style={styles.amountRow}>
+        <Text style={styles.currencyLabel}>PHP</Text>
+        <TextInput
+          style={styles.amountInput}
+          placeholder="0.00"
+          placeholderTextColor={colors.text.tertiary}
+          value={amount}
+          onChangeText={setAmount}
+          keyboardType="decimal-pad"
+          autoFocus
+        />
+      </View>
+
+      {/* Item */}
+      <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Item</Text>
+      <TextInput
+        style={styles.formInput}
+        placeholder="e.g. Fried Chicken, Gas, Groceries"
+        placeholderTextColor={colors.text.tertiary}
+        value={item}
+        onChangeText={setItem}
+      />
+
+      {/* Merchant */}
+      <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+        Merchant <Text style={styles.fieldLabelOptional}>(optional)</Text>
+      </Text>
+      <TextInput
+        style={styles.formInput}
+        placeholder="e.g. Jollibee, Shell, SM"
+        placeholderTextColor={colors.text.tertiary}
+        value={merchant}
+        onChangeText={setMerchant}
+      />
+
+      {/* Category */}
+      <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Category</Text>
+      <View style={styles.pillWrap}>
+        {EXPENSE_CATEGORIES.map(c => {
+          const meta = CAT_META[c] ?? CAT_META.Other
+          const sel  = category === c
+          return (
+            <Pressable
+              key={c}
+              onPress={() => setCategory(c)}
+              style={[styles.pill, sel && { backgroundColor: meta.hex + '25', borderColor: meta.hex }]}
+            >
+              <Text style={[styles.pillText, sel && { color: meta.hex }]}>{c}</Text>
+            </Pressable>
+          )
+        })}
+      </View>
+
+      <TouchableOpacity
+        style={[styles.saveBtn, { backgroundColor: colors.modules.deliver }, (!amount || loading) && styles.saveBtnDisabled]}
+        onPress={submit}
+        disabled={!amount || loading}
+      >
+        {loading
+          ? <ActivityIndicator size="small" color="#fff" />
+          : <><Check color="#fff" size={14} weight="bold" /><Text style={styles.saveBtnText}>Save Expense</Text></>
+        }
+      </TouchableOpacity>
+      <View style={{ height: 16 }} />
+    </ScrollView>
   )
 }
 
@@ -138,7 +212,7 @@ const MEAL_TYPES = [
   { key: 'snack',     label: 'Snacks',    color: '#EC4899' },
 ]
 
-function FoodForm({ userId, onDone }) {
+function FoodForm({ onDone }) {
   const [meal,     setMeal]     = useState('breakfast')
   const [food,     setFood]     = useState('')
   const [calories, setCalories] = useState('')
@@ -151,55 +225,129 @@ function FoodForm({ userId, onDone }) {
     if (!food.trim()) return
     setLoading(true)
     try {
-      const { error } = await supabase.from('food_logs').insert({
-        user_id:   userId,
-        hub_id:    null,
-        food_name: food.trim(),
-        meal_type: meal,
-        calories:  calories ? parseFloat(calories)  : null,
-        fat_g:     fat      ? parseFloat(fat)       : null,
-        carbs_g:   carbs    ? parseFloat(carbs)     : null,
-        protein_g: protein  ? parseFloat(protein)   : null,
-        logged_at: new Date().toISOString(),
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not signed in')
+
+      // Get module def
+      const { data: def } = await supabase.from('module_definitions').select('id').eq('slug', 'calorie_counter').single()
+      if (!def) throw new Error('Calorie counter module not found')
+
+      const { error } = await supabase.from('module_entries').insert({
+        module_def_id: def.id,
+        user_id:       user.id,
+        hub_id:        null,
+        data: {
+          food_name: food.trim(),
+          meal_type: meal,
+          calories:  calories ? parseFloat(calories)  : null,
+          fat_g:     fat      ? parseFloat(fat)       : null,
+          carbs_g:   carbs    ? parseFloat(carbs)     : null,
+          protein_g: protein  ? parseFloat(protein)   : null,
+          logged_at: new Date().toISOString(),
+        }
       })
       if (error) throw error
       onDone()
     } catch (e) {
       console.warn('FoodForm error:', e)
+      Alert.alert('Error', 'Could not save food log. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <View style={styles.form}>
-      {/* Meal picker */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+    <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
+      {/* Meal type */}
+      <Text style={styles.fieldLabel}>Meal</Text>
+      <View style={styles.pillWrap}>
         {MEAL_TYPES.map(m => (
-          <Pressable key={m.key} onPress={() => setMeal(m.key)}
-            style={[styles.categoryPill, meal === m.key && { backgroundColor: m.color + '25', borderColor: m.color }]}>
-            <Text style={[styles.categoryPillText, meal === m.key && { color: m.color }]}>{m.label}</Text>
+          <Pressable
+            key={m.key}
+            onPress={() => setMeal(m.key)}
+            style={[styles.pill, meal === m.key && { backgroundColor: m.color + '25', borderColor: m.color }]}
+          >
+            <Text style={[styles.pillText, meal === m.key && { color: m.color }]}>{m.label}</Text>
           </Pressable>
         ))}
-      </ScrollView>
-      <TextInput style={styles.formInput} placeholder="Food (e.g. Banana, Fried Chicken)" placeholderTextColor={colors.text.tertiary}
-        value={food} onChangeText={setFood} autoFocus />
-      <TextInput style={styles.formInput} placeholder="Calories (kcal)" placeholderTextColor={colors.text.tertiary}
-        value={calories} onChangeText={setCalories} keyboardType="decimal-pad" />
-      <View style={styles.macroRow}>
-        <TextInput style={[styles.formInput, styles.macroInput]} placeholder="Fat (g)" placeholderTextColor={colors.text.tertiary}
-          value={fat} onChangeText={setFat} keyboardType="decimal-pad" />
-        <TextInput style={[styles.formInput, styles.macroInput]} placeholder="Carbs (g)" placeholderTextColor={colors.text.tertiary}
-          value={carbs} onChangeText={setCarbs} keyboardType="decimal-pad" />
-        <TextInput style={[styles.formInput, styles.macroInput]} placeholder="Protein (g)" placeholderTextColor={colors.text.tertiary}
-          value={protein} onChangeText={setProtein} keyboardType="decimal-pad" />
       </View>
-      <SubmitBtn label="Log Food" loading={loading} disabled={!food.trim()} onPress={submit} />
-    </View>
+
+      {/* Food name */}
+      <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Food</Text>
+      <TextInput
+        style={styles.formInput}
+        placeholder="e.g. Banana, Fried Chicken"
+        placeholderTextColor={colors.text.tertiary}
+        value={food}
+        onChangeText={setFood}
+        autoFocus
+      />
+
+      {/* Calories */}
+      <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Calories <Text style={styles.fieldLabelOptional}>(kcal)</Text></Text>
+      <TextInput
+        style={styles.formInput}
+        placeholder="e.g. 350"
+        placeholderTextColor={colors.text.tertiary}
+        value={calories}
+        onChangeText={setCalories}
+        keyboardType="decimal-pad"
+      />
+
+      {/* Macros */}
+      <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Macros <Text style={styles.fieldLabelOptional}>(g, optional)</Text></Text>
+      <View style={styles.macroRow}>
+        <View style={styles.macroCell}>
+          <Text style={styles.macroLabel}>Protein</Text>
+          <TextInput
+            style={styles.formInput}
+            placeholder="0"
+            placeholderTextColor={colors.text.tertiary}
+            value={protein}
+            onChangeText={setProtein}
+            keyboardType="decimal-pad"
+          />
+        </View>
+        <View style={styles.macroCell}>
+          <Text style={styles.macroLabel}>Carbs</Text>
+          <TextInput
+            style={styles.formInput}
+            placeholder="0"
+            placeholderTextColor={colors.text.tertiary}
+            value={carbs}
+            onChangeText={setCarbs}
+            keyboardType="decimal-pad"
+          />
+        </View>
+        <View style={styles.macroCell}>
+          <Text style={styles.macroLabel}>Fat</Text>
+          <TextInput
+            style={styles.formInput}
+            placeholder="0"
+            placeholderTextColor={colors.text.tertiary}
+            value={fat}
+            onChangeText={setFat}
+            keyboardType="decimal-pad"
+          />
+        </View>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.saveBtn, { backgroundColor: '#10B981' }, (!food.trim() || loading) && styles.saveBtnDisabled]}
+        onPress={submit}
+        disabled={!food.trim() || loading}
+      >
+        {loading
+          ? <ActivityIndicator size="small" color="#fff" />
+          : <><Check color="#fff" size={14} weight="bold" /><Text style={styles.saveBtnText}>Add Food</Text></>
+        }
+      </TouchableOpacity>
+      <View style={{ height: 16 }} />
+    </ScrollView>
   )
 }
 
-function NoteForm({ userId, onDone }) {
+function NoteForm({ onDone }) {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -207,10 +355,13 @@ function NoteForm({ userId, onDone }) {
     if (!text.trim()) return
     setLoading(true)
     try {
-      await vaultService.createItem(userId, text.trim(), 'text')
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not signed in')
+      await vaultService.createItem(user.id, text.trim(), 'text')
       onDone()
     } catch (e) {
       console.warn('NoteForm error:', e)
+      Alert.alert('Error', 'Could not save note. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -504,62 +655,101 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   form: {
-    gap: 12,
     paddingBottom: 16,
   },
   formInput: {
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.background.secondary,
     borderRadius: 10,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
     color: colors.text.primary,
   },
-  submitBtn: {
-    backgroundColor: colors.modules.aly,
-    borderRadius: 10,
-    paddingVertical: 14,
+  fieldLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.text.tertiary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  fieldLabelOptional: {
+    fontSize: 10,
+    fontWeight: '400',
+    color: colors.text.tertiary,
+    textTransform: 'none',
+    letterSpacing: 0,
+  },
+  amountRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    gap: 8,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: colors.border.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  submitBtnDisabled: {
-    opacity: 0.4,
+  currencyLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text.tertiary,
   },
-  submitBtnText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#fff',
+  amountInput: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text.primary,
   },
-  categoryPill: {
+  pillWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  pill: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 0.5,
     borderColor: colors.border.primary,
-    backgroundColor: colors.background.tertiary,
-    marginHorizontal: 3,
+    backgroundColor: colors.background.secondary,
   },
-  categoryPillActive: {
-    backgroundColor: colors.modules.aly + '20',
-    borderColor: colors.modules.aly,
-  },
-  categoryPillText: {
+  pillText: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.text.tertiary,
-  },
-  categoryPillTextActive: {
-    color: colors.modules.aly,
   },
   macroRow: {
     flexDirection: 'row',
     gap: 8,
   },
-  macroInput: {
+  macroCell: {
     flex: 1,
-    paddingHorizontal: 10,
+    gap: 4,
+  },
+  macroLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.text.tertiary,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    paddingVertical: 13,
+    marginTop: 16,
+  },
+  saveBtnDisabled: { opacity: 0.4 },
+  saveBtnText: {
     fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
   },
 })

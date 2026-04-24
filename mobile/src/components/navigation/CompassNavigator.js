@@ -1,3 +1,13 @@
+/**
+ * CompassNavigator.js
+ *
+ * Hub navigation shell.
+ *
+ * CORE modules  → fixed screens (Tasks, Notes, Resources, etc.)
+ * ADDON modules → rendered dynamically via DynamicModuleScreen.
+ *                 Any new module added via the web Module Creator auto-adopts.
+ */
+
 import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, Pressable, StyleSheet, Modal,
@@ -13,35 +23,32 @@ import { supabase } from "../../services/supabase";
 import { colors } from "../../constants/colors";
 import { hubsService } from "../../services/hubs";
 import { addonsService } from "../../services/addons";
+import { hubStore } from "../../services/hubStore";
+import { getDefinitions, getDefBySlug } from "../../services/moduleData";
+import Shimmer from "../common/Shimmer";
 import {
   Plus, CheckCircle, PencilSimple, Files, PaperPlaneRight, GitBranch,
-  ForkKnife, CurrencyDollar, X,
+  Sparkle, X,
 } from "phosphor-react-native";
 
-import TrackScreen from "../../screens/track/TrackScreen";
+import TrackScreen    from "../../screens/track/TrackScreen";
 import AnnotateScreen from "../../screens/annotate/AnnotateScreen";
 import KnowledgeScreen from "../../screens/knowledge/KnowledgeScreen";
-import DeliverScreen from "../../screens/deliver/DeliverScreen";
+import DeliverScreen  from "../../screens/deliver/DeliverScreen";
 import AutomateScreen from "../../screens/automate/AutomateScreen";
-import CalorieTrackerScreen from "../../screens/addons/CalorieTrackerScreen";
-import ExpenseTrackerScreen from "../../screens/addons/ExpenseTrackerScreen";
+import DynamicModuleScreen from "../modules/DynamicModuleScreen";
 
-// ─── Module catalog ──────────────────────────────────────────────────────────
+// ─── Fixed core module catalog ────────────────────────────────────────────────
 
 const CORE_CATALOG = [
-  { key: "track",    label: "Tasks",       shortLabel: "T",  color: colors.modules.track,    Icon: CheckCircle,    screen: TrackScreen },
-  { key: "annotate", label: "Notes",       shortLabel: "A",  color: colors.modules.annotate, Icon: PencilSimple,   screen: AnnotateScreen },
-  { key: "knowledge",label: "Resources",   shortLabel: "K",  color: colors.modules.knowledge,Icon: Files,          screen: KnowledgeScreen },
-  { key: "deliver",  label: "Outcomes",    shortLabel: "D",  color: colors.modules.deliver,  Icon: PaperPlaneRight,screen: DeliverScreen },
-  { key: "automate", label: "Automations", shortLabel: "Au", color: "#a78bfa",               Icon: GitBranch,      screen: AutomateScreen },
+  { key: "track",     label: "Tasks",       shortLabel: "T",  color: colors.modules.track,     Icon: CheckCircle,    screen: TrackScreen },
+  { key: "annotate",  label: "Notes",       shortLabel: "A",  color: colors.modules.annotate,  Icon: PencilSimple,   screen: AnnotateScreen },
+  { key: "knowledge", label: "Resources",   shortLabel: "K",  color: colors.modules.knowledge, Icon: Files,          screen: KnowledgeScreen },
+  { key: "deliver",   label: "Outcomes",    shortLabel: "D",  color: colors.modules.deliver,   Icon: PaperPlaneRight, screen: DeliverScreen },
+  { key: "automate",  label: "Automations", shortLabel: "Au", color: "#a78bfa",                Icon: GitBranch,       screen: AutomateScreen },
 ];
 
-const ADDON_CATALOG = [
-  { key: "calorie_counter", label: "Calories",  shortLabel: "Cal", color: "#10B981", Icon: ForkKnife,       screen: CalorieTrackerScreen },
-  { key: "expense_tracker", label: "Expenses",  shortLabel: "Exp", color: "#6366F1", Icon: CurrencyDollar,  screen: ExpenseTrackerScreen },
-];
-
-// ─── Compass Dot ─────────────────────────────────────────────────────────────
+// ─── Compass Dot ──────────────────────────────────────────────────────────────
 
 function CompassDot({ label, active, onPress }) {
   return (
@@ -55,52 +62,39 @@ function CompassDot({ label, active, onPress }) {
 
 // ─── Module Picker Sheet ──────────────────────────────────────────────────────
 
-function ModulePickerSheet({ visible, onClose, hubId, userId, enabledModules, installedAddons, onToggleCore, onToggleAddon }) {
-  const [loading, setLoading] = useState(null); // key of the item being toggled
+function ModulePickerSheet({ visible, onClose, hubId, userId, enabledModules, installedAddons, addonDefs, onToggleCore, onToggleAddon }) {
+  const [loading, setLoading] = useState(null);
 
   async function handleCoreToggle(mod) {
     const isOn = enabledModules.includes(mod.key);
     setLoading(mod.key);
     try {
-      if (isOn) {
-        await hubsService.removeModule(hubId, mod.key);
-        onToggleCore(mod.key, false);
-      } else {
-        await hubsService.addModule(hubId, mod.key);
-        onToggleCore(mod.key, true);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(null);
-    }
+      if (isOn) { await hubsService.removeModule(hubId, mod.key); onToggleCore(mod.key, false); }
+      else       { await hubsService.addModule(hubId, mod.key);    onToggleCore(mod.key, true);  }
+    } catch (e) { console.error(e); }
+    finally     { setLoading(null); }
   }
 
-  async function handleAddonToggle(addon) {
-    const installed = installedAddons.find(a => a.type === addon.key);
-    setLoading(addon.key);
+  async function handleAddonToggle(def) {
+    const installed = installedAddons.find(a => a.type === def.slug);
+    setLoading(def.slug);
     try {
       if (installed) {
         await addonsService.uninstallAddon(installed.id);
-        onToggleAddon(addon.key, false, null);
+        onToggleAddon(def.slug, false, null);
       } else {
-        const newAddon = await addonsService.installAddon(hubId, userId, addon.key);
-        onToggleAddon(addon.key, true, newAddon);
+        const newAddon = await addonsService.installAddon(hubId, userId, def.slug);
+        onToggleAddon(def.slug, true, newAddon);
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(null);
-    }
+    } catch (e) { console.error(e); }
+    finally     { setLoading(null); }
   }
 
   return (
     <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
-      {/* Outer flex column: backdrop fill area + sheet — no overlap, so sheet touches are never intercepted */}
       <View style={styles.sheetOuter}>
         <Pressable style={styles.sheetBackdrop} onPress={onClose} />
         <View style={styles.sheet}>
-          {/* Header */}
           <View style={styles.sheetHeader}>
             <View>
               <Text style={styles.sheetTitle}>Modules</Text>
@@ -119,12 +113,9 @@ function ModulePickerSheet({ visible, onClose, hubId, userId, enabledModules, in
               const isLoading = loading === mod.key;
               const { Icon } = mod;
               return (
-                <TouchableOpacity
-                  key={mod.key}
+                <TouchableOpacity key={mod.key} activeOpacity={0.7}
                   style={[styles.modRow, isOn && { borderColor: mod.color + "40", backgroundColor: mod.color + "0d" }]}
-                  onPress={() => handleCoreToggle(mod)}
-                  activeOpacity={0.7}
-                >
+                  onPress={() => handleCoreToggle(mod)}>
                   <View style={[styles.modIconWrap, { backgroundColor: mod.color + "15" }]}>
                     <Icon size={15} weight={isOn ? "fill" : "regular"} color={isOn ? mod.color : colors.text.tertiary} />
                   </View>
@@ -139,34 +130,34 @@ function ModulePickerSheet({ visible, onClose, hubId, userId, enabledModules, in
               );
             })}
 
-            {/* Data addons */}
-            <Text style={[styles.sheetGroupLabel, { marginTop: 20 }]}>Data Tracking</Text>
-            {ADDON_CATALOG.map(addon => {
-              const installed = installedAddons.find(a => a.type === addon.key);
-              const isOn = !!installed;
-              const isLoading = loading === addon.key;
-              const { Icon } = addon;
-              return (
-                <TouchableOpacity
-                  key={addon.key}
-                  style={[styles.modRow, isOn && { borderColor: addon.color + "40", backgroundColor: addon.color + "0d" }]}
-                  onPress={() => handleAddonToggle(addon)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.modIconWrap, { backgroundColor: addon.color + "15" }]}>
-                    <Icon size={15} weight={isOn ? "fill" : "regular"} color={isOn ? addon.color : colors.text.tertiary} />
-                  </View>
-                  <View style={styles.modInfo}>
-                    <Text style={styles.modLabel}>{addon.label}</Text>
-                  </View>
-                  {isLoading
-                    ? <ActivityIndicator size="small" color={colors.text.tertiary} />
-                    : <Text style={[styles.modStatus, isOn && { color: addon.color }]}>{isOn ? "On" : "Off"}</Text>
-                  }
-                </TouchableOpacity>
-              );
-            })}
-
+            {/* Dynamic addon modules */}
+            {addonDefs.length > 0 && (
+              <>
+                <Text style={[styles.sheetGroupLabel, { marginTop: 20 }]}>Data Tracking</Text>
+                {addonDefs.map(def => {
+                  const isOn = !!installedAddons.find(a => a.type === def.slug);
+                  const isLoading = loading === def.slug;
+                  const hex = def.brand_color ?? def.layout?.hex ?? colors.modules.aly;
+                  return (
+                    <TouchableOpacity key={def.slug} activeOpacity={0.7}
+                      style={[styles.modRow, isOn && { borderColor: hex + "40", backgroundColor: hex + "0d" }]}
+                      onPress={() => handleAddonToggle(def)}>
+                      <View style={[styles.modIconWrap, { backgroundColor: hex + "15" }]}>
+                        <Sparkle size={15} weight={isOn ? "fill" : "regular"} color={isOn ? hex : colors.text.tertiary} />
+                      </View>
+                      <View style={styles.modInfo}>
+                        <Text style={styles.modLabel}>{def.name}</Text>
+                        {def.description ? <Text style={styles.modDesc} numberOfLines={1}>{def.description}</Text> : null}
+                      </View>
+                      {isLoading
+                        ? <ActivityIndicator size="small" color={colors.text.tertiary} />
+                        : <Text style={[styles.modStatus, isOn && { color: hex }]}>{isOn ? "On" : "Off"}</Text>
+                      }
+                    </TouchableOpacity>
+                  );
+                })}
+              </>
+            )}
             <View style={{ height: 32 }} />
           </ScrollView>
         </View>
@@ -178,32 +169,34 @@ function ModulePickerSheet({ visible, onClose, hubId, userId, enabledModules, in
 // ─── Main Navigator ───────────────────────────────────────────────────────────
 
 export default function CompassNavigator({ hub, space }) {
-  const [activeModule, setActiveModule] = useState(null);
-  const [compassOpen,  setCompassOpen]  = useState(false);
-  const [hintVisible,  setHintVisible]  = useState(false);
-  const [pickerOpen,   setPickerOpen]   = useState(false);
-  const [userId,       setUserId]       = useState(null);
+  const [activeModule,    setActiveModule]    = useState(null);
+  const [compassOpen,     setCompassOpen]     = useState(false);
+  const [hintVisible,     setHintVisible]     = useState(false);
+  const [pickerOpen,      setPickerOpen]      = useState(false);
+  const [loading,         setLoading]         = useState(true);
+  const [userId,          setUserId]          = useState(null);
 
-  // Enabled core module keys derived from hub.hub_modules
-  const [enabledModules, setEnabledModules] = useState(() =>
-    (hub?.hub_modules ?? [])
-      .filter(m => m.is_enabled)
-      .map(m => m.module)
+  // Core module state
+  const [enabledModules,  setEnabledModules]  = useState(() =>
+    (hub?.hub_modules ?? []).filter(m => m.is_enabled).map(m => m.module)
   );
 
-  // Installed addons (full objects with id + type)
+  // Addon state — full addon rows + their module_definitions
   const [installedAddons, setInstalledAddons] = useState([]);
+  const [addonDefs,       setAddonDefs]       = useState([]); // ModuleDefinition[]
 
-  const hideTimerRef = useRef(null);
-  const hintTimerRef = useRef(null);
+  const hideTimerRef   = useRef(null);
+  const hintTimerRef   = useRef(null);
   const compassOpacity = useSharedValue(0);
 
+  // ── One-time user fetch ───────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserId(user.id);
     });
   }, []);
 
+  // ── First-visit compass hint ──────────────────────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem("compass_hint_shown").then(val => {
       if (!val) {
@@ -217,28 +210,67 @@ export default function CompassNavigator({ hub, space }) {
     return () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current); };
   }, []);
 
-  // Reload when hub changes — fetch hub_modules if not included in the hub object
+  // ── Load hub data whenever hub changes ────────────────────────────────────
   useEffect(() => {
     if (!hub?.id) return;
+    setLoading(true);
 
     async function loadAll() {
-      // Fetch hub_modules (may already be embedded on the hub object)
-      let hubModules = hub.hub_modules;
-      if (!hubModules) {
-        const { data } = await supabase.from("hub_modules").select("*").eq("hub_id", hub.id);
-        hubModules = data ?? [];
+      try {
+        // Phase 1 — use hub prop data (already fetched by HubsScreen)
+        let hubModules  = hub.hub_modules  ?? [];
+        let hubAddons   = hub.hub_addons   ?? [];
+
+        // Phase 2 — warm module_definitions cache in the background
+        //            (fast Supabase read; result used for addon rendering)
+        const allDefs = await getDefinitions();
+
+        // Resolve module keys for core
+        const mods = hubModules.filter(m => m.is_enabled).map(m => m.module);
+        setEnabledModules(mods);
+
+        // Resolve addon definitions dynamically from module_definitions table
+        const resolvedAddonDefs = hubAddons
+          .map(addon => allDefs.find(d => d.slug === addon.type))
+          .filter(Boolean);
+
+        setInstalledAddons(hubAddons);
+        setAddonDefs(resolvedAddonDefs);
+
+        // Persist to store for future cache hits
+        hubStore.setHubData(hub.id, { modules: hubModules, addons: hubAddons });
+
+        // Set default active module
+        setActiveModule(prev => {
+          if (prev) return prev;
+          const firstAddon = resolvedAddonDefs[0]?.slug ?? null;
+          return mods[0] ?? firstAddon;
+        });
+
+        setLoading(false);
+
+        // Phase 3 — background re-fetch if store says stale or props were minimal
+        const cached = hubStore.getHubData(hub.id);
+        if (cached?.isStale || hubModules.length === 0) {
+          const { data: freshHub } = await supabase
+            .from("hubs")
+            .select("id, hub_modules(*), hub_addons(id, type, config)")
+            .eq("id", hub.id)
+            .single();
+          if (freshHub) {
+            const freshMods    = (freshHub.hub_modules || []).filter(m => m.is_enabled).map(m => m.module);
+            const freshAddons  = freshHub.hub_addons || [];
+            const freshDefs    = freshAddons.map(a => allDefs.find(d => d.slug === a.type)).filter(Boolean);
+            setEnabledModules(freshMods);
+            setInstalledAddons(freshAddons);
+            setAddonDefs(freshDefs);
+            hubStore.setHubData(hub.id, { modules: freshHub.hub_modules || [], addons: freshAddons });
+          }
+        }
+      } catch (e) {
+        console.warn('CompassNavigator loadAll error:', e);
+        setLoading(false);
       }
-      const mods = hubModules.filter(m => m.is_enabled).map(m => m.module);
-      setEnabledModules(mods);
-
-      // Fetch addons directly from Supabase (works on device; backend may not be reachable)
-      const { data: addonData } = await supabase.from("hub_addons").select("*").eq("hub_id", hub.id);
-      const addons = addonData ?? [];
-      setInstalledAddons(addons);
-
-      // Set first available tab — core module first, addon second
-      const firstAddonKey = ADDON_CATALOG.find(a => addons.some(i => i.type === a.key))?.key ?? null;
-      setActiveModule(mods[0] ?? firstAddonKey);
     }
 
     loadAll();
@@ -248,85 +280,112 @@ export default function CompassNavigator({ hub, space }) {
     setCompassOpen(false);
   }, [hub?.id]);
 
-
-  // Build visible nav items
-  const coreNavItems = CORE_CATALOG.filter(m => enabledModules.includes(m.key));
-  const addonNavItems = ADDON_CATALOG.filter(a => installedAddons.some(i => i.type === a.key));
+  // ── Nav item lists ────────────────────────────────────────────────────────
+  const coreNavItems  = CORE_CATALOG.filter(m => enabledModules.includes(m.key));
+  const addonNavItems = addonDefs.map(def => ({
+    key:        def.slug,
+    label:      def.name,
+    shortLabel: def.name.slice(0, 3).toUpperCase(),
+    color:      def.brand_color ?? def.layout?.hex ?? colors.modules.aly,
+    def,
+  }));
   const allNavItems = [...coreNavItems, ...addonNavItems];
 
-  // Screen lookup
-  const screenMap = {
-    ...Object.fromEntries(CORE_CATALOG.map(m => [m.key, m.screen])),
-    ...Object.fromEntries(ADDON_CATALOG.map(a => [a.key, a.screen])),
-  };
-
+  // ── Compass animation ─────────────────────────────────────────────────────
   const compassOverlayStyle = useAnimatedStyle(() => ({ opacity: compassOpacity.value }));
   const showCompass = () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     setCompassOpen(true);
     compassOpacity.value = withTiming(1, { duration: 180 });
   };
-
   const hideCompass = () => {
     compassOpacity.value = withTiming(0, { duration: 220 });
     hideTimerRef.current = setTimeout(() => setCompassOpen(false), 220);
   };
 
+  // ── Toggle handlers ───────────────────────────────────────────────────────
   function handleToggleCore(key, enabled) {
     setEnabledModules(prev => enabled ? [...prev, key] : prev.filter(k => k !== key));
     if (!enabled && activeModule === key) {
-      const remaining = enabledModules.filter(k => k !== key);
-      setActiveModule(remaining[0] ?? null);
+      setActiveModule(enabledModules.filter(k => k !== key)[0] ?? null);
     }
   }
 
-  function handleToggleAddon(type, enabled, addonObj) {
+  function handleToggleAddon(slug, enabled, addonObj) {
     if (enabled) {
       setInstalledAddons(prev => [...prev, addonObj]);
-      setActiveModule(type);
+      getDefBySlug(slug).then(def => {
+        if (def) {
+          setAddonDefs(prev => [...prev, def]);
+          setActiveModule(slug);
+        }
+      });
     } else {
-      setInstalledAddons(prev => prev.filter(a => a.type !== type));
-      if (activeModule === type) {
-        setActiveModule(allNavItems.find(i => i.key !== type)?.key ?? null);
+      setInstalledAddons(prev => prev.filter(a => a.type !== slug));
+      setAddonDefs(prev => prev.filter(d => d.slug !== slug));
+      if (activeModule === slug) {
+        setActiveModule(allNavItems.find(i => i.key !== slug)?.key ?? null);
       }
     }
   }
 
-  const ActiveScreen = activeModule ? screenMap[activeModule] : null;
+  // ── Loading state ─────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Shimmer.Module />
+        <Shimmer.BottomNav count={Math.max((hub?.hub_modules?.filter(m => m.is_enabled).length ?? 0) + 1, 2)} />
+      </View>
+    );
+  }
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
 
-      {/* ── Active screen content ── */}
+      {/* ── Screen stack ── */}
       <View style={styles.screen}>
-        {ActiveScreen
-          ? <ActiveScreen hub={hub} space={space} />
-          : (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>No modules enabled</Text>
-              <TouchableOpacity style={styles.emptyBtn} onPress={() => setPickerOpen(true)}>
-                <Plus size={13} color={colors.modules.annotate} weight="bold" />
-                <Text style={styles.emptyBtnText}>Add Module</Text>
-              </TouchableOpacity>
-            </View>
-          )
-        }
+        {allNavItems.length === 0 ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>No modules enabled</Text>
+            <TouchableOpacity style={styles.emptyBtn} onPress={() => setPickerOpen(true)}>
+              <Plus size={13} color={colors.modules.annotate} weight="bold" />
+              <Text style={styles.emptyBtnText}>Add Module</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          allNavItems.map(item => {
+            const isActive = activeModule === item.key;
+            // Core screens
+            if (item.screen) {
+              return (
+                <View key={item.key} style={[StyleSheet.absoluteFill, { display: isActive ? 'flex' : 'none' }]}>
+                  <item.screen hub={hub} space={space} />
+                </View>
+              );
+            }
+            // Dynamic addon screens
+            if (item.def) {
+              return (
+                <View key={item.key} style={[StyleSheet.absoluteFill, { display: isActive ? 'flex' : 'none' }]}>
+                  <DynamicModuleScreen definition={item.def} hub={hub} userId={userId} />
+                </View>
+              );
+            }
+            return null;
+          })
+        )}
       </View>
 
-      {/* ── Compass overlay ── */}
-      {coreNavItems.length > 0 && (
+      {/* ── Compass overlay (core only) ── */}
+      {coreNavItems.length > 1 && (
         <Animated.View
           style={[styles.compassOverlay, compassOverlayStyle]}
-          pointerEvents={compassOpen ? "box-none" : "none"}
-        >
+          pointerEvents={compassOpen ? "box-none" : "none"}>
           <View style={styles.compassHUD}>
             {coreNavItems.map(m => (
-              <CompassDot
-                key={m.key}
-                label={m.shortLabel}
-                active={activeModule === m.key}
-                onPress={() => { setActiveModule(m.key); hideCompass(); }}
-              />
+              <CompassDot key={m.key} label={m.shortLabel} active={activeModule === m.key}
+                onPress={() => { setActiveModule(m.key); hideCompass(); }} />
             ))}
           </View>
         </Animated.View>
@@ -343,16 +402,14 @@ export default function CompassNavigator({ hub, space }) {
       <View style={styles.bottomNav}>
         {allNavItems.map(item => {
           const isActive = activeModule === item.key;
-          const isAddon  = !!ADDON_CATALOG.find(a => a.key === item.key);
+          const isCore   = !!item.screen;
           return (
-            <Pressable
-              key={item.key}
+            <Pressable key={item.key}
               onPress={() => setActiveModule(item.key)}
-              onLongPress={!isAddon && coreNavItems.length > 1 ? showCompass : undefined}
-              onPressOut={!isAddon && coreNavItems.length > 1 ? hideCompass : undefined}
+              onLongPress={isCore && coreNavItems.length > 1 ? showCompass : undefined}
+              onPressOut={isCore && coreNavItems.length > 1 ? hideCompass : undefined}
               delayLongPress={350}
-              style={styles.navItem}
-            >
+              style={styles.navItem}>
               <Text style={[styles.navLabel, isActive && { color: item.color }]}>
                 {item.shortLabel}
               </Text>
@@ -361,14 +418,13 @@ export default function CompassNavigator({ hub, space }) {
           );
         })}
 
-        {/* Add / manage modules button */}
         <Pressable onPress={() => setPickerOpen(true)} style={styles.navItem}>
           <Plus size={14} color={colors.text.tertiary} />
           <View style={styles.navIndicator} />
         </Pressable>
       </View>
 
-      {/* ── Module picker sheet ── */}
+      {/* ── Module picker ── */}
       <ModulePickerSheet
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -376,10 +432,10 @@ export default function CompassNavigator({ hub, space }) {
         userId={userId}
         enabledModules={enabledModules}
         installedAddons={installedAddons}
+        addonDefs={addonDefs.length > 0 ? addonDefs : []}
         onToggleCore={handleToggleCore}
         onToggleAddon={handleToggleAddon}
       />
-
     </View>
   );
 }
@@ -395,16 +451,12 @@ const styles = StyleSheet.create({
   emptyBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
     backgroundColor: colors.modules.annotate + "15",
-    borderRadius: 12, borderWidth: 0.5,
-    borderColor: colors.modules.annotate + "40",
+    borderRadius: 12, borderWidth: 0.5, borderColor: colors.modules.annotate + "40",
     paddingHorizontal: 16, paddingVertical: 10,
   },
   emptyBtnText: { fontSize: 13, fontWeight: "600", color: colors.modules.annotate },
 
-  compassOverlay: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    justifyContent: "center", alignItems: "center",
-  },
+  compassOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "center", alignItems: "center" },
   compassHUD: {
     flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8,
     backgroundColor: "rgba(10, 10, 10, 0.88)",
@@ -419,8 +471,8 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: colors.border.primary,
     alignItems: "center", justifyContent: "center",
   },
-  dotActive: { backgroundColor: colors.background.tertiary, borderColor: colors.text.tertiary },
-  dotLabel: { fontSize: 12, fontWeight: "600", color: colors.text.tertiary, letterSpacing: 1.5 },
+  dotActive:      { backgroundColor: colors.background.tertiary, borderColor: colors.text.tertiary },
+  dotLabel:       { fontSize: 12, fontWeight: "600", color: colors.text.tertiary, letterSpacing: 1.5 },
   dotLabelActive: { color: colors.text.primary },
 
   hint: {
@@ -437,51 +489,34 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
     paddingTop: 12, paddingBottom: 32,
   },
-  navItem: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 2,
-  },
-  navLabel: { fontSize: 12, fontWeight: "600", letterSpacing: 2, color: colors.text.tertiary },
+  navItem:      { flex: 1, alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 2 },
+  navLabel:     { fontSize: 12, fontWeight: "600", letterSpacing: 2, color: colors.text.tertiary },
   navIndicator: { width: 4, height: 4, borderRadius: 2, backgroundColor: "transparent" },
 
   // ── Module picker sheet ──
-  // Outer flex column — backdrop pressable takes flex:1 above the sheet; no overlap
-  sheetOuter: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  sheetBackdrop: {
-    flex: 1,  // fills everything above the sheet — no overlap with sheet content
-  },
+  sheetOuter:    { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
+  sheetBackdrop: { flex: 1 },
   sheet: {
     backgroundColor: colors.background.primary,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
     borderTopWidth: 0.5, borderColor: colors.border.primary,
     paddingHorizontal: 20, paddingTop: 20,
     maxHeight: "75%",
   },
-  sheetHeader: {
-    flexDirection: "row", alignItems: "flex-start",
-    justifyContent: "space-between", marginBottom: 20,
-  },
+  sheetHeader:   { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 },
   sheetTitle:    { fontSize: 16, fontWeight: "700", color: colors.text.primary },
   sheetSubtitle: { fontSize: 12, color: colors.text.tertiary, marginTop: 2 },
   sheetScroll:   { flexGrow: 0 },
-  sheetGroupLabel: {
-    fontSize: 10, fontWeight: "700", color: colors.text.tertiary + "99",
-    letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8,
-  },
+  sheetGroupLabel: { fontSize: 10, fontWeight: "700", color: colors.text.tertiary + "99", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 },
   modRow: {
     flexDirection: "row", alignItems: "center", gap: 12,
     borderWidth: 0.5, borderColor: colors.border.primary,
     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
     marginBottom: 8, backgroundColor: colors.background.secondary,
   },
-  modIconWrap: {
-    width: 32, height: 32, borderRadius: 8,
-    alignItems: "center", justifyContent: "center",
-  },
+  modIconWrap: { width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   modInfo:   { flex: 1 },
   modLabel:  { fontSize: 13, fontWeight: "600", color: colors.text.primary },
+  modDesc:   { fontSize: 11, color: colors.text.tertiary, marginTop: 1 },
   modStatus: { fontSize: 11, fontWeight: "700", color: colors.text.tertiary },
 });

@@ -8,7 +8,9 @@ import { supabase } from '../../services/supabase';
 import { colors } from '../../constants/colors';
 import { CurrencyDollar, X, Check } from 'phosphor-react-native';
 
-const CURRENCY = 'PHP';
+let _expenseDefId = null;
+
+const CURRENCY = '₱';
 
 const CATEGORIES = ['General', 'Food', 'Transport', 'Health', 'Entertainment', 'Shopping', 'Utilities', 'Other'];
 
@@ -194,40 +196,67 @@ export default function ExpenseTrackerScreen({ hub }) {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const month = currentMonth();
-      const [year, mon] = month.split('-').map(Number);
-      const nextMon  = mon < 12 ? mon + 1 : 1;
-      const nextYear = mon < 12 ? year : year + 1;
-      const nextMonStart = `${nextYear}-${String(nextMon).padStart(2, '0')}-01`;
+      if (!_expenseDefId) {
+        const { data: def } = await supabase
+          .from('module_definitions').select('id').eq('slug', 'expense_tracker').single();
+        _expenseDefId = def?.id ?? null;
+      }
+      if (!_expenseDefId) { setExpenses([]); return; }
 
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('*')
+      const month = currentMonth();
+      let q = supabase
+        .from('module_entries')
+        .select('id, data, created_at, user_id, hub_id')
+        .eq('module_def_id', _expenseDefId)
         .eq('hub_id', hub.id)
-        .gte('date', `${month}-01`)
-        .lt('date', nextMonStart)
-        .order('date', { ascending: false });
-      if (!error) setExpenses(data ?? []);
+        .filter('data->>date', 'like', `${month}%`);
+
+      if (userId) q = q.eq('user_id', userId);
+
+      const { data } = await q.order('created_at', { ascending: false }).limit(500);
+
+      const flattened = (data ?? []).map(r => ({
+        id: r.id,
+        ...r.data,
+        created_at: r.created_at,
+        user_id: r.user_id,
+        hub_id: r.hub_id,
+      }));
+      setExpenses(flattened);
+    } catch (err) {
+      console.error('[ExpenseTracker] Load failed:', err);
+      setExpenses([]);
     } finally {
       setLoading(false); setRefreshing(false);
     }
-  }, [hub.id]);
+  }, [hub.id, userId]);
 
   useEffect(() => { load(); }, [load]);
 
   async function handleSave(fields) {
-    const { data, error } = await supabase
-      .from('expenses')
-      .insert({ user_id: userId, hub_id: hub.id, ...fields })
-      .select()
-      .single();
+    if (!userId) throw new Error('Not signed in');
+
+    if (!_expenseDefId) {
+      const { data: def } = await supabase
+        .from('module_definitions').select('id').eq('slug', 'expense_tracker').single();
+      _expenseDefId = def?.id ?? null;
+    }
+    if (!_expenseDefId) throw new Error('Module not found');
+
+    const { data: rows, error } = await supabase
+      .from('module_entries')
+      .insert({ module_def_id: _expenseDefId, hub_id: hub.id, user_id: userId, data: fields })
+      .select('id, data, created_at, user_id, hub_id');
+
     if (error) throw error;
-    setExpenses(prev => [data, ...prev]);
+    const r = rows[0];
+    const flat = { id: r.id, ...r.data, created_at: r.created_at, user_id: r.user_id, hub_id: r.hub_id };
+    setExpenses(prev => [flat, ...prev]);
   }
 
   async function handleDelete(id) {
     setExpenses(prev => prev.filter(e => e.id !== id));
-    await supabase.from('expenses').delete().eq('id', id);
+    await supabase.from('module_entries').delete().eq('id', id);
   }
 
   const total    = expenses.reduce((s, e) => s + e.amount, 0);
@@ -255,7 +284,22 @@ export default function ExpenseTrackerScreen({ hub }) {
   const monthLabel = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={colors.modules.deliver} /></View>;
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={[styles.skeleton, { width: '40%', height: 24, marginBottom: 8 }]} />
+          <View style={[styles.skeleton, { width: '30%', height: 16 }]} />
+        </View>
+        <View style={styles.summaryCard}>
+          <View style={[styles.skeleton, { width: '100%', height: 100, borderRadius: 16 }]} />
+        </View>
+        <View style={{ marginTop: 24, paddingHorizontal: 16 }}>
+          <View style={[styles.skeleton, { width: '25%', height: 18, marginBottom: 16 }]} />
+          <View style={[styles.skeleton, { width: '100%', height: 60, marginBottom: 8, borderRadius: 12 }]} />
+          <View style={[styles.skeleton, { width: '100%', height: 60, borderRadius: 12 }]} />
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -367,8 +411,10 @@ export default function ExpenseTrackerScreen({ hub }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background.primary },
   content:   { padding: 16, paddingBottom: 120, gap: 12 },
-  center:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
+  skeleton: {
+    backgroundColor: colors.background.tertiary,
+    borderRadius: 4,
+  },
   summaryCard: {
     backgroundColor: colors.background.secondary,
     borderRadius: 16, borderWidth: 0.5,

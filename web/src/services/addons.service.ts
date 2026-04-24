@@ -1,6 +1,6 @@
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-export type AddonType = 'calorie_counter' | 'expense_tracker' | 'habit_tracker' | 'workout_log' | 'sleep_tracker';
+export type AddonType = 'calorie_counter' | 'expense_tracker' | 'habit_tracker' | 'workout_log' | 'sleep_tracker' | (string & {});
 
 export interface HubAddon {
   id: string;
@@ -72,9 +72,10 @@ export async function uninstallAddon(addonId: string): Promise<void> {
 
 // ── Calorie Counter ───────────────────────────────────────────────────────────
 
-export async function getFoodLogs(hubId: string, date?: string): Promise<FoodLog[]> {
+export async function getFoodLogs(hubId: string, date?: string, userId?: string): Promise<FoodLog[]> {
   const url = new URL(`${API}/addons/${hubId}/calorie_counter/logs`);
   if (date) url.searchParams.set('date', date);
+  if (userId) url.searchParams.set('user_id', userId);
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error('Failed to fetch food logs');
   return res.json();
@@ -88,6 +89,7 @@ export async function logFood(hubId: string, data: {
   carbs_g?: number;
   fat_g?: number;
   meal_type?: string;
+  logged_at?: string;
 }): Promise<FoodLog> {
   const res = await fetch(`${API}/addons/${hubId}/calorie_counter/logs`, {
     method: 'POST',
@@ -105,9 +107,10 @@ export async function deleteFoodLog(logId: string): Promise<void> {
 
 // ── Expense Tracker ───────────────────────────────────────────────────────────
 
-export async function getExpenses(hubId: string, month?: string): Promise<Expense[]> {
+export async function getExpenses(hubId: string, month?: string, userId?: string): Promise<Expense[]> {
   const url = new URL(`${API}/addons/${hubId}/expense_tracker/logs`);
   if (month) url.searchParams.set('month', month);
+  if (userId) url.searchParams.set('user_id', userId);
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error('Failed to fetch expenses');
   return res.json();

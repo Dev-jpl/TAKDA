@@ -6,21 +6,29 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { House, Wrench, SquaresFour, Sparkle } from 'phosphor-react-native'
+import Svg, { Defs, LinearGradient as SvgGradient, Stop, Rect as SvgRect } from 'react-native-svg'
 import { colors } from '../../constants/colors'
 
-const { width } = Dimensions.get('window')
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true)
+}
+
+const { width, height } = Dimensions.get('window')
 
 function TabItem({ label, icon, active, onPress, activeColor }) {
   return (
     <TouchableOpacity style={styles.tab} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.tabInner}>
+      <View style={[styles.tabInner, active && styles.tabInnerActive]}>
         {React.cloneElement(icon, {
           color: active ? activeColor : colors.text.tertiary,
           size: 20,
-          weight: active ? 'bold' : 'light',
+          weight: active ? 'light' : 'thin',
         })}
         {active && (
           <Text style={[styles.tabLabel, { color: activeColor }]}>
@@ -45,6 +53,10 @@ export default function BottomNav({
   const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current
 
   useEffect(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+  }, [activeTab])
+
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(translateY, {
         toValue: visible ? 0 : 100,
@@ -59,7 +71,6 @@ export default function BottomNav({
     ]).start()
   }, [visible])
 
-  // Map activeTab to index for animated pill if needed, but for now we'll stick to a clean segment style
   const isHome = activeTab === 'Home'
   const isTools = activeTab === 'QuickTools'
   const isSpaces = activeTab === 'Spaces'
@@ -76,6 +87,19 @@ export default function BottomNav({
       ]}
       pointerEvents={visible ? 'auto' : 'none'}
     >
+      {/* SVG Gradient Background (Fallback for missing native module) */}
+      <View style={[StyleSheet.absoluteFill, { top: -40 }]} pointerEvents="none">
+        <Svg height="100%" width="100%">
+          <Defs>
+            <SvgGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="black" stopOpacity="0" />
+              <Stop offset="1" stopColor="black" stopOpacity="0.9" />
+            </SvgGradient>
+          </Defs>
+          <SvgRect x="0" y="0" width="100%" height="100%" fill="url(#grad)" />
+        </Svg>
+      </View>
+
       <View style={styles.contentContainer}>
         {/* Main Navigation Pill */}
         <View style={styles.navBar}>
@@ -84,21 +108,21 @@ export default function BottomNav({
             icon={<House />}
             active={isHome}
             onPress={onHomePress}
-            activeColor={colors.status.info}
+            activeColor="#FFFFFF"
           />
           <TabItem
             label="Spaces"
             icon={<SquaresFour />}
             active={isSpaces}
             onPress={onSpacesPress}
-            activeColor={colors.modules.knowledge}
+            activeColor="#FFFFFF"
           />
           <TabItem
             label="Tools"
             icon={<Wrench />}
             active={isTools}
             onPress={onQuickToolsPress}
-            activeColor={colors.modules.deliver}
+            activeColor="#FFFFFF"
           />
         </View>
 
@@ -134,34 +158,34 @@ const styles = StyleSheet.create({
   },
   navBar: {
     flexDirection: 'row',
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: '#1c1c1e', // Richer dark
     borderRadius: 32,
-    height: 64,
-    paddingHorizontal: 8,
+    height: 60,
+    paddingHorizontal: 6,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.1)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
     flex: 1,
   },
   alyBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: colors.modules.aly,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.1)',
     shadowColor: colors.modules.aly,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.4,
-    shadowRadius: 15,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 10,
   },
   tab: {
     flex: 1,
@@ -175,7 +199,11 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  tabInnerActive: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   tabLabel: {
     fontSize: 12,

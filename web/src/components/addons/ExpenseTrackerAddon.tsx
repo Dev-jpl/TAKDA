@@ -149,7 +149,7 @@ type Tab = 'overview' | 'trend' | 'transactions';
 type TrendPeriod = 'week' | 'month' | 'year';
 
 export function ExpenseTrackerAddon({ hubId, userId, config }: Props) {
-  const currency = (config.currency as string) ?? 'PHP';
+  const currency = (config.currency as string) ?? '₱';
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -173,10 +173,10 @@ export function ExpenseTrackerAddon({ hubId, userId, config }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setExpenses(await getExpenses(hubId, month)); }
+    try { setExpenses(await getExpenses(hubId, month, userId)); }
     catch { setExpenses([]); }
     finally { setLoading(false); }
-  }, [hubId, month]);
+  }, [hubId, month, userId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -184,7 +184,7 @@ export function ExpenseTrackerAddon({ hubId, userId, config }: Props) {
   useEffect(() => {
     if (tab !== 'trend' || trendLoaded) return;
     setTrendLoading(true);
-    getExpenses(hubId)
+    getExpenses(hubId, undefined, userId)
       .then(all => { setAllExpenses(all); setTrendLoaded(true); })
       .catch(() => setTrendLoaded(true))
       .finally(() => setTrendLoading(false));
@@ -287,13 +287,17 @@ export function ExpenseTrackerAddon({ hubId, userId, config }: Props) {
       setAmount(''); setItem(''); setMerchant(''); setCategory('General');
       setDate(new Date().toISOString().split('T')[0]);
       setShowForm(false);
+      window.dispatchEvent(new CustomEvent('takda:data_updated'));
     } catch { setFormErr('Failed to save. Try again.'); }
     finally { setSaving(false); }
   }
 
   async function handleDelete(id: string) {
     setExpenses(prev => prev.filter(e => e.id !== id));
-    try { await deleteExpense(id); } catch { load(); }
+    try { 
+      await deleteExpense(id); 
+      window.dispatchEvent(new CustomEvent('takda:data_updated'));
+    } catch { load(); }
   }
 
   const isCurrentMonth = month === monthKey();
@@ -331,7 +335,7 @@ export function ExpenseTrackerAddon({ hubId, userId, config }: Props) {
           <p className="text-4xl font-bold text-text-primary tracking-tight leading-none">
             {fmt(total)}
           </p>
-          <p className="text-xs text-text-tertiary mt-1">{currency}</p>
+          <p className="text-xs text-text-tertiary mt-1">Peso (₱)</p>
         </div>
 
         {/* Quick stats */}

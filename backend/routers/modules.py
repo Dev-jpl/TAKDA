@@ -57,11 +57,15 @@ async def update_module_definition(def_id: str, body: ModuleDefinitionCreate):
     return res.data[0]
 
 @router.get("/{def_id}/entries")
-async def get_module_entries(def_id: str, hub_id: Optional[str] = None):
+async def get_module_entries(def_id: str, hub_id: Optional[str] = None, user_id: Optional[str] = None):
     """Get all entries for a specific module definition, optionally filtered by hub."""
     query = supabase.table("module_entries").select("*").eq("module_def_id", def_id)
-    if hub_id:
-        query = query.or_(f"hub_id.eq.{hub_id},hub_id.is.null")
+    
+    if hub_id and hub_id != "null" and hub_id != "all":
+        query = query.eq("hub_id", hub_id)
+        
+    if user_id:
+        query = query.eq("user_id", user_id)
     res = query.order("created_at", desc=True).execute()
     return res.data
 

@@ -6,6 +6,7 @@ const isLocal = typeof window !== 'undefined'
 // export const API_URL = isLocal 
 //   ? "http://localhost:8000" 
 //   : "https://takda-backend.onrender.com";
-export const API_URL = "http://localhost:8000"
+// export const API_URL = "http://localhost:8000"
+export const API_URL = "https://takda-backend.onrender.com"
 
 console.log(`[Takda Web] Mission Registry: Connected to ${API_URL} (${isLocal ? 'LOCAL' : 'PRODUCTION'})`);

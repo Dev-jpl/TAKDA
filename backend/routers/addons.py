@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, date, timedelta
 import calendar
+import asyncio
 from database import supabase
 
 router = APIRouter(prefix="/addons", tags=["addons"])
@@ -85,7 +86,7 @@ async def uninstall_addon(addon_id: str):
 # ── Calorie Counter logs ──────────────────────────────────────────────────────
 
 @router.get("/{hub_id}/calorie_counter/logs")
-async def get_calorie_logs(hub_id: str, date: Optional[str] = Query(None), limit: Optional[int] = Query(None)):
+async def get_calorie_logs(hub_id: str, date: Optional[str] = Query(None), user_id: Optional[str] = Query(None), limit: Optional[int] = Query(None)):
     """Get food logs for a hub using module system."""
     # Get module def
     def_res = supabase.table("module_definitions").select("id").eq("slug", "calorie_counter").execute()
@@ -93,19 +94,57 @@ async def get_calorie_logs(hub_id: str, date: Optional[str] = Query(None), limit
         return []
     def_id = def_res.data[0]["id"]
 
-    q = supabase.table("module_entries").select("*").eq("module_def_id", def_id).eq("hub_id", hub_id)
+    print(f"[get_calorie_logs] hub_id={hub_id}, date={date}, user_id={user_id}")
+    q = supabase.table("module_entries").select("*").eq("module_def_id", def_id)
+    
+    # Match specific hub if provided, else consolidate
+    if hub_id and hub_id != "null" and hub_id != "all":
+        q = q.eq("hub_id", hub_id)
+    
+    if user_id:
+        q = q.eq("user_id", user_id)
     
     if date:
-        # Simple string prefix match on the ISO string in JSONB
         q = q.filter("data->>logged_at", "like", f"{date}%")
     
-    q = q.order("created_at", desc=True)
-    if limit:
-        q = q.limit(limit)
-    res = q.execute()
-    
-    # Map back to old format for compatibility
-    return [{"id": r["id"], **r["data"], "created_at": r["created_at"], "user_id": r["user_id"], "hub_id": r["hub_id"]} for r in res.data]
+    res = q.order("created_at", desc=True).execute()
+    print(f"[get_calorie_logs] Found {len(res.data) if res.data else 0} entries")
+    # Fetch both modern and legacy logs
+    # Using a helper to fetch legacy data
+    async def fetch_legacy():
+        try:
+            l_q = supabase.table("food_logs").select("*")
+            if hub_id and hub_id != "null" and hub_id != "all":
+                l_q = l_q.eq("hub_id", hub_id)
+            if user_id:
+                l_q = l_q.eq("user_id", user_id)
+            if date:
+                try:
+                    start_dt = datetime.strptime(date, "%Y-%m-%d")
+                    end_dt = start_dt + timedelta(days=1)
+                    l_q = l_q.gte("logged_at", start_dt.isoformat()).lt("logged_at", end_dt.isoformat())
+                except ValueError:
+                    pass
+            # run in thread since execute() is blocking
+            l_res = await asyncio.to_thread(l_q.order("logged_at", desc=True).execute)
+            return l_res.data if l_res.data else []
+        except Exception as e:
+            print(f"Legacy food_logs query failed: {e}")
+            return []
+
+    # Prepare entries from modern logs
+    entries = []
+    if res.data:
+        entries = [{"id": r["id"], **r["data"], "created_at": r["created_at"], "user_id": r["user_id"], "hub_id": r["hub_id"]} for r in res.data]
+
+    # Fetch legacy in parallel with entries preparation (simulated)
+    legacy_data = await fetch_legacy()
+    entries.extend(legacy_data)
+
+    # Sort combined entries by logged_at descending
+    entries.sort(key=lambda x: x.get("logged_at", ""), reverse=True)
+
+    return entries
 
 
 @router.post("/{hub_id}/calorie_counter/logs")
@@ -150,22 +189,52 @@ async def delete_food_log(log_id: str):
 # ── Expense Tracker logs ──────────────────────────────────────────────────────
 
 @router.get("/{hub_id}/expense_tracker/logs")
-async def get_expense_logs(hub_id: str, month: Optional[str] = Query(None)):
+async def get_expense_logs(hub_id: str, month: Optional[str] = Query(None), user_id: Optional[str] = Query(None)):
     """Get expense logs for a hub using module system."""
     def_res = supabase.table("module_definitions").select("id").eq("slug", "expense_tracker").execute()
     if not def_res.data:
         return []
     def_id = def_res.data[0]["id"]
 
-    q = supabase.table("module_entries").select("*").eq("module_def_id", def_id).eq("hub_id", hub_id)
+    print(f"[get_expense_logs] hub_id={hub_id}, month={month}, user_id={user_id}")
+    q = supabase.table("module_entries").select("*").eq("module_def_id", def_id)
+    
+    # Match specific hub if provided, else consolidate
+    if hub_id and hub_id != "null" and hub_id != "all":
+        q = q.eq("hub_id", hub_id)
+    
+    if user_id:
+        q = q.eq("user_id", user_id)
     
     if month:
         q = q.filter("data->>date", "like", f"{month}%")
 
     res = q.order("created_at", desc=True).execute()
+    print(f"[get_expense_logs] Found {len(res.data) if res.data else 0} entries")
     
-    # Map back to old format
-    return [{"id": r["id"], **r["data"], "created_at": r["created_at"], "user_id": r["user_id"], "hub_id": r["hub_id"]} for r in res.data]
+    entries = []
+    if res.data:
+        entries = [{"id": r["id"], **r["data"], "created_at": r["created_at"], "user_id": r["user_id"], "hub_id": r["hub_id"]} for r in res.data]
+
+    # Also fetch legacy expenses to merge
+    try:
+        legacy_q = supabase.table("expenses").select("*")
+        if hub_id and hub_id != "null" and hub_id != "all":
+            legacy_q = legacy_q.eq("hub_id", hub_id)
+        if user_id:
+            legacy_q = legacy_q.eq("user_id", user_id)
+        if month:
+            legacy_q = legacy_q.filter("date", "like", f"{month}%")
+        legacy_res = legacy_q.order("date", desc=True).execute()
+        if legacy_res.data:
+            entries.extend(legacy_res.data)
+    except Exception as e:
+        print(f"Legacy expenses query failed: {e}")
+
+    # Sort by date descending
+    entries.sort(key=lambda x: x.get("date", ""), reverse=True)
+
+    return entries
 
 
 @router.post("/{hub_id}/expense_tracker/logs")

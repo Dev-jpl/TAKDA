@@ -7,7 +7,7 @@ export const hubsService = {
   async getHubs(spaceId) {
     const { data, error } = await supabase
       .from("hubs")
-      .select("*, hub_modules(*)")
+      .select("id, name, description, icon, color, space_id, order_index, hub_modules(*), hub_addons(id, type, config)")
       .eq("space_id", spaceId)
       .order("order_index");
 

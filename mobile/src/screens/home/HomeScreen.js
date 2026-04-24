@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, RefreshControl, Animated,
+  ActivityIndicator, RefreshControl, Animated, Image,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { supabase } from '../../services/supabase'
 import { API_URL } from '../../services/apiConfig'
 import { useAlySheet } from '../../context/AlySheetContext'
@@ -17,8 +18,17 @@ import {
   CheckCircle, Circle, FileText, NotePencil,
   ForkKnife, CurrencyDollar, CalendarBlank, Lightning,
   Clock, Bicycle, Megaphone, Barbell, ListChecks,
-  ArrowUp, Moon,
+  ArrowUp, Moon, ArrowClockwise, CaretRight,
 } from 'phosphor-react-native'
+
+// ── Module def ID cache (avoids repeated lookups across widget mounts) ────────
+const _modDefCache = {} // slug → id
+async function getModuleDefId(slug) {
+  if (_modDefCache[slug]) return _modDefCache[slug]
+  const { data } = await supabase.from('module_definitions').select('id').eq('slug', slug).single()
+  if (data?.id) _modDefCache[slug] = data.id
+  return data?.id ?? null
+}
 
 // ── Widget types that must always be full-width on mobile ─────────────────────
 const FORCE_FULL = new Set([
@@ -30,14 +40,17 @@ const FORCE_FULL = new Set([
 
 // ── Expense category colors ───────────────────────────────────────────────────
 const CAT_COLORS = {
-  General:       '#94a3b8',
-  Food:          '#fb923c',
-  Transport:     '#60a5fa',
-  Health:        '#f87171',
-  Entertainment: '#c084fc',
-  Shopping:      '#f472b6',
-  Utilities:     '#facc15',
-  Other:         '#6b7280',
+  general:       '#94a3b8',
+  food:          '#fb923c',
+  transport:     '#60a5fa',
+  health:        '#f87171',
+  entertainment: '#c084fc',
+  shopping:      '#f472b6',
+  utilities:     '#facc15',
+  other:         '#6b7280',
+  meal:          '#fb923c',
+  snack:         '#facc15',
+  drink:         '#60a5fa',
 }
 
 // ── SVG Chart components ──────────────────────────────────────────────────────
@@ -70,45 +83,81 @@ function MobileDonutChart({ segments }) {
   )
 }
 
-function MobileBarChart({ bars, labels, color }) {
-  const maxVal   = Math.max(...bars, 1)
+function MobileBarChart({ bars, labels, color, currency = '₱' }) {
+  const [selectedIdx, setSelectedIdx] = useState(null)
+  
+  if (!bars || bars.length === 0) return null
+  const maxVal   = Math.max(...bars.map(v => (isNaN(v) ? 0 : v)), 1)
   const count    = bars.length
   const BAR_H    = 72
   const LABEL_H  = 14
   const VIEW_W   = Math.max(count * 18, 200)
 
+  const fmt = (n) => n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+
+  const barW  = VIEW_W / count
+  const selX  = selectedIdx !== null ? (selectedIdx * barW + barW / 2) : 0
+  const selPct = (selX / VIEW_W) * 100
+
   return (
-    <Svg width="100%" height={BAR_H + LABEL_H}
-      viewBox={`0 0 ${VIEW_W} ${BAR_H + LABEL_H}`}
-      preserveAspectRatio="none">
-      {bars.map((val, i) => {
-        const barW  = VIEW_W / count
-        const bw    = Math.max(barW * 0.72, 4)
-        const x     = i * barW + (barW - bw) / 2
-        const bh    = val > 0 ? Math.max(3, (val / maxVal) * BAR_H) : 0
-        return (
-          <SvgG key={i}>
-            {/* Track */}
-            <SvgRect x={x} y={0} width={bw} height={BAR_H}
-              rx={3} fill={color} fillOpacity={0.07} />
-            {/* Value */}
-            {bh > 0 && (
-              <SvgRect x={x} y={BAR_H - bh} width={bw} height={bh}
-                rx={3} fill={color} fillOpacity={0.85} />
-            )}
-            {/* Label */}
-            <SvgText
-              x={x + bw / 2} y={BAR_H + 11}
-              textAnchor="middle"
-              fontSize={Math.max(5, Math.min(8, barW * 0.5))}
-              fill="#6b7280"
-            >
-              {labels[i]}
-            </SvgText>
-          </SvgG>
-        )
-      })}
-    </Svg>
+    <View style={{ marginTop: selectedIdx !== null ? 24 : 0 }}>
+      {/* Floating Tooltip */}
+      {selectedIdx !== null && (
+        <View style={{ position: 'absolute', top: -28, left: `${selPct}%`, transform: [{ translateX: -40 }], width: 80, alignItems: 'center', zIndex: 10 }}>
+          <View style={{ backgroundColor: colors.background.tertiary, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.border.primary, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3 }}>
+            <Text style={{ fontSize: 8, color: colors.text.tertiary, fontWeight: '600' }}>{labels[selectedIdx]}</Text>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFF' }}>{currency}{fmt(bars[selectedIdx])}</Text>
+          </View>
+          <View style={{ width: 0, height: 0, borderLeftWidth: 4, borderRightWidth: 4, borderTopWidth: 4, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: colors.border.primary }} />
+        </View>
+      )}
+
+      {!selectedIdx && (
+        <View style={{ height: 12, marginBottom: 8, alignItems: 'center' }}>
+          <Text style={{ fontSize: 8, color: colors.text.tertiary, fontStyle: 'italic' }}>Tap a bar for details</Text>
+        </View>
+      )}
+
+      <Svg width="100%" height={BAR_H + LABEL_H}
+        viewBox={`0 0 ${VIEW_W} ${BAR_H + LABEL_H}`}
+        preserveAspectRatio="none">
+        {bars.map((rawVal, i) => {
+          const val   = isNaN(rawVal) ? 0 : rawVal
+          const bw    = Math.max(barW * 0.72, 4)
+          const x     = i * barW + (barW - bw) / 2
+          const bh    = val > 0 ? Math.max(3, (val / maxVal) * BAR_H) : 0
+          const isSel = selectedIdx === i
+
+          return (
+            <SvgG key={i} onPress={() => setSelectedIdx(selectedIdx === i ? null : i)}>
+              {/* Hit area */}
+              <SvgRect x={i * barW} y={0} width={barW} height={BAR_H + LABEL_H}
+                fill="transparent" />
+
+              {/* Track */}
+              <SvgRect x={x} y={0} width={bw} height={BAR_H}
+                rx={3} fill={color} fillOpacity={isSel ? 0.25 : 0.07} />
+              
+              {/* Value */}
+              {bh > 0 && (
+                <SvgRect x={x} y={BAR_H - bh} width={bw} height={bh}
+                  rx={3} fill={color} fillOpacity={isSel ? 1 : 0.85} />
+              )}
+              {/* Label */}
+              <SvgText
+                x={x + bw / 2} y={BAR_H + 11}
+                textAnchor="middle"
+                fontSize={Math.max(5, Math.min(8, barW * 0.5))}
+                fontWeight={isSel ? 'bold' : 'normal'}
+                fill={isSel ? color : "#6b7280"}
+              >
+                {labels[i]}
+              </SvgText>
+            </SvgG>
+          )
+        })}
+      </Svg>
+    </View>
   )
 }
 
@@ -119,7 +168,7 @@ const WIDGET_META = {
   notes:           { label: 'Notes',          Icon: NotePencil,     accent: colors.modules.aly       },
   docs:            { label: 'Resources',      Icon: FileText,       accent: colors.modules.knowledge },
   outcomes:        { label: 'Outcomes',       Icon: Megaphone,      accent: colors.modules.deliver   },
-  calorie_counter: { label: 'Calories',       Icon: ForkKnife,      accent: '#22c55e'                },
+  calorie_counter: { label: 'Calorie Counter',  Icon: ForkKnife,      accent: '#22c55e'                },
   expense_tracker: { label: 'Expenses',       Icon: CurrencyDollar, accent: colors.modules.deliver   },
   upcoming_events: { label: 'Events',         Icon: CalendarBlank,  accent: colors.modules.automate  },
   upcoming_global: { label: 'Upcoming',       Icon: CalendarBlank,  accent: colors.modules.automate  },
@@ -129,6 +178,7 @@ const WIDGET_META = {
   quick_clock:     { label: 'Clock',          Icon: Clock,          accent: colors.modules.knowledge },
   weekly_progress: { label: 'Progress',       Icon: ArrowUp,        accent: colors.modules.track     },
   strava_stats:    { label: 'Strava',         Icon: Bicycle,        accent: '#fc5200'                },
+  aly_nudge:       { label: 'Aly Nudge',      Icon: Sparkle,        accent: colors.modules.aly       },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -322,25 +372,72 @@ function HubOverviewWidget({ hubId }) {
 
 // ── CalorieCounterWidget ──────────────────────────────────────────────────────
 function CalorieCounterWidget({ hubId }) {
-  const [logs,    setLogs]    = useState([])
+  const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const goal = 2000
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    supabase.from('food_logs').select('calories,protein_g,carbs_g,fat_g')
-      .eq('hub_id', hubId)
-      .gte('logged_at', `${today}T00:00:00`)
-      .lte('logged_at', `${today}T23:59:59`)
-      .then(({ data }) => setLogs(data ?? []))
-      .finally(() => setLoading(false))
+
+  const load = useCallback(async (cancelled = false) => {
+    try {
+      const defId = await getModuleDefId('calorie_counter')
+      if (!defId || cancelled) return
+
+      let q = supabase
+        .from('module_entries')
+        .select('data')
+        .eq('module_def_id', defId)
+        .order('created_at', { ascending: false })
+        .limit(100)
+
+      if (hubId && hubId !== "null" && hubId !== "all") {
+        q = q.eq("hub_id", hubId)
+      }
+
+      const { data } = await q
+      if (!cancelled) setEntries(data ?? [])
+    } catch (e) {
+      console.warn('CalorieCounterWidget load error:', e)
+    } finally {
+      if (!cancelled) setLoading(false)
+    }
   }, [hubId])
+
+  useEffect(() => {
+    let cancelled = false
+    load(cancelled)
+    return () => { cancelled = true }
+  }, [load])
+
+  useFocusEffect(
+    useCallback(() => {
+      load()
+    }, [load])
+  )
+
+  const sortedEntries = useMemo(() => {
+    return [...entries].sort((a, b) => {
+      const valA = a.data?.logged_at || a.created_at || ''
+      const valB = b.data?.logged_at || b.created_at || ''
+      return String(valB).localeCompare(String(valA))
+    })
+  }, [entries])
 
   if (loading) return <WidgetSkeleton />
 
-  const total   = logs.reduce((s, l) => s + (l.calories  ?? 0), 0)
-  const protein = logs.reduce((s, l) => s + (l.protein_g ?? 0), 0)
-  const carbs   = logs.reduce((s, l) => s + (l.carbs_g   ?? 0), 0)
-  const fat     = logs.reduce((s, l) => s + (l.fat_g     ?? 0), 0)
+  // Filter for today's entries using local date string from data
+  const todaysEntries = sortedEntries.filter(e => {
+    const dStr = e.data?.logged_at
+    if (!dStr) return false
+    const d = new Date(dStr)
+    const now = new Date()
+    return d.getFullYear() === now.getFullYear() &&
+           d.getMonth() === now.getMonth() &&
+           d.getDate() === now.getDate()
+  })
+
+  const total   = todaysEntries.reduce((s, e) => s + (Number(e.data?.calories)  || 0), 0)
+  const protein = todaysEntries.reduce((s, e) => s + (Number(e.data?.protein_g) || 0), 0)
+  const carbs   = todaysEntries.reduce((s, e) => s + (Number(e.data?.carbs_g)   || 0), 0)
+  const fat     = todaysEntries.reduce((s, e) => s + (Number(e.data?.fat_g)     || 0), 0)
   const pct       = Math.min((total / goal) * 100, 100)
   const remaining = goal - total
   const over      = remaining < 0
@@ -355,7 +452,7 @@ function CalorieCounterWidget({ hubId }) {
         <Text style={wStyles.calorieOp}>−</Text>
         <View style={wStyles.calorieCell}>
           <Text style={wStyles.calorieNum}>{Math.round(total)}</Text>
-          <Text style={wStyles.calorieLabel}>Eaten</Text>
+          <Text style={wStyles.calorieLabel}>Food</Text>
         </View>
         <Text style={wStyles.calorieOp}>=</Text>
         <View style={wStyles.calorieCell}>
@@ -368,79 +465,148 @@ function CalorieCounterWidget({ hubId }) {
       <View style={wStyles.progressTrack}>
         <View style={[wStyles.progressFill, { width: `${pct}%`, backgroundColor: over ? '#f87171' : '#22c55e' }]} />
       </View>
-      {(protein > 0 || carbs > 0 || fat > 0) && (
-        <View style={wStyles.macroRow}>
-          <View style={wStyles.macroCell}>
-            <Text style={[wStyles.macroNum, { color: '#60a5fa' }]}>{Math.round(protein)}g</Text>
-            <Text style={wStyles.macroLabel}>Protein</Text>
+
+      <View style={wStyles.macroProgressContainer}>
+        <View style={wStyles.macroProgressRow}>
+          <Text style={wStyles.macroLabelSmall}>Carbs</Text>
+          <View style={wStyles.macroBarTrack}>
+            <View style={[wStyles.macroBarFill, { width: `${Math.min((carbs / 250) * 100, 100)}%`, backgroundColor: '#F59E0B' }]} />
           </View>
-          <View style={wStyles.macroDivider} />
-          <View style={wStyles.macroCell}>
-            <Text style={[wStyles.macroNum, { color: '#fb923c' }]}>{Math.round(carbs)}g</Text>
-            <Text style={wStyles.macroLabel}>Carbs</Text>
-          </View>
-          <View style={wStyles.macroDivider} />
-          <View style={wStyles.macroCell}>
-            <Text style={[wStyles.macroNum, { color: '#f472b6' }]}>{Math.round(fat)}g</Text>
-            <Text style={wStyles.macroLabel}>Fat</Text>
-          </View>
+          <Text style={wStyles.macroValueSmall}>{Math.round(carbs)}</Text>
         </View>
-      )}
+        <View style={wStyles.macroProgressRow}>
+          <Text style={wStyles.macroLabelSmall}>Fat</Text>
+          <View style={wStyles.macroBarTrack}>
+            <View style={[wStyles.macroBarFill, { width: `${Math.min((fat / 65) * 100, 100)}%`, backgroundColor: '#EC4899' }]} />
+          </View>
+          <Text style={wStyles.macroValueSmall}>{Math.round(fat)}</Text>
+        </View>
+        <View style={wStyles.macroProgressRow}>
+          <Text style={wStyles.macroLabelSmall}>Protein</Text>
+          <View style={wStyles.macroBarTrack}>
+            <View style={[wStyles.macroBarFill, { width: `${Math.min((protein / 150) * 100, 100)}%`, backgroundColor: '#60A5FA' }]} />
+          </View>
+          <Text style={wStyles.macroValueSmall}>{Math.round(protein)}</Text>
+        </View>
+      </View>
     </View>
   )
 }
 
 // ── ExpenseTrackerWidget ──────────────────────────────────────────────────────
 function ExpenseTrackerWidget({ hubId }) {
-  const currency = 'PHP'
-  const [monthExp,   setMonthExp]   = useState([])
-  const [weekExp,    setWeekExp]    = useState([])
-  const [yearExp,    setYearExp]    = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [trendPer,   setTrendPer]   = useState('month')
-  const [weekLoaded, setWeekLoaded] = useState(false)
-  const [yearLoaded, setYearLoaded] = useState(false)
+  const currency = '₱'
+  const [entries,  setEntries]  = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [trendPer, setTrendPer] = useState('month')
 
-  // Month data (on mount)
-  useEffect(() => {
-    const d = new Date(); const yr = d.getFullYear(); const mon = d.getMonth() + 1
-    const m  = `${yr}-${String(mon).padStart(2, '0')}`
-    const nm = mon === 12 ? `${yr + 1}-01-01` : `${yr}-${String(mon + 1).padStart(2, '0')}-01`
-    supabase.from('expenses').select('amount,category,date')
-      .eq('hub_id', hubId).gte('date', `${m}-01`).lt('date', nm)
-      .then(({ data }) => setMonthExp(data ?? []))
-      .finally(() => setLoading(false))
+  const load = useCallback(async (cancelled = false) => {
+    try {
+      const defId = await getModuleDefId('expense_tracker')
+      if (!defId || cancelled) return
+
+      let q = supabase
+        .from('module_entries')
+        .select('data')
+        .eq('module_def_id', defId)
+        .order('created_at', { ascending: false })
+        .limit(400)
+
+      if (hubId && hubId !== 'null' && hubId !== 'all') {
+        q = q.eq('hub_id', hubId)
+      }
+
+      const { data } = await q
+      if (!cancelled) setEntries(data ?? [])
+    } catch (e) {
+      console.warn('ExpenseTrackerWidget load error:', e)
+    } finally {
+      if (!cancelled) setLoading(false)
+    }
   }, [hubId])
 
-  // Week data (lazy)
   useEffect(() => {
-    if (trendPer !== 'week' || weekLoaded) return
-    const from = new Date(); from.setDate(from.getDate() - 6)
-    const fromStr = from.toISOString().split('T')[0]
-    const toStr   = new Date().toISOString().split('T')[0]
-    supabase.from('expenses').select('amount,date')
-      .eq('hub_id', hubId).gte('date', fromStr).lte('date', toStr)
-      .then(({ data }) => { setWeekExp(data ?? []); setWeekLoaded(true) })
-  }, [trendPer, weekLoaded, hubId])
+    let cancelled = false
+    load(cancelled)
+    return () => { cancelled = true }
+  }, [load])
 
-  // Year data (lazy)
-  useEffect(() => {
-    if (trendPer !== 'year' || yearLoaded) return
-    const yr = new Date().getFullYear()
-    supabase.from('expenses').select('amount,date')
-      .eq('hub_id', hubId).gte('date', `${yr}-01-01`).lt('date', `${yr + 1}-01-01`)
-      .then(({ data }) => { setYearExp(data ?? []); setYearLoaded(true) })
-  }, [trendPer, yearLoaded, hubId])
+  useFocusEffect(
+    useCallback(() => {
+      load()
+    }, [load])
+  )
 
-  const total = useMemo(() => monthExp.reduce((s, e) => s + e.amount, 0), [monthExp])
+  // Helper: get amount/category/date from an entry
+  const entryAmount   = (e) => Number(e.data?.amount)   || 0
+  const entryCategory = (e) => e.data?.category || 'General'
+  const entryDate     = (e) => e.data?.date     || ''
+
+  const now           = new Date()
+  const yr            = now.getFullYear()
+  const mon           = now.getMonth() + 1
+  const curMonthPfx   = `${yr}-${String(mon).padStart(2, '0')}`
+
+  const sortedEntries = useMemo(() => {
+    return [...entries].sort((a, b) => {
+      const valA = a.data?.date || a.created_at || ''
+      const valB = b.data?.date || b.created_at || ''
+      return String(valB).localeCompare(String(valA))
+    })
+  }, [entries])
+
+  const monthEntries = useMemo(
+    () => sortedEntries.filter(e => entryDate(e).startsWith(curMonthPfx)),
+    [sortedEntries, curMonthPfx]
+  )
+
+  const total = useMemo(
+    () => monthEntries.reduce((s, e) => s + entryAmount(e), 0),
+    [monthEntries]
+  )
+
+  const todayStr = useMemo(() => new Date().toLocaleDateString('en-CA'), [])
+  const todayEntries = useMemo(
+    () => entries.filter(e => entryDate(e).startsWith(todayStr)),
+    [entries, todayStr]
+  )
+  const todayTotal = useMemo(
+    () => todayEntries.reduce((s, e) => s + entryAmount(e), 0),
+    [todayEntries]
+  )
+
+  const avgDaily = useMemo(() => {
+    if (monthEntries.length === 0) return 0
+    const day = new Date().getDate()
+    return total / day
+  }, [total, monthEntries.length])
+
+  const highestEntry = useMemo(() => {
+    if (monthEntries.length === 0) return null
+    return monthEntries.reduce((max, e) => entryAmount(e) > entryAmount(max) ? e : max, monthEntries[0])
+  }, [monthEntries])
+
+  const lowestEntry = useMemo(() => {
+    if (monthEntries.length === 0) return null
+    return monthEntries.reduce((min, e) => entryAmount(e) < entryAmount(min) ? e : min, monthEntries[0])
+  }, [monthEntries])
+
+  const fmtDateShort = (dateStr) => {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
 
   const donutSegs = useMemo(() => {
     const map = {}
-    monthExp.forEach(e => { map[e.category] = (map[e.category] ?? 0) + e.amount })
+    monthEntries.forEach(e => {
+      const cat = entryCategory(e)
+      map[cat] = (map[cat] ?? 0) + entryAmount(e)
+    })
     return Object.entries(map)
       .sort(([, a], [, b]) => b - a)
-      .map(([cat, amt]) => ({ pct: total > 0 ? (amt / total) * 100 : 0, color: CAT_COLORS[cat] ?? '#6b7280', cat, amt }))
-  }, [monthExp, total])
+      .map(([cat, amt]) => ({ pct: total > 0 ? (amt / total) * 100 : 0, color: CAT_COLORS[cat.toLowerCase()] ?? '#6b7280', cat, amt }))
+  }, [monthEntries, total])
 
   const trendData = useMemo(() => {
     const pad = (n) => String(n).padStart(2, '0')
@@ -449,23 +615,24 @@ function ExpenseTrackerWidget({ hubId }) {
         const d = new Date(); d.setDate(d.getDate() - (6 - i))
         return { date: d.toISOString().split('T')[0], label: d.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2) }
       })
-      return { bars: days.map(({ date }) => weekExp.filter(e => e.date === date).reduce((s, e) => s + e.amount, 0)), labels: days.map(d => d.label) }
+      return {
+        bars:   days.map(({ date }) => entries.filter(e => entryDate(e) === date).reduce((s, e) => s + entryAmount(e), 0)),
+        labels: days.map(d => d.label),
+      }
     }
     if (trendPer === 'month') {
-      const d = new Date(); const yr = d.getFullYear(); const mon = d.getMonth() + 1
       const dim = new Date(yr, mon, 0).getDate()
       return {
-        bars:   Array.from({ length: dim }, (_, i) => monthExp.filter(e => e.date === `${yr}-${pad(mon)}-${pad(i + 1)}`).reduce((s, e) => s + e.amount, 0)),
+        bars:   Array.from({ length: dim }, (_, i) => monthEntries.filter(e => entryDate(e) === `${yr}-${pad(mon)}-${pad(i + 1)}`).reduce((s, e) => s + entryAmount(e), 0)),
         labels: Array.from({ length: dim }, (_, i) => String(i + 1)),
       }
     }
-    const yr = new Date().getFullYear()
     const ML = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
     return {
-      bars:   Array.from({ length: 12 }, (_, i) => yearExp.filter(e => e.date?.startsWith(`${yr}-${pad(i + 1)}`)).reduce((s, e) => s + e.amount, 0)),
+      bars:   Array.from({ length: 12 }, (_, i) => entries.filter(e => entryDate(e).startsWith(`${yr}-${pad(i + 1)}`)).reduce((s, e) => s + entryAmount(e), 0)),
       labels: ML,
     }
-  }, [trendPer, weekExp, monthExp, yearExp])
+  }, [trendPer, entries, monthEntries, yr, mon, curMonthPfx])
 
   if (loading) return <WidgetSkeleton />
 
@@ -476,8 +643,21 @@ function ExpenseTrackerWidget({ hubId }) {
     <View>
       {/* Total */}
       <View style={expSt.totalRow}>
-        <Text style={expSt.totalLabel}>THIS MONTH</Text>
-        <Text style={expSt.totalNum}>{currency} {fmt(total)}</Text>
+        <View style={{ flex: 1, gap: 12 }}>
+          {/* Main Totals Section */}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1.2, backgroundColor: colors.background.tertiary, padding: 12, borderRadius: 14, borderWidth: 0.5, borderColor: colors.border.primary }}>
+              <Text style={expSt.totalLabel}>THIS MONTH</Text>
+              <Text style={expSt.totalNum} numberOfLines={1} adjustsFontSizeToFit>{currency} {fmt(total)}</Text>
+            </View>
+            
+            <View style={{ flex: 1, backgroundColor: colors.background.tertiary, padding: 12, borderRadius: 14, borderWidth: 0.5, borderColor: colors.border.primary }}>
+              <Text style={expSt.totalLabel}>TODAY</Text>
+              <Text style={[expSt.totalNum, { fontSize: 18 }]} numberOfLines={1} adjustsFontSizeToFit>{currency} {fmt(todayTotal)}</Text>
+            </View>
+          </View>
+
+        </View>
       </View>
 
       {/* Breakdown */}
@@ -502,6 +682,31 @@ function ExpenseTrackerWidget({ hubId }) {
               ))}
             </View>
           </View>
+          
+          {/* Carded Insights Group */}
+          <View style={{ backgroundColor: colors.background.tertiary + '80', borderRadius: 14, padding: 12, borderWidth: 0.5, borderColor: colors.border.primary, marginTop: 14 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[expSt.subtleLabel, { color: '#EF9F27' }]}>AVERAGE</Text>
+                <Text style={[expSt.totalNum, { fontSize: 13, marginTop: 2 }]}>{currency} {fmt(avgDaily)}</Text>
+                <Text style={expSt.subtleDate}>Per Day</Text>
+              </View>
+              {highestEntry && (
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={[expSt.subtleLabel, { color: '#E24B4A', fontWeight: '700' }]}>HIGHEST</Text>
+                  <Text style={[expSt.totalNum, { fontSize: 13, marginTop: 2 }]}>{currency} {fmt(entryAmount(highestEntry))}</Text>
+                  <Text style={expSt.subtleDate}>{fmtDateShort(entryDate(highestEntry))}</Text>
+                </View>
+              )}
+              {lowestEntry && (
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  <Text style={[expSt.subtleLabel, { color: '#639922', fontWeight: '700' }]}>LOWEST</Text>
+                  <Text style={[expSt.totalNum, { fontSize: 13, marginTop: 2 }]}>{currency} {fmt(entryAmount(lowestEntry))}</Text>
+                  <Text style={expSt.subtleDate}>{fmtDateShort(entryDate(lowestEntry))}</Text>
+                </View>
+              )}
+            </View>
+          </View>
         </View>
       )}
 
@@ -520,10 +725,10 @@ function ExpenseTrackerWidget({ hubId }) {
             ))}
           </View>
         </View>
-        <MobileBarChart bars={trendData.bars} labels={trendData.labels} color={ACCENT} />
+        <MobileBarChart key={trendPer} bars={trendData.bars} labels={trendData.labels} color={ACCENT} />
         <View style={expSt.axisRow}>
           <Text style={expSt.axisLabel}>{currency} 0</Text>
-          <Text style={expSt.axisLabel}>{currency} {fmt(Math.max(...trendData.bars, 0))}</Text>
+          <Text style={expSt.axisLabel}>{currency} {fmt(Math.max(...trendData.bars.map(v => isNaN(v) ? 0 : v), 0))}</Text>
         </View>
       </View>
     </View>
@@ -754,8 +959,7 @@ function StravaStatsWidget({ userId }) {
       .finally(() => setLoading(false))
   }, [userId])
 
-  if (loading) return <WidgetSkeleton />
-
+  // Derived values — computed unconditionally so useMemo is always called
   const now = new Date()
   const day = now.getDay()
   const weekStart = new Date(now)
@@ -765,6 +969,27 @@ function StravaStatsWidget({ userId }) {
   lastWeekStart.setDate(lastWeekStart.getDate() - 7)
 
   const filtered = activities.filter(a => a.sport_type === sport)
+
+  // 12-week chart data — must be before early return
+  const weeks = useMemo(() => {
+    const sum = (arr, key) => arr.reduce((s, a) => s + (a[key] ?? 0), 0)
+    const result = []
+    for (let w = 11; w >= 0; w--) {
+      const wStart = new Date(weekStart)
+      wStart.setDate(wStart.getDate() - w * 7)
+      const wEnd = new Date(wStart)
+      wEnd.setDate(wEnd.getDate() + 7)
+      const wActs = filtered.filter(a => { const d = new Date(a.start_date); return d >= wStart && d < wEnd })
+      const dist = sum(wActs, 'distance_meters')
+      const mo = wStart.getMonth() + 1
+      const dy = wStart.getDate()
+      result.push({ dist, label: `${mo}/${dy}` })
+    }
+    return result
+  }, [filtered.length, sport, weekStart.getTime()])
+
+  if (loading) return <WidgetSkeleton />
+
   const thisWeek = filtered.filter(a => new Date(a.start_date) >= weekStart)
   const lastWeek = filtered.filter(a => {
     const d = new Date(a.start_date); return d >= lastWeekStart && d < weekStart
@@ -781,23 +1006,6 @@ function StravaStatsWidget({ userId }) {
   const distDelta = thisStats.dist - lastStats.dist
   const deltaSign = distDelta >= 0 ? '+' : ''
   const deltaColor = distDelta >= 0 ? '#22c55e' : '#f87171'
-
-  // 12-week chart data
-  const weeks = useMemo(() => {
-    const result = []
-    for (let w = 11; w >= 0; w--) {
-      const wStart = new Date(weekStart)
-      wStart.setDate(wStart.getDate() - w * 7)
-      const wEnd = new Date(wStart)
-      wEnd.setDate(wEnd.getDate() + 7)
-      const wActs = filtered.filter(a => { const d = new Date(a.start_date); return d >= wStart && d < wEnd })
-      const dist = sum(wActs, 'distance_meters')
-      const mo = wStart.getMonth() + 1
-      const dy = wStart.getDate()
-      result.push({ dist, label: `${mo}/${dy}` })
-    }
-    return result
-  }, [filtered, weekStart])
 
   const STAT_LABELS = ['Distance', 'Time', 'Elevation']
   const thisVals = [fmtDist(thisStats.dist), fmtSecs(thisStats.secs), fmtElev(thisStats.elev)]
@@ -877,11 +1085,48 @@ function WorkoutLogWidget() {
   )
 }
 
+// ── AlyNudgeWidget ────────────────────────────────────────────────────────────
+function AlyNudgeWidget({ userId }) {
+  const [nudge, setNudge] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!userId) { setLoading(false); return }
+    supabase.from('coordinator_messages')
+      .select('content')
+      .eq('user_id', userId)
+      .eq('role', 'assistant')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const txt = data[0].content
+          setNudge(txt.length > 150 ? txt.substring(0, 150) + '...' : txt)
+        }
+      })
+      .finally(() => setLoading(false))
+  }, [userId])
+
+  if (loading) return <WidgetSkeleton />
+  if (!nudge) return <WidgetEmpty label="No recent nudge from Aly" />
+
+  return (
+    <View style={wStyles.compactBody}>
+      <MarkdownRenderer content={nudge} />
+    </View>
+  )
+}
+
 // ── Widget card wrapper ───────────────────────────────────────────────────────
 function MobileWidget({ widget, userId, half }) {
+  const navigation = useNavigation()
   const meta = WIDGET_META[widget.type] ?? { label: widget.type, Icon: AppWindow, accent: colors.text.tertiary }
   const { Icon, accent, label } = meta
   const title = widget.title || label
+
+  const handleNavToHub = () => {
+    if (widget.hub_id) navigation.navigate('Hub', { hubId: widget.hub_id })
+  }
 
   const renderBody = () => {
     const hId = widget.hub_id
@@ -901,11 +1146,12 @@ function MobileWidget({ widget, userId, half }) {
       case 'strava_stats':    return <StravaStatsWidget userId={userId} />
       case 'sleep_tracker':   return <SleepTrackerWidget />
       case 'workout_log':     return <WorkoutLogWidget />
+      case 'aly_nudge':       return <AlyNudgeWidget userId={userId} />
       default:                return <WidgetEmpty label="Unknown widget" />
     }
   }
 
-  const noHub = !widget.hub_id && !['quick_clock','space_pulse','weekly_progress','upcoming_global','strava_stats'].includes(widget.type)
+  const noHub = !widget.hub_id && !['quick_clock','space_pulse','weekly_progress','upcoming_global','strava_stats','aly_nudge'].includes(widget.type)
 
   return (
     <View style={[wStyles.card, half && wStyles.cardHalf]}>
@@ -917,7 +1163,10 @@ function MobileWidget({ widget, userId, half }) {
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={wStyles.cardTitle} numberOfLines={1}>{title}</Text>
           {widget.hub_id && widget.hubName && (
-            <Text style={wStyles.cardSub} numberOfLines={1}>{widget.hubName}</Text>
+            <TouchableOpacity onPress={handleNavToHub} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+              <Text style={wStyles.cardSub} numberOfLines={1}>{widget.hubName}</Text>
+              <CaretRight size={8} color={colors.text.tertiary} weight="bold" />
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -964,7 +1213,8 @@ export default function HomeScreen({ navigation }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [dailyInsight, setDailyInsight] = useState('')
+  const [dailyInsight,      setDailyInsight]      = useState('')
+  const [insightRefreshing, setInsightRefreshing] = useState(false)
   const insightOpacity = useRef(new Animated.Value(0)).current
   // Screens + widgets
   const [screens, setScreens] = useState([])
@@ -975,40 +1225,106 @@ export default function HomeScreen({ navigation }) {
   // Hub name lookup for widget headers
   const [hubMap, setHubMap] = useState({})
 
+  const hasLoadedRef = useRef(false)
+
   useFocusEffect(
     useCallback(() => {
       supabase.auth.getUser().then(({ data: { user: u } }) => {
-        if (u) { setUser(u); loadData(u) }
+        if (!u) return
+        setUser(u)
+        if (!hasLoadedRef.current) {
+          hasLoadedRef.current = true
+          loadData(u)
+        } else {
+          // Silent background refresh — no spinner
+          silentRefresh(u)
+        }
       })
     }, [])
   )
 
-  const loadData = async (u, isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
+  const insightCacheKey = (userId) => {
+    const today = new Date().toISOString().split('T')[0]
+    return `aly_insight_${userId}_${today}`
+  }
+
+  const fetchInsight = async (userId, forceRefresh = false) => {
+    const cacheKey = insightCacheKey(userId)
+    if (!forceRefresh) {
+      const cached = await AsyncStorage.getItem(cacheKey).catch(() => null)
+      if (cached) return cached
+    }
+    const res    = await fetch(`${API_URL}/aly/daily-insight?user_id=${userId}`).then(r => r.json()).catch(() => ({}))
+    const insight = res?.insight ?? ''
+    if (insight) await AsyncStorage.setItem(cacheKey, insight).catch(() => {})
+    return insight
+  }
+
+  const loadData = async (u) => {
+    setLoading(true)
     try {
-      const [insightRes, screensRes] = await Promise.all([
-        fetch(`${API_URL}/aly/daily-insight?user_id=${u.id}`).then(r => r.json()).catch(() => ({})),
+      // Phase 1 — show cached insight immediately, no network needed
+      const cached = await AsyncStorage.getItem(insightCacheKey(u.id)).catch(() => null)
+      if (cached) {
+        setDailyInsight(cached)
+        insightOpacity.setValue(1)
+      }
+
+      // Phase 2 — load profile + screens in parallel (fast Supabase reads)
+      const [profileRes, screensRes] = await Promise.all([
+        supabase.from('user_profiles').select('home_screen_id').eq('id', u.id).maybeSingle(),
         supabase.from('screens').select('*').eq('user_id', u.id).order('position', { ascending: true }).limit(10),
       ])
 
-      if (insightRes?.insight) {
-        setDailyInsight(insightRes.insight)
-        Animated.timing(insightOpacity, { toValue: 1, duration: 600, useNativeDriver: true }).start()
-      }
-
       const loadedScreens = screensRes?.data ?? []
       setScreens(loadedScreens)
-      if (loadedScreens.length > 0) {
-        const firstId = loadedScreens[0].id
-        setSelectedScreenId(firstId)
-        await loadWidgets(firstId, u.id)
+
+      const homeScreenId    = profileRes?.data?.home_screen_id
+      const initialScreenId = homeScreenId || (loadedScreens.length > 0 ? loadedScreens[0].id : null)
+      if (initialScreenId) setSelectedScreenId(initialScreenId)
+
+      setLoading(false)   // ← unblock UI as soon as screens are ready
+
+      // Phase 3 — load widgets in background (non-blocking)
+      if (initialScreenId) loadWidgets(initialScreenId, u.id)
+
+      // Phase 4 — fetch fresh insight in background if no cache
+      if (!cached) {
+        fetchInsight(u.id).then(insight => {
+          if (insight) {
+            setDailyInsight(insight)
+            insightOpacity.setValue(0)
+            Animated.timing(insightOpacity, { toValue: 1, duration: 500, useNativeDriver: true }).start()
+          }
+        })
       }
     } catch (e) {
       console.warn('HomeScreen loadData error:', e)
-    } finally {
       setLoading(false)
-      setRefreshing(false)
+    }
+  }
+
+  const silentRefresh = async (u) => {
+    setRefreshing(false) // keep pull-to-refresh separate
+    try {
+      const { data: screensData } = await supabase
+        .from('screens').select('*').eq('user_id', u.id).order('position', { ascending: true }).limit(10)
+      if (screensData) setScreens(screensData)
+    } catch { /* ignore */ }
+  }
+
+  const refreshInsight = async () => {
+    if (!user || insightRefreshing) return
+    setInsightRefreshing(true)
+    try {
+      const insight = await fetchInsight(user.id, true)
+      if (insight) {
+        insightOpacity.setValue(0)
+        setDailyInsight(insight)
+        Animated.timing(insightOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start()
+      }
+    } finally {
+      setInsightRefreshing(false)
     }
   }
 
@@ -1071,7 +1387,23 @@ export default function HomeScreen({ navigation }) {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadData(user, true)} tintColor={colors.text.tertiary} />
+          <RefreshControl refreshing={refreshing} onRefresh={async () => {
+            setRefreshing(true)
+            if (user) {
+              const [screensRes] = await Promise.all([
+                supabase.from('screens').select('*').eq('user_id', user.id).order('position', { ascending: true }).limit(10),
+              ])
+              setScreens(screensRes?.data ?? [])
+              if (selectedScreenId) loadWidgets(selectedScreenId, user.id)
+              const insight = await fetchInsight(user.id, true)
+              if (insight) {
+                setDailyInsight(insight)
+                insightOpacity.setValue(0)
+                Animated.timing(insightOpacity, { toValue: 1, duration: 500, useNativeDriver: true }).start()
+              }
+            }
+            setRefreshing(false)
+          }} tintColor={colors.text.tertiary} />
         }
       >
         {/* ── GREETING HEADER ─────────────────────────────────────── */}
@@ -1093,6 +1425,14 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.insightHeader}>
             <Sparkle size={13} color={colors.modules.aly} weight="fill" />
             <Text style={styles.insightLabel}>{ASSISTANT_NAME}'s Insights</Text>
+            <TouchableOpacity
+              onPress={refreshInsight}
+              disabled={insightRefreshing}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ marginLeft: 'auto', opacity: insightRefreshing ? 0.4 : 1 }}
+            >
+              <ArrowClockwise size={13} color={colors.text.tertiary} weight="bold" />
+            </TouchableOpacity>
           </View>
           {dailyInsight ? (
             <Animated.View style={{ opacity: insightOpacity }}>
@@ -1255,15 +1595,12 @@ const wStyles = StyleSheet.create({
   spaceDot: { width: 6, height: 6, borderRadius: 3 },
 
   // Macro row (calorie widget)
-  macroRow: {
-    flexDirection: 'row', alignItems: 'center',
-    borderTopWidth: 0.5, borderTopColor: colors.border.primary + '60',
-    marginTop: 10, paddingTop: 10,
-  },
-  macroCell: { flex: 1, alignItems: 'center', gap: 2 },
-  macroNum:  { fontSize: 15, fontWeight: '800' },
-  macroLabel:{ fontSize: 8, color: colors.text.tertiary, textTransform: 'uppercase', letterSpacing: 0.3 },
-  macroDivider: { width: 0.5, height: 28, backgroundColor: colors.border.primary + '80' },
+  macroProgressContainer: { gap: 8, marginTop: 12, borderTopWidth: 0.5, borderTopColor: colors.border.primary + '40', paddingTop: 12 },
+  macroProgressRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  macroLabelSmall: { fontSize: 9, color: colors.text.tertiary, width: 45 },
+  macroBarTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.background.tertiary, overflow: 'hidden' },
+  macroBarFill: { height: '100%', borderRadius: 2 },
+  macroValueSmall: { fontSize: 9, color: colors.text.secondary, width: 35, textAlign: 'right' },
 
   // Strava
   sportTabs: { flexDirection: 'row', gap: 6 },
@@ -1382,10 +1719,12 @@ const expSt = StyleSheet.create({
   totalRow: {
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
     borderBottomWidth: 0.5, borderBottomColor: colors.border.primary + '50',
-    gap: 2,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   totalLabel: { fontSize: 9, fontWeight: '700', color: colors.text.tertiary, textTransform: 'uppercase', letterSpacing: 0.8 },
-  totalNum:   { fontSize: 26, fontWeight: '800', color: colors.text.primary, letterSpacing: -0.5 },
+  totalNum:   { fontSize: 26, fontWeight: '800', color: '#FFF', letterSpacing: -0.5 },
+  subtleLabel: { fontSize: 8, fontWeight: '700', color: colors.text.tertiary, textTransform: 'uppercase' },
+  subtleDate:  { fontSize: 8, color: colors.text.tertiary + 'cc', marginTop: -1 },
 
   section: {
     paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14,

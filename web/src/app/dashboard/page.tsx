@@ -13,6 +13,7 @@ import { hubsService, Hub } from "@/services/hubs.service";
 import { WidgetCard } from "@/components/screens/WidgetCard";
 import { ManageScreensOrderModal } from "@/components/screens/ManageScreensOrderModal";
 import { ArrowsDownUp } from "@phosphor-icons/react";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getGreeting() {
@@ -30,6 +31,7 @@ function formatDate() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const { assistantName, profile } = useUserProfile();
   const [userId,           setUserId]           = useState<string | null>(null);
   const [user,             setUser]             = useState<Record<string, unknown> | null>(null);
   const [loading,          setLoading]          = useState(true);
@@ -110,7 +112,11 @@ export default function DashboardPage() {
 
       const loadedScreens = screensData.slice(0, 10);
       setScreens(loadedScreens);
-      if (loadedScreens.length > 0) setSelectedScreenId(loadedScreens[0].id);
+      if (loadedScreens.length > 0) {
+        const homeId = profile?.home_screen_id;
+        const pinned = homeId && loadedScreens.find(s => s.id === homeId);
+        setSelectedScreenId(pinned ? homeId : loadedScreens[0].id);
+      }
 
       setSpaces(spacesData);
 
@@ -150,7 +156,7 @@ export default function DashboardPage() {
           className="shrink-0 flex items-center gap-2 bg-modules-aly/10 border border-modules-aly/20 text-modules-aly px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-modules-aly/20 transition-all"
         >
           <SparkleIcon size={15} weight="fill" />
-          Ask Aly
+          Ask {assistantName}
         </Link>
       </header>
 
@@ -161,7 +167,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <SparkleIcon size={14} color="var(--modules-aly)" weight="fill" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-modules-aly">Aly&apos;s Insights</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-modules-aly">{assistantName}&apos;s Insights</span>
             </div>
             <button
               onClick={refreshInsight}
@@ -181,14 +187,14 @@ export default function DashboardPage() {
             <p className="text-sm text-text-secondary leading-relaxed">{dailyInsight}</p>
           ) : (
             <p className="text-sm text-text-tertiary italic">
-              No insights yet — chat with Aly to get started.
+              No insights yet — chat with {assistantName} to get started.
             </p>
           )}
           <Link
             href="/chat"
             className="self-start flex items-center gap-1.5 text-xs font-semibold text-modules-aly hover:opacity-80 transition-opacity mt-1"
           >
-            Chat with Aly <ArrowRightIcon size={11} />
+            Chat with {assistantName} <ArrowRightIcon size={11} />
           </Link>
         </div>
       </section>
@@ -278,7 +284,6 @@ export default function DashboardPage() {
                             hubName={hub?.name}
                             spaceName={space?.name}
                             userId={userId ?? undefined}
-                            readOnly
                           />
                         </div>
                       );

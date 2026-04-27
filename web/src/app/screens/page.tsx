@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, AppWindow, Sparkle, MagnifyingGlass, Trash, FolderOpen } from '@phosphor-icons/react';
+import { Plus, AppWindow, Sparkle, MagnifyingGlass, Trash, FolderOpen, InfinityIcon, SquaresFourIcon } from '@phosphor-icons/react';
 import { supabase } from '@/services/supabase';
 import { screensService, Screen } from '@/services/screens.service';
 import { spacesService, Space } from '@/services/spaces.service';
@@ -114,7 +114,20 @@ export default function ScreensPage() {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-text-primary truncate">{screen.name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-bold text-sm text-text-primary truncate">{screen.name}</p>
+                      {/* Layout type badge */}
+                      <span className={`flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md border ${
+                        screen.layout_type === 'canvas'
+                          ? 'bg-indigo-500/10 border-indigo-400/30 text-indigo-400'
+                          : 'bg-background-tertiary border-border-primary text-text-tertiary'
+                      }`}>
+                        {screen.layout_type === 'canvas'
+                          ? <><InfinityIcon size={8} /> Canvas</>
+                          : <><SquaresFourIcon size={8} /> Grid</>
+                        }
+                      </span>
+                    </div>
 
                     {/* Source space badge */}
                     {parentSpace ? (

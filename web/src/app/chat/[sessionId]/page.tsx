@@ -26,7 +26,7 @@ import {
   CoordinatorSession,
 } from '@/services/coordinator.service';
 import { supabase } from '@/services/supabase';
-import { ASSISTANT_NAME } from '@/constants/brand';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 // ── Components ───────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ function ActionCard({ action, userId, onConfirmed }: { action: any; userId: stri
   );
 }
 
-function WelcomeView({ userName, onSelect }: { userName: string; onSelect: (prompt: string) => void }) {
+function WelcomeView({ userName, assistantName, onSelect }: { userName: string; assistantName: string; onSelect: (prompt: string) => void }) {
   const suggestions = [
     { label: 'My day',        icon: <Sparkle size={18} />,     prompt: 'What does my day look like?' },
     { label: 'Add task',      icon: <ListChecks size={18} />,  prompt: 'I need to add a task' },
@@ -137,7 +137,7 @@ function WelcomeView({ userName, onSelect }: { userName: string; onSelect: (prom
           <h1 className="text-2xl font-bold text-text-primary tracking-tight">
             Hey{userName ? `, ${userName}` : ''}!
           </h1>
-          <p className="text-text-tertiary">I&apos;m {ASSISTANT_NAME}. What&apos;s on your mind today?</p>
+          <p className="text-text-tertiary">I&apos;m {assistantName}. What&apos;s on your mind today?</p>
         </div>
       </div>
 
@@ -163,7 +163,8 @@ export default function ChatSessionPage() {
   const params = useParams();
   const router = useRouter();
   const sessionId = params.sessionId as string;
-  
+  const { assistantName } = useUserProfile();
+
   const [sessions, setSessions] = useState<CoordinatorSession[]>([]);
   const [messages, setMessages] = useState<(CoordinatorMessage & { actions?: any[] })[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -379,7 +380,7 @@ export default function ChatSessionPage() {
           className="flex-1 overflow-y-auto px-8 py-10 lg:px-20 space-y-10 pb-40"
         >
           {messages.length === 0 && !isStreaming ? (
-            <WelcomeView userName={userName} onSelect={(prompt) => handleSend(prompt)} />
+            <WelcomeView userName={userName} assistantName={assistantName} onSelect={(prompt) => handleSend(prompt)} />
           ) : (
             <div className="max-w-4xl mx-auto w-full space-y-8">
               {messages.map((message) => (
@@ -394,7 +395,7 @@ export default function ChatSessionPage() {
                   )}
                   <div className={`max-w-[85%] lg:max-w-[75%] ${message.role === 'user' ? 'bg-background-tertiary p-5 rounded-3xl rounded-tr-sm border border-border-primary' : 'flex-1'}`}>
                     {message.role === 'assistant' && message.content && (
-                      <p className="text-[10px] font-bold text-modules-aly uppercase tracking-[.2em] mb-2">{ASSISTANT_NAME}</p>
+                      <p className="text-[10px] font-bold text-modules-aly uppercase tracking-[.2em] mb-2">{assistantName}</p>
                     )}
                     <div className={message.role === 'user' ? 'text-[15px] font-medium leading-relaxed' : ''}>
                       {message.role === 'assistant' ? (
@@ -475,7 +476,7 @@ export default function ChatSessionPage() {
                   }
                 }}
                 rows={1}
-                placeholder={`Ask ${ASSISTANT_NAME} anything…`}
+                placeholder={`Ask ${assistantName} anything…`}
                 className="flex-1 bg-transparent px-6 py-4 text-sm font-medium focus:outline-none placeholder:text-text-tertiary resize-none max-h-40"
                 style={{ height: 'auto' }}
               />

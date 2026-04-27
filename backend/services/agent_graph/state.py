@@ -11,6 +11,7 @@ class AgentState(TypedDict):
 
     # Context (loaded by node_load_context)
     context_bio: str
+    assistant_name: str
     wellbeing_signals: List[str]
     tasks: List[dict]
     hubs: List[dict]

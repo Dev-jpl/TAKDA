@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   TrashIcon, CheckCircleIcon, PencilSimpleIcon, FileTextIcon,
@@ -8,8 +8,10 @@ import {
   CurrencyDollarIcon, CalendarCheckIcon, MoonIcon, LightningIcon,
   ChartPieSliceIcon, ClockIcon, TrendUpIcon, BicycleIcon,
   CaretRightIcon,
+  PlusIcon, MinusIcon, SparkleIcon, CameraIcon, CheckSquareIcon, SquareIcon,
+  XIcon, FlameIcon, ChartBarIcon,
 } from '@phosphor-icons/react';
-import { ScreenWidget, WidgetType } from '@/services/screens.service';
+import { ScreenWidget, WidgetType, screensService } from '@/services/screens.service';
 import { Space } from '@/services/spaces.service';
 import { Hub } from '@/services/hubs.service';
 import { trackService, Task } from '@/services/track.service';
@@ -38,7 +40,14 @@ const TYPE_META: Record<WidgetType, { label: string; icon: React.ReactNode; acce
   quick_clock:      { label: 'Quick Clock',      icon: <ClockIcon          size={13} weight="bold" />, accent: 'text-modules-knowledge' },
   weekly_progress:  { label: 'Weekly Progress',  icon: <TrendUpIcon        size={13} weight="bold" />, accent: 'text-modules-track'     },
   upcoming_global:  { label: 'Upcoming (All)',   icon: <CalendarCheckIcon  size={13} weight="bold" />, accent: 'text-modules-automate'  },
-  strava_stats:     { label: 'Strava Stats',     icon: <BicycleIcon       size={13} weight="bold" />, accent: 'text-[#fc4c02]'         },
+  strava_stats:     { label: 'Strava Stats',     icon: <BicycleIcon        size={13} weight="bold" />, accent: 'text-[#fc4c02]'         },
+  // New core types
+  counter:          { label: 'Counter',          icon: <PlusIcon           size={13} weight="bold" />, accent: 'text-indigo-400'        },
+  checklist:        { label: 'Checklist',        icon: <CheckSquareIcon    size={13} weight="bold" />, accent: 'text-modules-track'     },
+  chart:            { label: 'Chart',            icon: <ChartBarIcon       size={13} weight="bold" />, accent: 'text-indigo-400'        },
+  streak:           { label: 'Streak',           icon: <FlameIcon          size={13} weight="bold" />, accent: 'text-orange-400'        },
+  aly_nudge:        { label: 'Aly Nudge',        icon: <SparkleIcon        size={13} weight="bold" />, accent: 'text-modules-aly'       },
+  hub_snapshot:     { label: 'Hub Snapshot',     icon: <CameraIcon         size={13} weight="bold" />, accent: 'text-modules-knowledge' },
 };
 
 // ── Sub-renderers ─────────────────────────────────────────────────────────────
@@ -647,6 +656,496 @@ function StravaStatsWidget({ userId }: { userId?: string }) {
   );
 }
 
+// ── New core widget sub-renderers ─────────────────────────────────────────────
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// ─ Counter ───────────────────────────────────────────────────────────────────
+
+function CounterWidget({ widget, readOnly }: { widget: ScreenWidget; readOnly?: boolean }) {
+  const cfg   = widget.config as Record<string, unknown>;
+  const label = (cfg.label as string) || 'Counter';
+  const unit  = (cfg.unit  as string) || '';
+  const step  = Number(cfg.step  ?? 1);
+  const goal  = cfg.goal != null ? Number(cfg.goal) : null;
+  const [value, setValue] = useState(Number(cfg.value ?? 0));
+  const [saving, setSaving] = useState(false);
+
+  const persist = async (next: number) => {
+    setSaving(true);
+    try {
+      await screensService.updateWidget(widget.id, { config: { ...cfg, value: next } });
+    } catch { /* silent */ } finally { setSaving(false); }
+  };
+
+  const adjust = (delta: number) => {
+    if (readOnly) return;
+    const next = Math.max(0, value + delta);
+    setValue(next);
+    persist(next);
+  };
+
+  const pct = goal != null && goal > 0 ? Math.min(100, Math.round((value / goal) * 100)) : null;
+
+  return (
+    <div className="px-4 py-4 flex flex-col gap-3">
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-3xl font-bold text-text-primary leading-none tabular-nums">
+            {value}
+            {unit && <span className="text-sm font-normal text-text-tertiary ml-1.5">{unit}</span>}
+          </p>
+          {goal != null && (
+            <p className="text-[10px] text-text-tertiary mt-1">goal: {goal} {unit}</p>
+          )}
+        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => adjust(-step)}
+              disabled={saving || value <= 0}
+              className="w-8 h-8 rounded-lg border border-border-primary bg-background-tertiary flex items-center justify-center text-text-secondary hover:bg-background-primary hover:border-indigo-400/40 transition-all disabled:opacity-30"
+            >
+              <MinusIcon size={14} weight="bold" />
+            </button>
+            <button
+              onClick={() => adjust(step)}
+              disabled={saving}
+              className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-400/30 flex items-center justify-center text-indigo-400 hover:bg-indigo-500/20 transition-all disabled:opacity-30"
+            >
+              <PlusIcon size={14} weight="bold" />
+            </button>
+          </div>
+        )}
+      </div>
+      {pct != null && (
+        <div className="flex flex-col gap-1">
+          <div className="h-1.5 bg-background-tertiary rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{ width: `${pct}%`, backgroundColor: pct >= 100 ? '#22c55e' : '#6366f1' }}
+            />
+          </div>
+          <p className="text-[10px] text-text-tertiary text-right">{pct}%</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─ Checklist ─────────────────────────────────────────────────────────────────
+
+interface ChecklistItem { id: string; text: string; checked: boolean }
+
+function ChecklistWidget({ widget, readOnly }: { widget: ScreenWidget; readOnly?: boolean }) {
+  const cfg = widget.config as Record<string, unknown>;
+  const [items, setItems] = useState<ChecklistItem[]>((cfg.items as ChecklistItem[]) || []);
+  const [newText, setNewText] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const persist = async (next: ChecklistItem[]) => {
+    try {
+      await screensService.updateWidget(widget.id, { config: { ...cfg, items: next } });
+    } catch { /* silent */ }
+  };
+
+  const toggle = (id: string) => {
+    if (readOnly) return;
+    const next = items.map(i => i.id === id ? { ...i, checked: !i.checked } : i);
+    setItems(next);
+    persist(next);
+  };
+
+  const addItem = () => {
+    if (!newText.trim() || readOnly) return;
+    const next = [...items, { id: Date.now().toString(), text: newText.trim(), checked: false }];
+    setItems(next);
+    setNewText('');
+    persist(next);
+    inputRef.current?.focus();
+  };
+
+  const removeItem = (id: string) => {
+    if (readOnly) return;
+    const next = items.filter(i => i.id !== id);
+    setItems(next);
+    persist(next);
+  };
+
+  const done = items.filter(i => i.checked).length;
+
+  return (
+    <div className="flex flex-col divide-y divide-border-primary/40">
+      {items.map(item => (
+        <div key={item.id} className="flex items-center gap-2.5 px-4 py-2.5 group">
+          <button onClick={() => toggle(item.id)} className="shrink-0 text-text-tertiary hover:text-modules-track transition-colors">
+            {item.checked
+              ? <CheckSquareIcon size={15} weight="fill" className="text-modules-track" />
+              : <SquareIcon      size={15} />
+            }
+          </button>
+          <span className={`text-sm flex-1 leading-snug ${item.checked ? 'line-through text-text-tertiary' : 'text-text-primary'}`}>
+            {item.text}
+          </span>
+          {!readOnly && (
+            <button
+              onClick={() => removeItem(item.id)}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-text-tertiary hover:text-red-400"
+            >
+              <XIcon size={11} />
+            </button>
+          )}
+        </div>
+      ))}
+
+      {items.length === 0 && <p className="px-4 py-4 text-sm text-text-tertiary text-center">Nothing here yet.</p>}
+
+      {!readOnly && (
+        <div className="flex items-center gap-2 px-4 py-2.5">
+          <input
+            ref={inputRef}
+            value={newText}
+            onChange={e => setNewText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addItem()}
+            placeholder="Add item…"
+            className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary/40 outline-none"
+          />
+          <button
+            onClick={addItem}
+            disabled={!newText.trim()}
+            className="text-modules-track disabled:opacity-30 transition-opacity"
+          >
+            <PlusIcon size={14} weight="bold" />
+          </button>
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <p className="px-4 py-2 text-[10px] text-text-tertiary">{done}/{items.length} done</p>
+      )}
+    </div>
+  );
+}
+
+// ─ Streak ────────────────────────────────────────────────────────────────────
+
+function StreakWidget({ widget, userId, readOnly }: { widget: ScreenWidget; userId?: string; readOnly?: boolean }) {
+  const cfg     = widget.config as Record<string, unknown>;
+  const habitId = cfg.habit_id as string | null;
+  const name    = (cfg.name as string) || 'My Habit';
+  const color   = (cfg.color as string) || '#f97316';
+
+  const [streak,         setStreak]         = useState(0);
+  const [completedToday, setCompletedToday] = useState(false);
+  const [last28,         setLast28]         = useState<{ date: string; done: boolean }[]>([]);
+  const [logging,        setLogging]        = useState(false);
+
+  // Setup state: no habit_id yet → show inline creation form
+  const [setupName,    setSetupName]    = useState(name);
+  const [setupColor,   setSetupColor]   = useState(color);
+  const [creatingHabit, setCreatingHabit] = useState(false);
+
+  const fetchStreak = async () => {
+    if (!habitId || !userId) return;
+    try {
+      const res  = await fetch(`${API}/habits/${habitId}/streak?user_id=${userId}`);
+      const data = await res.json();
+      setStreak(data.streak ?? 0);
+      setCompletedToday(data.completed_today ?? false);
+      setLast28(data.last_28_days ?? []);
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => { fetchStreak(); }, [habitId, userId]);
+
+  const handleLog = async () => {
+    if (!habitId || !userId || logging || readOnly) return;
+    setLogging(true);
+    try {
+      const method = completedToday ? 'DELETE' : 'POST';
+      if (method === 'POST') {
+        await fetch(`${API}/habits/${habitId}/log`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId }),
+        });
+      } else {
+        await fetch(`${API}/habits/${habitId}/log?user_id=${userId}`, { method: 'DELETE' });
+      }
+      await fetchStreak();
+    } catch { /* silent */ } finally { setLogging(false); }
+  };
+
+  const handleCreateHabit = async () => {
+    if (!userId || creatingHabit) return;
+    setCreatingHabit(true);
+    try {
+      const res  = await fetch(`${API}/habits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, name: setupName, color: setupColor }),
+      });
+      const habit = await res.json();
+      if (habit.id) {
+        await screensService.updateWidget(widget.id, {
+          config: { ...cfg, habit_id: habit.id, name: setupName, color: setupColor },
+        });
+        // Trigger a re-mount by reloading page or updating parent — use a soft refresh for now
+        window.location.reload();
+      }
+    } catch { /* silent */ } finally { setCreatingHabit(false); }
+  };
+
+  // Show setup form if no habit yet
+  if (!habitId) {
+    if (readOnly) return <WidgetEmpty label="Habit not configured" />;
+    return (
+      <div className="px-4 py-4 flex flex-col gap-3">
+        <p className="text-xs text-text-tertiary">Set up your habit tracker:</p>
+        <input
+          value={setupName}
+          onChange={e => setSetupName(e.target.value)}
+          placeholder="Habit name…"
+          className="w-full bg-background-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-modules-aly/40"
+        />
+        <button
+          onClick={handleCreateHabit}
+          disabled={creatingHabit || !setupName.trim()}
+          className="flex items-center justify-center gap-1.5 py-2 bg-orange-500/10 border border-orange-400/30 text-orange-400 text-xs font-bold rounded-lg hover:bg-orange-500/20 transition-all disabled:opacity-40"
+        >
+          {creatingHabit ? '…' : <><FlameIcon size={12} weight="fill" /> Start tracking</>}
+        </button>
+      </div>
+    );
+  }
+
+  // Heatmap: show last 28 days in 4 rows of 7
+  const weeks: { date: string; done: boolean }[][] = [];
+  for (let i = 0; i < last28.length; i += 7) weeks.push(last28.slice(i, i + 7));
+
+  return (
+    <div className="px-4 py-4 flex flex-col gap-4">
+      {/* Streak count */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-3xl font-bold text-text-primary leading-none tabular-nums">
+            {streak}
+            <span className="text-sm font-normal text-text-tertiary ml-1.5">day streak</span>
+          </p>
+          <p className="text-[10px] text-text-tertiary mt-1">{name}</p>
+        </div>
+        {!readOnly && (
+          <button
+            onClick={handleLog}
+            disabled={logging}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all disabled:opacity-40 ${
+              completedToday
+                ? 'border-green-400/40 bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                : 'border-orange-400/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
+            }`}
+          >
+            <FlameIcon size={13} weight={completedToday ? 'fill' : 'regular'} />
+            {completedToday ? 'Done!' : 'Log today'}
+          </button>
+        )}
+      </div>
+
+      {/* 28-day heatmap grid */}
+      {last28.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {weeks.map((week, wi) => (
+            <div key={wi} className="flex gap-1">
+              {week.map(day => (
+                <div
+                  key={day.date}
+                  title={day.date}
+                  className="flex-1 h-4 rounded-sm transition-colors"
+                  style={{ backgroundColor: day.done ? color : undefined }}
+                  data-done={day.done}
+                >
+                  {!day.done && <div className="w-full h-full rounded-sm bg-background-tertiary" />}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─ Chart (habit completion history) ──────────────────────────────────────────
+
+function ChartWidget({ widget, userId }: { widget: ScreenWidget; userId?: string }) {
+  const cfg     = widget.config as Record<string, unknown>;
+  const habitId = cfg.habit_id as string | null;
+  const days    = Number(cfg.days ?? 14);
+  const chartType = (cfg.chart_type as string) || 'bar';
+
+  const [bars,    setBars]    = useState<{ date: string; done: boolean }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!habitId || !userId) { setLoading(false); return; }
+    fetch(`${API}/habits/${habitId}/streak?user_id=${userId}`)
+      .then(r => r.json())
+      .then(data => {
+        const all: { date: string; done: boolean }[] = data.last_28_days ?? [];
+        setBars(all.slice(-days));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [habitId, userId, days]);
+
+  if (loading) return <WidgetSkeleton rows={3} />;
+  if (!habitId) return <WidgetEmpty label="Habit not configured" />;
+  if (bars.length === 0) return <WidgetEmpty label="No data yet" />;
+
+  const total = bars.filter(b => b.done).length;
+
+  if (chartType === 'line') {
+    // Line: simple polyline of cumulative completions
+    const cum = bars.map((_, i) => bars.slice(0, i + 1).filter(b => b.done).length);
+    const max = cum[cum.length - 1] || 1;
+    const pts = cum.map((v, i) => {
+      const x = ((i / (bars.length - 1)) * 100).toFixed(1);
+      const y = (100 - (v / max) * 100).toFixed(1);
+      return `${x},${y}`;
+    }).join(' ');
+
+    return (
+      <div className="px-4 py-4 flex flex-col gap-3">
+        <p className="text-[10px] text-text-tertiary uppercase tracking-widest">
+          {total}/{days} days completed
+        </p>
+        <svg viewBox="0 0 100 60" preserveAspectRatio="none" className="w-full h-16">
+          <polyline points={pts} fill="none" stroke="#6366f1" strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        </svg>
+        <div className="flex justify-between text-[9px] text-text-tertiary">
+          <span>{bars[0]?.date?.slice(5)}</span>
+          <span>{bars[bars.length - 1]?.date?.slice(5)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Bar chart
+  return (
+    <div className="px-4 py-4 flex flex-col gap-3">
+      <p className="text-[10px] text-text-tertiary uppercase tracking-widest">
+        {total}/{days} days completed
+      </p>
+      <div className="flex items-end gap-0.5 h-12">
+        {bars.map((b, i) => (
+          <div
+            key={i}
+            title={b.date}
+            className="flex-1 rounded-sm transition-colors"
+            style={{
+              height: b.done ? '100%' : '20%',
+              backgroundColor: b.done ? '#6366f1' : undefined,
+            }}
+          >
+            {!b.done && <div className="w-full h-full rounded-sm bg-background-tertiary" />}
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between text-[9px] text-text-tertiary">
+        <span>{bars[0]?.date?.slice(5)}</span>
+        <span>{bars[bars.length - 1]?.date?.slice(5)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─ Aly Nudge ─────────────────────────────────────────────────────────────────
+
+function AlyNudgeWidget({ userId }: { userId?: string }) {
+  const [insight, setInsight] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) { setLoading(false); return; }
+    const today    = new Date().toISOString().split('T')[0];
+    const cacheKey = `aly_insight_${userId}_${today}`;
+    const cached   = localStorage.getItem(cacheKey);
+    if (cached) { setInsight(cached); setLoading(false); return; }
+
+    fetch(`${API}/aly/daily-insight?user_id=${userId}`)
+      .then(r => r.json())
+      .then(data => {
+        const msg = data?.insight ?? '';
+        if (msg) localStorage.setItem(cacheKey, msg);
+        setInsight(msg);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  if (loading) return <WidgetSkeleton rows={3} />;
+
+  return (
+    <div className="px-4 py-4 flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-lg bg-modules-aly/10 border border-modules-aly/20 flex items-center justify-center shrink-0">
+          <SparkleIcon size={13} className="text-modules-aly" weight="fill" />
+        </div>
+        <span className="text-[10px] font-bold text-modules-aly uppercase tracking-widest">Today&apos;s nudge</span>
+      </div>
+      {insight ? (
+        <p className="text-sm text-text-secondary leading-relaxed">{insight}</p>
+      ) : (
+        <p className="text-sm text-text-tertiary italic">Start a chat to get your first insight.</p>
+      )}
+    </div>
+  );
+}
+
+// ─ Hub Snapshot ───────────────────────────────────────────────────────────────
+
+function HubSnapshotWidget({ hubId, userId }: { hubId: string; userId?: string }) {
+  const [data,    setData]    = useState<{ summary: string; tasks: Record<string, unknown>[]; annotations: Record<string, unknown>[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) { setLoading(false); return; }
+    fetch(`${API}/aly/hub-snapshot?hub_id=${hubId}&user_id=${userId}`)
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [hubId, userId]);
+
+  if (loading) return <WidgetSkeleton rows={4} />;
+  if (!data)   return <WidgetEmpty label="Couldn't load snapshot" />;
+
+  return (
+    <div className="px-4 py-4 flex flex-col gap-3">
+      {data.summary && (
+        <div className="flex gap-2.5">
+          <div className="w-5 h-5 rounded-md bg-modules-aly/10 border border-modules-aly/20 flex items-center justify-center shrink-0 mt-0.5">
+            <SparkleIcon size={11} className="text-modules-aly" weight="fill" />
+          </div>
+          <p className="text-sm text-text-secondary leading-relaxed flex-1">{data.summary}</p>
+        </div>
+      )}
+      {data.tasks.length > 0 && (
+        <ul className="flex flex-col gap-1.5 mt-1">
+          {data.tasks.slice(0, 4).map((t, i) => (
+            <li key={i} className="flex items-center gap-2 text-xs text-text-primary">
+              <CircleIcon size={10} className="text-text-tertiary/50 shrink-0" />
+              {String(t.title || '')}
+            </li>
+          ))}
+        </ul>
+      )}
+      {data.tasks.length === 0 && data.annotations.length === 0 && (
+        <WidgetEmpty label="Nothing recent in this hub" />
+      )}
+    </div>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function WidgetSkeleton({ rows }: { rows: number }) {
@@ -730,6 +1229,7 @@ export function WidgetCard({ widget, hubName, spaceName, userId, spaces = [], hu
 
       {/* Body */}
       <div className={`flex-1 overflow-y-auto ${widget.type === 'strava_stats' ? '' : 'max-h-72'}`}>
+        {/* ── Global widgets (no hub needed) ─────────────────────────────── */}
         {widget.type === 'quick_clock' ? (
           <QuickClockWidget />
         ) : widget.type === 'space_pulse' ? (
@@ -740,8 +1240,21 @@ export function WidgetCard({ widget, hubName, spaceName, userId, spaces = [], hu
           <UpcomingGlobalWidget userId={userId} />
         ) : widget.type === 'strava_stats' ? (
           <StravaStatsWidget userId={userId} />
-        ) : !widget.hub_id ? (
+        ) : widget.type === 'counter' ? (
+          <CounterWidget widget={widget} readOnly={readOnly} />
+        ) : widget.type === 'checklist' ? (
+          <ChecklistWidget widget={widget} readOnly={readOnly} />
+        ) : widget.type === 'streak' ? (
+          <StreakWidget widget={widget} userId={userId} readOnly={readOnly} />
+        ) : widget.type === 'chart' ? (
+          <ChartWidget widget={widget} userId={userId} />
+        ) : widget.type === 'aly_nudge' ? (
+          <AlyNudgeWidget userId={userId} />
+        ) : /* ── Hub widgets ──────────────────────────────────────────────── */
+        !widget.hub_id ? (
           <WidgetEmpty label="No hub selected" />
+        ) : widget.type === 'hub_snapshot' ? (
+          <HubSnapshotWidget hubId={widget.hub_id} userId={userId} />
         ) : widget.type === 'tasks' ? (
           <TasksWidget hubId={widget.hub_id} />
         ) : widget.type === 'notes' ? (

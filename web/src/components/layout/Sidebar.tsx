@@ -17,9 +17,9 @@ import {
   PencilLine,
   ChartPie,
 } from '@phosphor-icons/react';
-import { ASSISTANT_NAME } from '@/constants/brand';
 import { ProfileMenuPopup } from '@/components/profile/ProfileMenuPopup';
 import { supabase } from '@/services/supabase';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 interface NavItemProps {
   href: string;
@@ -129,6 +129,7 @@ const NavGroup: React.FC<NavGroupProps> = ({ icon: Icon, label, items, active, d
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
+  const { assistantName } = useUserProfile();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string>("You");
   const [initials, setInitials] = useState<string>("—");
@@ -236,7 +237,7 @@ export const Sidebar: React.FC = () => {
       {/* Ask Aly */}
       <nav className="flex flex-col gap-0.5">
         <p className="text-[10px] font-semibold text-text-tertiary/50 uppercase tracking-wider mb-1 px-3">Assistant</p>
-        <NavItem href="/chat" icon={Sparkle} label={`Ask ${ASSISTANT_NAME}`} active={pathname === "/chat"} />
+        <NavItem href="/chat" icon={Sparkle} label={`Ask ${assistantName}`} active={pathname === "/chat"} />
       </nav>
 
       {/* Profile */}

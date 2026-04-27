@@ -8,11 +8,15 @@ import {
   DotsSixVerticalIcon, PlusIcon, ForkKnifeIcon, CurrencyDollarIcon,
   CheckIcon, CalendarCheckIcon, MoonIcon, LightningIcon,
   ChartPieSliceIcon, ClockIcon, TrendUpIcon, BicycleIcon,
+  FlameIcon, ChartBarIcon, SparkleIcon, CameraIcon, CheckSquareIcon,
+  EyeIcon,
 } from '@phosphor-icons/react';
 import { supabase } from '@/services/supabase';
-import { screensService, Screen, WidgetType } from '@/services/screens.service';
+import { screensService, Screen, ScreenWidget, WidgetType } from '@/services/screens.service';
 import { spacesService, Space } from '@/services/spaces.service';
 import { hubsService, Hub } from '@/services/hubs.service';
+import { CanvasScreen } from '@/components/screens/canvas/CanvasScreen';
+import { WidgetCard } from '@/components/screens/WidgetCard';
 
 // ── Widget metadata ───────────────────────────────────────────────────────────
 
@@ -22,7 +26,14 @@ const WIDGET_META: Record<WidgetType, {
   color: string;
   desc: string;
 }> = {
+  // ── New core widgets ─────────────────────────────────────────────────────
+  counter:          { label: 'Counter',          Icon: PlusIcon,           color: '#6366f1',                  desc: 'Numeric counter with goal'     },
+  checklist:        { label: 'Checklist',        Icon: CheckSquareIcon,    color: 'var(--modules-track)',     desc: 'Persistent to-do list'         },
+  streak:           { label: 'Streak',           Icon: FlameIcon,          color: '#f97316',                  desc: 'Consecutive-day habit tracker' },
+  chart:            { label: 'Chart',            Icon: ChartBarIcon,       color: '#6366f1',                  desc: 'Habit completion chart'        },
+  aly_nudge:        { label: 'Aly Nudge',        Icon: SparkleIcon,        color: 'var(--modules-aly)',       desc: 'Daily AI message'              },
   // ── Hub widgets ──────────────────────────────────────────────────────────
+  hub_snapshot:     { label: 'Hub Snapshot',     Icon: CameraIcon,         color: 'var(--modules-knowledge)', desc: 'Hub activity + AI summary'    },
   tasks:            { label: 'Tasks',            Icon: CheckCircleIcon,    color: 'var(--modules-track)',     desc: 'Active tasks from a hub'       },
   notes:            { label: 'Notes',            Icon: PencilSimpleIcon,   color: 'var(--modules-aly)',       desc: 'Annotations & notes'           },
   docs:             { label: 'Resources',        Icon: FileTextIcon,       color: 'var(--modules-knowledge)', desc: 'Knowledge documents'           },
@@ -42,11 +53,18 @@ const WIDGET_META: Record<WidgetType, {
 };
 
 /** These types do NOT require a hub to be set */
-const GLOBAL_WIDGET_TYPES = new Set<WidgetType>(['space_pulse', 'quick_clock', 'weekly_progress', 'upcoming_global', 'strava_stats']);
+const GLOBAL_WIDGET_TYPES = new Set<WidgetType>([
+  'counter', 'checklist', 'streak', 'chart', 'aly_nudge',
+  'space_pulse', 'quick_clock', 'weekly_progress', 'upcoming_global', 'strava_stats',
+]);
+
+const CORE_PALETTE_ITEMS = (
+  ['counter', 'checklist', 'streak', 'chart', 'aly_nudge'] as WidgetType[]
+).map(type => ({ type, ...WIDGET_META[type] }));
 
 const HUB_PALETTE_ITEMS = (
-  ['tasks','notes','docs','outcomes','hub_overview','calorie_counter','expense_tracker',
-   'upcoming_events','sleep_tracker','workout_log'] as WidgetType[]
+  ['hub_snapshot','tasks','notes','docs','outcomes','hub_overview','calorie_counter',
+   'expense_tracker','upcoming_events','sleep_tracker','workout_log'] as WidgetType[]
 ).map(type => ({ type, ...WIDGET_META[type] }));
 
 const GLOBAL_PALETTE_ITEMS = (
@@ -256,9 +274,12 @@ export default function ScreenEditorPage() {
   const router   = useRouter();
   const screenId = params.screenId as string;
 
-  const [screen,  setScreen]  = useState<Screen | null>(null);
-  const [canvas,  setCanvas]  = useState<CanvasItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [screen,        setScreen]        = useState<Screen | null>(null);
+  const [canvas,        setCanvas]        = useState<CanvasItem[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [viewMode,      setViewMode]      = useState<'preview' | 'edit'>('edit');
+  const [userId,        setUserId]        = useState<string | null>(null);
+  const [screenWidgets, setScreenWidgets] = useState<ScreenWidget[]>([]);
 
   // Hub / space data for the picker
   const [spaces, setSpaces] = useState<Space[]>([]);
@@ -280,6 +301,7 @@ export default function ScreenEditorPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
+      setUserId(user.id);
 
       const [screens, widgets, spacesData] = await Promise.all([
         screensService.getUserScreens(user.id),
@@ -290,11 +312,15 @@ export default function ScreenEditorPage() {
       const found = screens.find(s => s.id === screenId) ?? null;
       setScreen(found);
       setSpaces(spacesData);
+      setScreenWidgets(widgets);
 
       if (spacesData.length > 0) {
         const hubLists = await Promise.all(spacesData.map(s => hubsService.getHubsBySpace(s.id)));
         setHubs(hubLists.flat());
       }
+
+      // Canvas screens manage their own data — stop loading here for routing
+      if (found?.layout_type === 'canvas') { setLoading(false); return; }
 
       const sorted = [...widgets].sort((a, b) => a.position - b.position);
       setCanvas(sorted.map(w => ({
@@ -312,17 +338,30 @@ export default function ScreenEditorPage() {
   async function addWidget(type: WidgetType, atIdx?: number) {
     setAddingType(type);
     try {
+      // Default colSpan per type
+      const defaultSpan: 1 | 2 | 3 =
+        type === 'strava_stats' ? 3
+        : type === 'chart' || type === 'aly_nudge' || type === 'hub_snapshot' ? 2
+        : 1;
+
+      // Initial config defaults for new interactive widget types
+      const initialConfig: Record<string, unknown> = { colSpan: defaultSpan };
+      if (type === 'counter')   Object.assign(initialConfig, { label: 'Counter', value: 0, goal: null, unit: '', step: 1 });
+      if (type === 'checklist') Object.assign(initialConfig, { items: [] });
+      if (type === 'streak')    Object.assign(initialConfig, { habit_id: null, name: 'My Habit', color: '#f97316' });
+      if (type === 'chart')     Object.assign(initialConfig, { habit_id: null, chart_type: 'bar', days: 14 });
+
       const w = await screensService.createWidget({
         screen_id: screenId,
         type,
         hub_id:    null,
         position:  atIdx ?? canvas.length,
+        config:    initialConfig,
       });
-      const defaultSpan = type === 'strava_stats' ? 3 : 1;
       const item: CanvasItem = { id: w.id, type: w.type, colSpan: defaultSpan, hubId: null };
       // Persist the default colSpan immediately if not 1
       if (defaultSpan !== 1) {
-        screensService.updateWidget(w.id, { config: { colSpan: defaultSpan } }).catch(console.error);
+        screensService.updateWidget(w.id, { config: initialConfig }).catch(console.error);
       }
       setCanvas(prev => {
         const next = [...prev];
@@ -330,6 +369,7 @@ export default function ScreenEditorPage() {
         else next.push(item);
         return next;
       });
+      setScreenWidgets(prev => [...prev, w]);
     } catch (err) {
       console.error('Failed to add widget:', err);
     } finally {
@@ -338,8 +378,8 @@ export default function ScreenEditorPage() {
   }
 
   async function deleteWidget(id: string) {
-    // Optimistic remove
     setCanvas(prev => prev.filter(w => w.id !== id));
+    setScreenWidgets(prev => prev.filter(w => w.id !== id));
     try {
       await screensService.deleteWidget(id);
     } catch (err) {
@@ -442,6 +482,11 @@ export default function ScreenEditorPage() {
     return <div className="p-20 text-center text-text-tertiary">Screen not found.</div>;
   }
 
+  // ── Canvas screens get their own dedicated UI ─────────────────────────────
+  if (screen.layout_type === 'canvas') {
+    return <CanvasScreen screenId={screenId} screenName={screen.name} />;
+  }
+
   return (
     <div className="flex min-h-[calc(100vh-64px)]">
 
@@ -466,15 +511,68 @@ export default function ScreenEditorPage() {
                 Adding {WIDGET_META[addingType].label}…
               </span>
             )}
-            {canvas.length > 0 && (
+            {canvas.length > 0 && viewMode === 'edit' && (
               <span className="text-[10px] text-text-tertiary bg-background-secondary border border-border-primary px-2.5 py-1 rounded-lg">
                 {canvas.length} widget{canvas.length !== 1 ? 's' : ''}
               </span>
             )}
+            {/* Preview / Edit toggle */}
+            <div className="flex items-center gap-0.5 bg-background-tertiary border border-border-primary rounded-lg p-0.5">
+              {(['preview', 'edit'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setViewMode(m)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-all capitalize ${
+                    viewMode === m
+                      ? 'bg-background-secondary text-text-primary shadow-sm border border-border-primary'
+                      : 'text-text-tertiary hover:text-text-secondary'
+                  }`}
+                >
+                  {m === 'preview' ? <EyeIcon size={11} /> : <PencilSimpleIcon size={11} />}
+                  {m}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Drop zone / widget grid */}
+        {/* ── Preview mode ─────────────────────────────────────────────── */}
+        {viewMode === 'preview' && (
+          <div className="flex-1">
+            {screenWidgets.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-20 text-center">
+                <AppWindowIcon size={32} className="text-text-tertiary/20" weight="duotone" />
+                <p className="text-sm text-text-tertiary">No widgets yet — switch to Edit to add some.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-4">
+                {[...screenWidgets]
+                  .sort((a, b) => a.position - b.position)
+                  .map(w => {
+                    const colSpan = Math.min(3, Math.max(1, Number(w.config?.colSpan ?? 1))) as 1 | 2 | 3;
+                    const colClass = ({ 1: 'col-span-1', 2: 'col-span-2', 3: 'col-span-3' } as const)[colSpan];
+                    const hub   = w.hub_id ? hubMap[w.hub_id]  : undefined;
+                    const space = hub?.space_id ? spaceMap[hub.space_id] : undefined;
+                    return (
+                      <div key={w.id} className={colClass}>
+                        <WidgetCard
+                          widget={w}
+                          hubName={hub?.name}
+                          spaceName={space?.name}
+                          userId={userId ?? undefined}
+                          spaces={spaces}
+                          hubs={hubs}
+                        />
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Edit mode grid ────────────────────────────────────────────── */}
+        {viewMode === 'edit' && (
         <div
           className="flex-1"
           onDragOver={handleCanvasDragOver}
@@ -523,9 +621,11 @@ export default function ScreenEditorPage() {
             </div>
           )}
         </div>
+        )}
       </div>
 
-      {/* ── Widget palette sidebar ─────────────────────────────────────────── */}
+      {/* ── Widget palette sidebar (edit mode only) ───────────────────────── */}
+      {viewMode === 'edit' && (
       <aside
         className="w-64 shrink-0 border-l border-border-primary flex flex-col"
         style={{ position: 'sticky', top: 0, alignSelf: 'start', maxHeight: 'calc(100vh - 64px)', overflowY: 'auto' }}
@@ -536,6 +636,40 @@ export default function ScreenEditorPage() {
         </div>
 
         <div className="flex-1 p-3 flex flex-col gap-4">
+
+          {/* Core / tracking widgets */}
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[9px] font-bold text-text-tertiary/60 uppercase tracking-widest px-1 pt-1">Tracking</p>
+            {CORE_PALETTE_ITEMS.map(def => (
+              <div
+                key={def.type}
+                draggable
+                onDragStart={() => { setPaletteDrag(def.type); setCanvasDragIdx(null); }}
+                onDragEnd={handleDragEnd}
+                className={`border rounded-xl p-3 cursor-grab active:cursor-grabbing flex items-center gap-3 transition-all ${
+                  paletteDrag === def.type
+                    ? 'opacity-40 scale-95 border-modules-aly/30 bg-modules-aly/5'
+                    : 'bg-background-secondary border-border-primary hover:border-modules-aly/30'
+                }`}
+              >
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border"
+                  style={{
+                    backgroundColor: `color-mix(in srgb, ${def.color} 12%, transparent)`,
+                    borderColor:     `color-mix(in srgb, ${def.color} 20%, transparent)`,
+                  }}
+                >
+                  <def.Icon size={17} style={{ color: def.color }} weight="duotone" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-text-primary leading-tight">{def.label}</p>
+                  <p className="text-[10px] text-text-tertiary mt-0.5 leading-tight truncate">{def.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-border-primary/40" />
 
           {/* Hub widgets section */}
           <div className="flex flex-col gap-1.5">
@@ -613,6 +747,7 @@ export default function ScreenEditorPage() {
           </p>
         </div>
       </aside>
+      )}
 
     </div>
   );

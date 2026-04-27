@@ -145,13 +145,14 @@ def _build_proposal(tool_name: str, tool_args: dict, hubs: list) -> dict:
         "data": data,
     }
 
-def _get_system_prompt(context_bio: str = "", wellbeing_signals: list[str] = None, modules_text: str = "") -> str:
+def _get_system_prompt(context_bio: str = "", wellbeing_signals: list[str] = None, modules_text: str = "", assistant_name: str = None) -> str:
+    name = assistant_name or ASSISTANT_NAME
     now_utc = datetime.now(timezone.utc)
     now_pht = now_utc + timedelta(hours=8)
     now_str = now_pht.strftime("%A, %B %-d, %Y at %-I:%M %p (PHT)")
     bio_section = f"\nUser Bio/Context:\n{context_bio}\n" if context_bio else ""
     signals_section = f"\nWellbeing Signals (Actionable intel on the user's state):\n- " + "\n- ".join(wellbeing_signals) + "\n" if wellbeing_signals else ""
-    return f"""You are {ASSISTANT_NAME} — a warm, sharp personal companion inside TAKDA.
+    return f"""You are {name} — a warm, sharp personal companion inside TAKDA.
 You have full visibility into the user's world: their tasks, calendar events, spaces, hubs, \
 annotations, knowledge documents, fitness activity, and connected integrations.
 {bio_section}{signals_section}
@@ -220,10 +221,12 @@ async def node_load_context(state: AgentState) -> AgentState:
     context_bio = ""
 
     # User Profile (Tier 1)
+    assistant_name = ASSISTANT_NAME
     try:
-        raw = supabase.table("user_profiles").select("context_bio").eq("id", user_id).maybe_single().execute().data
+        raw = supabase.table("user_profiles").select("context_bio,assistant_name").eq("id", user_id).maybe_single().execute().data
         if raw:
-            context_bio = raw.get("context_bio", "")
+            context_bio = raw.get("context_bio", "") or ""
+            assistant_name = raw.get("assistant_name") or ASSISTANT_NAME
     except Exception as e:
         print(f"[node_load_context] profile error: {e}")
 
@@ -359,6 +362,7 @@ async def node_load_context(state: AgentState) -> AgentState:
     return {
         **state,
         "context_bio": context_bio,
+        "assistant_name": assistant_name,
         "wellbeing_signals": wellbeing_signals,
         "tasks": tasks,
         "hubs": hubs,
@@ -565,7 +569,8 @@ User: {state['user_message']}"""
     messages = [SystemMessage(content=_get_system_prompt(
         state.get("context_bio", ""),
         state.get("wellbeing_signals", []),
-        modules_text
+        modules_text,
+        state.get("assistant_name"),
     )), HumanMessage(content=context)]
     model = get_main_model()
     proposals = []
@@ -593,7 +598,7 @@ User: {state['user_message']}"""
                     for m in state.get("module_definitions", [])
                 ])
 
-                proposal_prompt = f"""You are Aly, a proactive life operating system assistant.
+                proposal_prompt = f"""You are {state.get("assistant_name") or ASSISTANT_NAME}, a proactive life operating system assistant.
                 
                 CUSTOM MODULES:
                 {modules_text}

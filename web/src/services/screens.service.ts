@@ -2,10 +2,17 @@ import { supabase } from './supabase';
 import { API_URL } from './apiConfig';
 
 export type WidgetType =
+  // Hub widgets
   | 'tasks' | 'notes' | 'docs' | 'outcomes' | 'hub_overview'
   | 'calorie_counter' | 'expense_tracker'
   | 'upcoming_events' | 'sleep_tracker' | 'workout_log'
-  | 'space_pulse' | 'quick_clock' | 'weekly_progress' | 'upcoming_global' | 'strava_stats';
+  | 'hub_snapshot'
+  // Global widgets
+  | 'space_pulse' | 'quick_clock' | 'weekly_progress' | 'upcoming_global' | 'strava_stats'
+  // New core widget types
+  | 'counter' | 'checklist' | 'chart' | 'streak' | 'aly_nudge';
+
+export type LayoutType = 'grid' | 'canvas';
 
 export interface Screen {
   id: string;
@@ -14,6 +21,14 @@ export interface Screen {
   name: string;
   created_at: string;
   position?: number;
+  layout_type?: LayoutType;
+}
+
+export interface CanvasPosition {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface ScreenWidget {
@@ -24,6 +39,7 @@ export interface ScreenWidget {
   title?: string | null;
   position: number;
   config: Record<string, unknown>;
+  canvas_position?: CanvasPosition | null;
   created_at: string;
 }
 
@@ -62,12 +78,12 @@ export const screensService = {
     }
   },
 
-  async createScreen(userId: string, name: string, spaceId?: string): Promise<Screen> {
+  async createScreen(userId: string, name: string, spaceId?: string, layoutType: LayoutType = 'grid'): Promise<Screen> {
     const headers = await authHeaders();
     const res = await fetch(`${API_URL}/screens/`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ user_id: userId, name, space_id: spaceId ?? null }),
+      body: JSON.stringify({ user_id: userId, name, space_id: spaceId ?? null, layout_type: layoutType }),
     });
     if (!res.ok) throw new Error('Failed to create screen');
     return res.json();
@@ -116,6 +132,7 @@ export const screensService = {
     title?: string;
     position?: number;
     config?: Record<string, unknown>;
+    canvas_position?: CanvasPosition;
   }): Promise<ScreenWidget> {
     const headers = await authHeaders();
     const res = await fetch(`${API_URL}/screens/widgets`, {
@@ -132,6 +149,7 @@ export const screensService = {
     title?: string;
     position?: number;
     config?: Record<string, unknown>;
+    canvas_position?: CanvasPosition;
   }): Promise<ScreenWidget> {
     const headers = await authHeaders();
     const res = await fetch(`${API_URL}/screens/widgets/${widgetId}`, {

@@ -268,6 +268,57 @@ function TrendChartView({ layout, entries }: { layout: any; entries: ModuleEntry
   );
 }
 
+// ── Counter module view ───────────────────────────────────────────────────────
+
+function CounterModuleView({ layout, entries }: { layout: Record<string, unknown>; entries: ModuleEntry[] }) {
+  const valueField = layout.value_field as string;
+  const dateField  = (layout.date_field as string) || 'date';
+  const unit       = (layout.unit  as string) || '';
+  const goal       = layout.goal != null ? Number(layout.goal) : null;
+
+  const today = new Date().toLocaleDateString('en-CA');
+  const todaysEntries = entries.filter(e => {
+    const d = String(e.data[dateField] ?? '');
+    return d.startsWith(today);
+  });
+  const total = todaysEntries.reduce((s, e) => s + (Number(e.data[valueField]) || 0), 0);
+  const pct   = goal ? Math.min(100, Math.round((total / goal) * 100)) : null;
+
+  return (
+    <div className="px-4 py-4 flex flex-col gap-3">
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-3xl font-bold text-text-primary leading-none tabular-nums">
+            {Math.round(total)}
+            {unit && <span className="text-sm font-normal text-text-tertiary ml-1.5">{unit}</span>}
+          </p>
+          {goal && (
+            <p className="text-[10px] text-text-tertiary mt-1">goal: {goal} {unit}</p>
+          )}
+        </div>
+        {pct != null && (
+          <span className={`text-sm font-bold ${pct >= 100 ? 'text-green-400' : 'text-indigo-400'}`}>
+            {pct}%
+          </span>
+        )}
+      </div>
+      {pct != null && (
+        <div className="h-1.5 bg-background-tertiary rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${pct}%`, backgroundColor: pct >= 100 ? '#22c55e' : '#6366f1' }}
+          />
+        </div>
+      )}
+      {todaysEntries.length === 0 && (
+        <p className="text-xs text-text-tertiary">Nothing logged today.</p>
+      )}
+    </div>
+  );
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
 export function DynamicModuleView({ definition, hubId, userId, _mockEntries }: { definition: ModuleDefinition; hubId: string; userId?: string; _mockEntries?: ModuleEntry[] }) {
   const [entries, setEntries] = useState<ModuleEntry[]>(_mockEntries ?? []);
   const [loading, setLoading] = useState(!_mockEntries);
@@ -278,11 +329,11 @@ export function DynamicModuleView({ definition, hubId, userId, _mockEntries }: {
     getModuleEntries(definition.id, hubId, userId)
       .then(data => {
         // Sort by the defined date field descending
-        const dateField = definition.layout?.dateField || 'created_at';
+        const dateField = String(definition.layout?.dateField || 'created_at');
         const sorted = [...data].sort((a, b) => {
-          const valA = (a.data?.[dateField] || a[dateField] || '');
-          const valB = (b.data?.[dateField] || b[dateField] || '');
-          return String(valB).localeCompare(String(valA));
+          const valA = String(a.data?.[dateField] ?? '');
+          const valB = String(b.data?.[dateField] ?? '');
+          return valB.localeCompare(valA);
         });
         setEntries(sorted);
       })
@@ -301,17 +352,21 @@ export function DynamicModuleView({ definition, hubId, userId, _mockEntries }: {
 
   if (loading) return <WidgetSkeleton rows={3} />;
 
-  if (definition.layout?.type === 'goal_progress') {
+  const layoutType = definition.layout?.type as string | undefined;
+
+  if (layoutType === 'goal_progress') {
     return <GoalProgressView layout={definition.layout} entries={entries} />;
   }
-  
-  if (definition.layout?.type === 'trend_chart') {
+  if (layoutType === 'trend_chart' || layoutType === 'chart') {
     return <TrendChartView layout={definition.layout} entries={entries} />;
+  }
+  if (layoutType === 'counter') {
+    return <CounterModuleView layout={definition.layout as Record<string, unknown>} entries={entries} />;
   }
 
   return (
     <div className="px-4 py-4 text-center">
-      <p className="text-sm text-text-tertiary">Unsupported layout type</p>
+      <p className="text-xs text-text-tertiary">Layout type not configured.</p>
     </div>
   );
 }

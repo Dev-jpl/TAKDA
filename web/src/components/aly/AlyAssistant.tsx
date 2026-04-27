@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MarkdownRenderer } from '@/components/aly/MarkdownRenderer';
 import { coordinatorService, ChatMessage, ChatSession } from '@/services/coordinator.service';
 import { supabase } from '@/services/supabase';
-import { ASSISTANT_NAME } from '@/constants/brand';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 interface AlyAssistantProps {
   isOpen: boolean;
@@ -36,10 +36,10 @@ function confirmationText(actionType: string, label: string): string {
 
 // ── Typing indicator ─────────────────────────────────────────────────────────
 
-function TypingIndicator() {
+function TypingIndicator({ assistantName }: { assistantName: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-bold text-modules-aly uppercase tracking-widest">{ASSISTANT_NAME}</span>
+      <span className="text-[10px] font-bold text-modules-aly uppercase tracking-widest">{assistantName}</span>
       <div className="flex items-center gap-1 py-1">
         {[0, 0.2, 0.4].map((delay, i) => (
           <motion.div
@@ -136,10 +136,11 @@ interface MessageBubbleProps {
   msg: ChatMessage & { streaming?: boolean; actions?: Record<string, unknown>[] };
   isTyping: boolean;
   userId: string;
+  assistantName: string;
   onActionConfirmed: (text: string) => void;
 }
 
-function MessageBubble({ msg, isTyping, userId, onActionConfirmed }: MessageBubbleProps) {
+function MessageBubble({ msg, isTyping, userId, assistantName, onActionConfirmed }: MessageBubbleProps) {
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -152,10 +153,10 @@ function MessageBubble({ msg, isTyping, userId, onActionConfirmed }: MessageBubb
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-bold text-modules-aly uppercase tracking-widest">{ASSISTANT_NAME}</span>
+      <span className="text-[10px] font-bold text-modules-aly uppercase tracking-widest">{assistantName}</span>
       <div className="max-w-[88%]">
         {msg.content === '' && isTyping ? (
-          <TypingIndicator />
+          <TypingIndicator assistantName={assistantName} />
         ) : (
           <MarkdownRenderer content={msg.content} />
         )}
@@ -192,7 +193,7 @@ const SUGGESTIONS = [
   { label: 'Brainstorm',    icon: <MagicWand size={16} />,   prompt: "Let's brainstorm directions for my projects" },
 ];
 
-function WelcomeView({ userName, onSelect }: { userName: string; onSelect: (prompt: string) => void }) {
+function WelcomeView({ userName, assistantName, onSelect }: { userName: string; assistantName: string; onSelect: (prompt: string) => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -207,7 +208,7 @@ function WelcomeView({ userName, onSelect }: { userName: string; onSelect: (prom
         <p className="text-lg font-semibold text-text-primary">
           Hey{userName ? `, ${userName}` : ''}!
         </p>
-        <p className="text-sm text-text-tertiary">I'm {ASSISTANT_NAME}. What's on your mind?</p>
+        <p className="text-sm text-text-tertiary">I'm {assistantName}. What's on your mind?</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2 w-full">
@@ -229,6 +230,7 @@ function WelcomeView({ userName, onSelect }: { userName: string; onSelect: (prom
 // ── Main component ───────────────────────────────────────────────────────────
 
 export const AlyAssistant: React.FC<AlyAssistantProps> = ({ isOpen, onClose }) => {
+  const { assistantName } = useUserProfile();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<(ChatMessage & { streaming?: boolean; actions?: Record<string, unknown>[] })[]>([]);
@@ -395,7 +397,7 @@ export const AlyAssistant: React.FC<AlyAssistantProps> = ({ isOpen, onClose }) =
                   <Sparkle size={18} className="text-modules-aly" weight="fill" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-text-primary">{ASSISTANT_NAME}</p>
+                  <p className="text-sm font-semibold text-text-primary">{assistantName}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <div className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse" />
                     <span className="text-[10px] text-text-tertiary">Online</span>
@@ -468,7 +470,7 @@ export const AlyAssistant: React.FC<AlyAssistantProps> = ({ isOpen, onClose }) =
 
               {/* Messages or welcome */}
               {messages.length === 0 && !isTyping ? (
-                <WelcomeView userName={userName} onSelect={(prompt) => { setInput(''); sendMessage(prompt); }} />
+                <WelcomeView userName={userName} assistantName={assistantName} onSelect={(prompt) => { setInput(''); sendMessage(prompt); }} />
               ) : (
                 <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
                   {messages.map((m, i) => (
@@ -477,11 +479,12 @@ export const AlyAssistant: React.FC<AlyAssistantProps> = ({ isOpen, onClose }) =
                       msg={m}
                       isTyping={isTyping && i === messages.length - 1}
                       userId={userId || ''}
+                      assistantName={assistantName}
                       onActionConfirmed={handleActionConfirmed}
                     />
                   ))}
                   {isTyping && messages[messages.length - 1]?.role !== 'assistant' && (
-                    <TypingIndicator />
+                    <TypingIndicator assistantName={assistantName} />
                   )}
                   <div ref={messagesEndRef} />
                 </div>

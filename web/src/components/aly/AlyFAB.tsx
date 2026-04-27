@@ -3,6 +3,7 @@
 import React from 'react';
 import { Sparkle } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 interface AlyFABProps {
   onClick: () => void;
@@ -10,11 +11,12 @@ interface AlyFABProps {
 }
 
 export const AlyFAB: React.FC<AlyFABProps> = ({ onClick, isOpen }) => {
+  const { assistantName } = useUserProfile();
   return (
     <AnimatePresence>
       {!isOpen && (
         <motion.div
-            className="fixed bottom-8 right-8 z-[100]"
+            className="fixed bottom-8 right-8 z-100"
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
@@ -51,7 +53,7 @@ export const AlyFAB: React.FC<AlyFABProps> = ({ onClick, isOpen }) => {
                 <div className="px-3 py-1.5 bg-background-secondary border border-border-primary rounded-lg shadow-xl shadow-black/40">
                     <p className="text-[10px] font-bold text-text-primary uppercase tracking-widest whitespace-nowrap flex items-center gap-2">
                         <Sparkle size={12} className="text-modules-aly" />
-                        Inquire Aly
+                        Ask {assistantName}
                     </p>
                 </div>
             </div>

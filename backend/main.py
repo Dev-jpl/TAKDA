@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from routers import knowledge, spaces, track, hubs, annotate, deliver, automate, coordinator, events, integrations, aly, vault, space_tools, screens, addons, modules, payments
-from routers import strava, fitness
+from routers import strava, fitness, habits
 
 load_dotenv()
 
@@ -35,6 +35,7 @@ app.include_router(strava.router)
 app.include_router(fitness.router)
 app.include_router(addons.router)
 app.include_router(screens.router)
+app.include_router(habits.router)
 
 @app.get("/")
 def root():

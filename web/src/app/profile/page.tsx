@@ -5,6 +5,7 @@ import { supabase } from "@/services/supabase";
 import { spacesService } from "@/services/spaces.service";
 import { hubsService } from "@/services/hubs.service";
 import { useRouter } from "next/navigation";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 import {
   SignOut,
   ArrowLeft,
@@ -13,6 +14,10 @@ import {
   EnvelopeSimple,
   CalendarBlank,
   User,
+  Sparkle,
+  TextAlignLeft,
+  Check,
+  PencilSimple,
 } from "@phosphor-icons/react";
 
 interface Stats { spaces: number; hubs: number }
@@ -30,7 +35,25 @@ export default function ProfilePage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const router = useRouter();
 
+  const { profile, assistantName, updateProfile } = useUserProfile();
+
+  // Editable fields
+  const [editingName,    setEditingName]    = useState(false);
+  const [editingBio,     setEditingBio]     = useState(false);
+  const [nameInput,      setNameInput]      = useState('');
+  const [bioInput,       setBioInput]       = useState('');
+  const [savingName,     setSavingName]     = useState(false);
+  const [savingBio,      setSavingBio]      = useState(false);
+
   useEffect(() => { loadData(); }, []);
+
+  // Sync inputs when profile loads
+  useEffect(() => {
+    if (profile !== null) {
+      setNameInput(profile.assistant_name ?? '');
+      setBioInput(profile.context_bio ?? '');
+    }
+  }, [profile]);
 
   const loadData = async () => {
     try {
@@ -55,6 +78,20 @@ export default function ProfilePage() {
     setLoggingOut(true);
     await supabase.auth.signOut().catch(() => {});
     router.push("/auth");
+  };
+
+  const saveAssistantName = async () => {
+    setSavingName(true);
+    await updateProfile({ assistant_name: nameInput.trim() || 'Aly' });
+    setSavingName(false);
+    setEditingName(false);
+  };
+
+  const saveContextBio = async () => {
+    setSavingBio(true);
+    await updateProfile({ context_bio: bioInput.trim() || null });
+    setSavingBio(false);
+    setEditingBio(false);
   };
 
   const fullName  = user?.user_metadata?.full_name || "";
@@ -138,6 +175,115 @@ export default function ProfilePage() {
           </div>
           <InfoRow icon={User} label="Name" value={fullName || "—"} />
           <InfoRow icon={EnvelopeSimple} label="Email" value={user?.email || "—"} last />
+        </div>
+
+        {/* Assistant settings */}
+        <div className="bg-background-secondary border border-border-primary rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border-primary">
+            <p className="text-[11px] font-bold text-text-tertiary uppercase tracking-widest">Assistant</p>
+          </div>
+
+          {/* Assistant name */}
+          <div className="px-4 py-3.5 border-b border-border-primary/60">
+            <div className="flex items-start gap-3">
+              <Sparkle size={15} className="text-modules-aly shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-text-tertiary mb-1.5">Assistant name</p>
+                {editingName ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={e => setNameInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveAssistantName(); if (e.key === 'Escape') setEditingName(false); }}
+                      placeholder="Aly"
+                      maxLength={32}
+                      autoFocus
+                      className="flex-1 bg-background-tertiary border border-border-primary rounded-lg px-3 py-1.5 text-sm text-text-primary outline-none focus:border-modules-aly/50 transition-all"
+                    />
+                    <button
+                      onClick={saveAssistantName}
+                      disabled={savingName}
+                      className="p-1.5 bg-modules-aly text-white rounded-lg hover:opacity-90 transition-all disabled:opacity-50"
+                    >
+                      {savingName ? (
+                        <span className="w-3 h-3 border border-white/40 border-t-white rounded-full animate-spin block" />
+                      ) : (
+                        <Check size={14} weight="bold" />
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-text-primary font-medium">{assistantName}</p>
+                    <button
+                      onClick={() => { setNameInput(profile?.assistant_name ?? ''); setEditingName(true); }}
+                      className="p-1 rounded-md text-text-tertiary hover:text-modules-aly hover:bg-modules-aly/10 transition-all"
+                    >
+                      <PencilSimple size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Context bio */}
+          <div className="px-4 py-3.5">
+            <div className="flex items-start gap-3">
+              <TextAlignLeft size={15} className="text-text-tertiary shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-sm text-text-tertiary">Context bio</p>
+                  {!editingBio && (
+                    <button
+                      onClick={() => { setBioInput(profile?.context_bio ?? ''); setEditingBio(true); }}
+                      className="p-1 rounded-md text-text-tertiary hover:text-modules-aly hover:bg-modules-aly/10 transition-all"
+                    >
+                      <PencilSimple size={14} />
+                    </button>
+                  )}
+                </div>
+                {editingBio ? (
+                  <div className="flex flex-col gap-2">
+                    <textarea
+                      value={bioInput}
+                      onChange={e => setBioInput(e.target.value)}
+                      placeholder="Tell your assistant about yourself — your goals, preferences, lifestyle, context…"
+                      rows={5}
+                      autoFocus
+                      className="w-full bg-background-tertiary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-modules-aly/50 transition-all resize-none placeholder:text-text-tertiary/50"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveContextBio}
+                        disabled={savingBio}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-modules-aly text-white text-xs font-semibold rounded-lg hover:opacity-90 transition-all disabled:opacity-50"
+                      >
+                        {savingBio ? (
+                          <span className="w-3 h-3 border border-white/40 border-t-white rounded-full animate-spin block" />
+                        ) : (
+                          <><Check size={12} weight="bold" /> Save</>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setEditingBio(false)}
+                        className="px-3 py-1.5 text-xs font-semibold text-text-tertiary border border-border-primary rounded-lg hover:bg-background-tertiary transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : profile?.context_bio ? (
+                  <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">{profile.context_bio}</p>
+                ) : (
+                  <p className="text-sm text-text-tertiary italic">
+                    Not set. Add context so your assistant knows you better.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Sign out */}

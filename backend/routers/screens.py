@@ -9,22 +9,25 @@ router = APIRouter(prefix="/screens", tags=["screens"])
 class ScreenCreate(BaseModel):
     user_id: str
     name: str
-    space_id: Optional[str] = None  # nullable — cross-space screens have no parent space
+    space_id: Optional[str] = None
     position: int = 0
+    layout_type: str = "grid"   # 'grid' | 'canvas'
 
 
 class ScreenUpdate(BaseModel):
     name: Optional[str] = None
     position: Optional[int] = None
+    layout_type: Optional[str] = None
 
 
 class WidgetCreate(BaseModel):
     screen_id: str
     hub_id: Optional[str] = None
-    type: str  # 'tasks' | 'notes' | 'docs' | 'outcomes' | 'hub_overview'
+    type: str
     title: Optional[str] = None
     position: int = 0
     config: Optional[dict[str, Any]] = None
+    canvas_position: Optional[dict[str, Any]] = None   # {x, y, w, h} for canvas screens
 
 
 class WidgetUpdate(BaseModel):
@@ -32,6 +35,7 @@ class WidgetUpdate(BaseModel):
     title: Optional[str] = None
     position: Optional[int] = None
     config: Optional[dict[str, Any]] = None
+    canvas_position: Optional[dict[str, Any]] = None
 
 
 # ── Screens ───────────────────────────────────────────────────────────────────
@@ -63,9 +67,10 @@ async def get_screens_by_space(space_id: str):
 @router.post("/")
 async def create_screen(body: ScreenCreate):
     payload: dict[str, Any] = {
-        "user_id": body.user_id,
-        "name": body.name,
-        "position": body.position,
+        "user_id":     body.user_id,
+        "name":        body.name,
+        "position":    body.position,
+        "layout_type": body.layout_type,
     }
     if body.space_id:
         payload["space_id"] = body.space_id
@@ -103,14 +108,17 @@ async def get_widgets(screen_id: str):
 
 @router.post("/widgets")
 async def create_widget(body: WidgetCreate):
-    result = supabase.table("screen_widgets").insert({
-        "screen_id": body.screen_id,
-        "hub_id": body.hub_id,
-        "type": body.type,
-        "title": body.title,
-        "position": body.position,
-        "config": body.config or {},
-    }).execute()
+    row: dict[str, Any] = {
+        "screen_id":       body.screen_id,
+        "hub_id":          body.hub_id,
+        "type":            body.type,
+        "title":           body.title,
+        "position":        body.position,
+        "config":          body.config or {},
+    }
+    if body.canvas_position is not None:
+        row["canvas_position"] = body.canvas_position
+    result = supabase.table("screen_widgets").insert(row).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create widget")
     return result.data[0]
@@ -119,6 +127,9 @@ async def create_widget(body: WidgetCreate):
 @router.patch("/widgets/{widget_id}")
 async def update_widget(widget_id: str, body: WidgetUpdate):
     updates = {k: v for k, v in body.dict().items() if v is not None}
+    # canvas_position can be explicitly set to null to clear it — handle separately
+    if body.canvas_position is not None:
+        updates["canvas_position"] = body.canvas_position
     result = supabase.table("screen_widgets").update(updates).eq("id", widget_id).execute()
     return result.data[0]
 

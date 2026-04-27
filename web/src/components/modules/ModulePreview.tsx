@@ -11,7 +11,8 @@ interface ModulePreviewProps {
 // Generate plausible mock entries from the schema so DynamicModuleView renders real UI
 function buildMockEntries(definition: Partial<ModuleDefinition>): ModuleEntry[] {
   const schema = definition.schema ?? [];
-  const layout = definition.layout ?? {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const layout = (definition.layout ?? {}) as Record<string, any>;
   const dateField = layout.dateField ?? '';
   const today = new Date().toISOString().split('T')[0];
 

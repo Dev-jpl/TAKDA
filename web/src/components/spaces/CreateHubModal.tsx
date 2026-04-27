@@ -29,7 +29,7 @@ interface CreateHubModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated: (hub: Hub) => void;
-  userId: string;
+  userId: string; 
   spaceId: string;
   defaultColor?: string;
   hubsService: typeof hubsServiceType;

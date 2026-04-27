@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter
 from database import supabase
 from services.ai import get_ai_response_async
+from config import ASSISTANT_NAME
 
 router = APIRouter(prefix="/aly", tags=["aly"])
 
@@ -20,6 +21,15 @@ async def daily_insight(user_id: str):
         cached = _insight_cache.get(user_id)
         if cached and cached.get("date") == today_date and cached.get("insight"):
             return {"insight": cached["insight"]}
+
+        # ── User's assistant name
+        assistant_name = ASSISTANT_NAME
+        try:
+            profile = supabase.table("user_profiles").select("assistant_name").eq("id", user_id).maybe_single().execute().data
+            if profile and profile.get("assistant_name"):
+                assistant_name = profile["assistant_name"]
+        except Exception:
+            pass
 
         # ── Today's calendar events (PHT window = UTC-8h to UTC+16h)
         day_start_utc = (now_pht.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=8)).isoformat()
@@ -97,7 +107,7 @@ Spending: {expenses_text}
 Vault items to sort: {vault_count}"""
 
         system = (
-            "You are Aly, a warm personal assistant. "
+            f"You are {assistant_name}, a warm personal assistant. "
             "Write a brief morning briefing (3-6 lines max) for the user's home screen. "
             "Use Markdown: bold key items, use bullet points if helpful. "
             "Be encouraging and specific. Reference actual events and tasks by name. "
@@ -115,3 +125,72 @@ Vault items to sort: {vault_count}"""
     except Exception as e:
         print(f"[daily_insight] error for user {user_id}: {e}")
         return {"insight": ""}
+
+
+@router.get("/hub-snapshot")
+async def hub_snapshot(hub_id: str, user_id: str):
+    """Short AI summary of recent hub activity for the Hub Snapshot widget."""
+    try:
+        assistant_name = ASSISTANT_NAME
+        try:
+            profile = supabase.table("user_profiles").select("assistant_name").eq("id", user_id).maybe_single().execute().data
+            if profile and profile.get("assistant_name"):
+                assistant_name = profile["assistant_name"]
+        except Exception:
+            pass
+
+        # Fetch hub name
+        hub_res = supabase.table("hubs").select("name").eq("id", hub_id).maybe_single().execute().data
+        hub_name = hub_res.get("name", "this hub") if hub_res else "this hub"
+
+        # Recent tasks
+        tasks_res = supabase.table("tasks") \
+            .select("title,status,priority") \
+            .eq("hub_id", hub_id) \
+            .neq("status", "done") \
+            .order("created_at", desc=True) \
+            .limit(8).execute()
+        tasks = tasks_res.data or []
+
+        # Recent annotations
+        ann_res = supabase.table("annotations") \
+            .select("content,category") \
+            .eq("hub_id", hub_id) \
+            .order("created_at", desc=True) \
+            .limit(6).execute()
+        annotations = ann_res.data or []
+
+        tasks_text = "\n".join(
+            f"- [{t.get('priority','low')}] {t['title']} ({t['status']})"
+            for t in tasks
+        ) or "No open tasks."
+
+        notes_text = "\n".join(
+            f"- [{a.get('category','')}] {a['content'][:80]}"
+            for a in annotations
+        ) or "No notes."
+
+        context = f"""Hub: {hub_name}
+
+Open tasks:
+{tasks_text}
+
+Recent notes:
+{notes_text}"""
+
+        system = (
+            f"You are {assistant_name}. Write a 2-3 sentence snapshot of what's happening "
+            "in this hub. Be specific, warm, and concise. No headers or bullet points."
+        )
+
+        summary = await get_ai_response_async(system, context)
+        return {
+            "summary":     summary.strip(),
+            "tasks":       tasks,
+            "annotations": annotations,
+            "hub_name":    hub_name,
+        }
+
+    except Exception as e:
+        print(f"[hub_snapshot] error: {e}")
+        return {"summary": "", "tasks": [], "annotations": [], "hub_name": ""}

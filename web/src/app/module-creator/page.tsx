@@ -14,6 +14,7 @@ import {
   ModuleDefinition, SchemaField, AlyConfig, FieldType, FieldConfig,
   createModuleDefinition,
 } from '@/services/modules.service';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { supabase } from '@/services/supabase';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -21,7 +22,7 @@ import { supabase } from '@/services/supabase';
 const STEPS = [
   { id: 1, label: 'Schema',  desc: 'Define your data fields' },
   { id: 2, label: 'Widget',  desc: 'Choose how it surfaces' },
-  { id: 3, label: 'Aly',     desc: 'Configure assistant integration' },
+  { id: 3, label: 'Assistant', desc: 'Configure assistant integration' },
   { id: 4, label: 'Review',  desc: 'Save your module' },
 ];
 
@@ -355,6 +356,7 @@ export default function ModuleCreatorPage() {
 
   // ── Form state ──────────────────────────────────────────────────────────────
 
+  const { assistantName } = useUserProfile();
   const [name,        setName]        = useState('');
   const [slug,        setSlug]        = useState('');
   const [description, setDescription] = useState('');
@@ -467,7 +469,7 @@ export default function ModuleCreatorPage() {
               }`}>
                 {done ? <Check size={8} weight="bold" /> : s.id}
               </span>
-              {s.label}
+              {s.id === 3 ? assistantName : s.label}
             </button>
             {i < STEPS.length - 1 && (
               <div className={`h-px w-5 ${done ? 'bg-modules-aly/40' : 'bg-border-primary'}`} />
@@ -538,7 +540,7 @@ export default function ModuleCreatorPage() {
                         <label className="text-xs font-medium text-text-secondary block mb-1.5">Description</label>
                         <textarea
                           rows={3}
-                          placeholder="What does this module track? Be specific — Aly reads this to understand context."
+                          placeholder={`What does this module track? Be specific — ${assistantName} reads this to understand context.`}
                           className={`${inputCls} resize-none`}
                           value={description}
                           onChange={e => setDescription(e.target.value)}
@@ -733,22 +735,22 @@ export default function ModuleCreatorPage() {
                     </button>
                     <button disabled={!step2Valid} onClick={() => setStep(3)}
                       className="flex-1 flex items-center justify-center gap-2 bg-modules-aly text-white font-semibold py-3 rounded-xl disabled:opacity-40 hover:opacity-90 transition-all">
-                      Configure Aly <ArrowRight size={15} weight="bold" />
+                      Configure {assistantName} <ArrowRight size={15} weight="bold" />
                     </button>
                   </div>
                 </motion.div>
               )}
 
-              {/* ── Step 3: Aly Config ── */}
+              {/* ── Step 3: Assistant Config ── */}
               {step === 3 && (
                 <motion.div key="s3" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="flex flex-col gap-6">
 
                   <div className="bg-background-secondary border border-border-primary rounded-2xl p-6 flex flex-col gap-5">
                     <div>
-                      <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest">Aly Integration</h2>
+                      <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest">{assistantName} Integration</h2>
                       <p className="text-[11px] text-text-tertiary mt-1">
-                        Teach Aly how to recognise and log data for this module through chat.
+                        Teach {assistantName} how to recognise and log data for this module through chat.
                       </p>
                     </div>
 
@@ -758,7 +760,7 @@ export default function ModuleCreatorPage() {
                         <span className="flex items-center gap-1.5"><Tag size={12} /> Intent keywords</span>
                       </label>
                       <p className="text-[10px] text-text-tertiary mb-2">
-                        Words that tell Aly this module is relevant. Press Enter to add.
+                        Words that tell {assistantName} this module is relevant. Press Enter to add.
                       </p>
                       <KeywordInput
                         keywords={alyConfig.intent_keywords}
@@ -770,7 +772,7 @@ export default function ModuleCreatorPage() {
                     <div>
                       <label className="text-xs font-medium text-text-secondary block mb-1.5">Context hint</label>
                       <p className="text-[10px] text-text-tertiary mb-2">
-                        One sentence Aly uses when referencing this module in responses.
+                        One sentence {assistantName} uses when referencing this module in responses.
                       </p>
                       <input
                         className={inputCls}
@@ -784,7 +786,7 @@ export default function ModuleCreatorPage() {
                     <div>
                       <label className="text-xs font-medium text-text-secondary block mb-1.5">Log example</label>
                       <p className="text-[10px] text-text-tertiary mb-2">
-                        Show Aly what a typical log command looks like so it can parse values from chat.
+                        Show {assistantName} what a typical log command looks like so it can parse values from chat.
                       </p>
                       <input
                         className={inputCls}
@@ -799,7 +801,7 @@ export default function ModuleCreatorPage() {
                       <div className="bg-modules-aly/5 border border-modules-aly/20 rounded-xl p-4 flex gap-3">
                         <Sparkle size={16} className="text-modules-aly shrink-0 mt-0.5" weight="duotone" />
                         <div>
-                          <p className="text-[11px] font-semibold text-text-primary mb-1">Aly will know:</p>
+                          <p className="text-[11px] font-semibold text-text-primary mb-1">{assistantName} will know:</p>
                           <p className="text-[11px] text-text-secondary leading-relaxed">{alyConfig.context_hint}</p>
                           {alyConfig.log_prompt && (
                             <p className="text-[10px] text-text-tertiary mt-2 italic">"{alyConfig.log_prompt}"</p>
@@ -862,7 +864,7 @@ export default function ModuleCreatorPage() {
                     {/* Aly */}
                     {alyConfig.intent_keywords.length > 0 && (
                       <div>
-                        <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-2">Aly keywords</p>
+                        <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-2">{assistantName} keywords</p>
                         <div className="flex flex-wrap gap-1.5">
                           {alyConfig.intent_keywords.map(kw => (
                             <span key={kw} className="text-[10px] px-2 py-0.5 bg-modules-aly/8 border border-modules-aly/15 rounded-md text-modules-aly">{kw}</span>
@@ -944,7 +946,7 @@ export default function ModuleCreatorPage() {
             {alyConfig.intent_keywords.length > 0 && (
               <div className="bg-modules-aly/5 border border-modules-aly/20 rounded-2xl p-4 flex flex-col gap-2">
                 <p className="text-[10px] font-bold text-modules-aly uppercase tracking-widest flex items-center gap-1.5">
-                  <Sparkle size={10} weight="fill" /> Aly Config
+                  <Sparkle size={10} weight="fill" /> {assistantName} Config
                 </p>
                 <div className="flex flex-wrap gap-1">
                   {alyConfig.intent_keywords.map(kw => (

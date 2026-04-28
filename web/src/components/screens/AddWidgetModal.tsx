@@ -29,6 +29,7 @@ import {
   Sparkle,
   Camera,
 } from '@phosphor-icons/react';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 type WidgetCategory = 'hub' | 'global' | 'tracking';
 
@@ -44,7 +45,7 @@ const WIDGET_TYPES: {
   { type: 'checklist',   label: 'Checklist',      description: 'Persistent to-do list on your screen.',     icon: <CheckSquare size={18} weight="duotone" />, category: 'tracking' },
   { type: 'streak',      label: 'Streak',         description: 'Consecutive-day habit tracker.',             icon: <Flame       size={18} weight="duotone" />, category: 'tracking' },
   { type: 'chart',       label: 'Chart',          description: 'Line or bar chart of habit history.',        icon: <ChartBar    size={18} weight="duotone" />, category: 'tracking' },
-  { type: 'aly_nudge',   label: 'Aly Nudge',      description: 'Daily personalised message from Aly.',      icon: <Sparkle     size={18} weight="duotone" />, category: 'global'   },
+  { type: 'aly_nudge',   label: 'Nudge',           description: 'Daily personalised message from your assistant.', icon: <Sparkle size={18} weight="duotone" />, category: 'global'   },
   // ── Hub widgets ──────────────────────────────────────────────────────────
   { type: 'hub_snapshot',label: 'Hub Snapshot',   description: 'Latest hub activity with an AI summary.',   icon: <Camera      size={18} weight="duotone" />, category: 'hub'      },
   { type: 'hub_overview',label: 'Hub Overview',   description: 'Task progress and status breakdown.',        icon: <PuzzlePiece size={18} weight="duotone" />, category: 'hub'      },
@@ -81,6 +82,7 @@ const INSTANT_TYPES = new Set<WidgetType>([
 ]);
 
 export function AddWidgetModal({ isOpen, onClose, spaces, onAdd }: AddWidgetModalProps) {
+  const { assistantName } = useUserProfile();
   const [step,     setStep]     = useState<Step>('type');
   const [selected, setSelected] = useState<WidgetType | null>(null);
   const [spaceId,  setSpaceId]  = useState('');
@@ -125,6 +127,10 @@ export function AddWidgetModal({ isOpen, onClose, spaces, onAdd }: AddWidgetModa
 
   const inputCls = "w-full bg-background-tertiary border border-border-primary rounded-xl px-3 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-modules-aly/40 transition-all placeholder:text-text-tertiary";
 
+  // Override aly_nudge label with dynamic assistant name
+  const labelFor = (w: typeof WIDGET_TYPES[0]) =>
+    w.type === 'aly_nudge' ? `${assistantName} Nudge` : w.label;
+
   const trackingWidgets = WIDGET_TYPES.filter(w => w.category === 'tracking');
   const hubWidgets      = WIDGET_TYPES.filter(w => w.category === 'hub');
   const globalWidgets   = WIDGET_TYPES.filter(w => w.category === 'global');
@@ -149,7 +155,7 @@ export function AddWidgetModal({ isOpen, onClose, spaces, onAdd }: AddWidgetModa
               >
                 <span className="text-text-tertiary group-hover:text-modules-aly transition-colors">{w.icon}</span>
                 <div>
-                  <p className="font-bold text-sm text-text-primary">{w.label}</p>
+                  <p className="font-bold text-sm text-text-primary">{labelFor(w)}</p>
                   <p className="text-[11px] text-text-tertiary">{w.description}</p>
                 </div>
               </button>
@@ -170,7 +176,7 @@ export function AddWidgetModal({ isOpen, onClose, spaces, onAdd }: AddWidgetModa
               >
                 <span className="text-text-tertiary group-hover:text-modules-aly transition-colors">{w.icon}</span>
                 <div>
-                  <p className="font-bold text-sm text-text-primary">{w.label}</p>
+                  <p className="font-bold text-sm text-text-primary">{labelFor(w)}</p>
                   <p className="text-[11px] text-text-tertiary">{w.description}</p>
                 </div>
               </button>
@@ -194,7 +200,7 @@ export function AddWidgetModal({ isOpen, onClose, spaces, onAdd }: AddWidgetModa
               >
                 <span className="text-text-tertiary group-hover:text-modules-aly transition-colors">{w.icon}</span>
                 <div>
-                  <p className="font-bold text-sm text-text-primary">{w.label}</p>
+                  <p className="font-bold text-sm text-text-primary">{labelFor(w)}</p>
                   <p className="text-[11px] text-text-tertiary">{w.description}</p>
                 </div>
               </button>

@@ -1,7 +1,10 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { ModuleDefinition, ModuleEntry, getModuleEntries } from '@/services/modules.service';
+import { PlusIcon } from '@phosphor-icons/react';
+import { ModuleDefinition, ModuleEntry, getModuleEntries, deleteModuleEntry } from '@/services/modules.service';
+import { ModuleEntrySheet } from './ModuleEntrySheet';
+import { ModuleEntryRow } from './ModuleEntryRow';
 
 function WidgetSkeleton({ rows = 3 }: { rows?: number }) {
   return (
@@ -319,9 +322,19 @@ function CounterModuleView({ layout, entries }: { layout: Record<string, unknown
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function DynamicModuleView({ definition, hubId, userId, _mockEntries }: { definition: ModuleDefinition; hubId: string; userId?: string; _mockEntries?: ModuleEntry[] }) {
-  const [entries, setEntries] = useState<ModuleEntry[]>(_mockEntries ?? []);
-  const [loading, setLoading] = useState(!_mockEntries);
+export function DynamicModuleView({
+  definition, hubId, userId, _mockEntries, showActions,
+}: {
+  definition: ModuleDefinition;
+  hubId: string;
+  userId?: string;
+  _mockEntries?: ModuleEntry[];
+  showActions?: boolean;
+}) {
+  const [entries,       setEntries]       = useState<ModuleEntry[]>(_mockEntries ?? []);
+  const [loading,       setLoading]       = useState(!_mockEntries);
+  const [sheetOpen,     setSheetOpen]     = useState(false);
+  const [editingEntry,  setEditingEntry]  = useState<ModuleEntry | undefined>();
 
   const load = useCallback(() => {
     if (_mockEntries) return;
@@ -350,23 +363,124 @@ export function DynamicModuleView({ definition, hubId, userId, _mockEntries }: {
     return () => window.removeEventListener('takda:data_updated', handler);
   }, [load, _mockEntries]);
 
+  // ── Entry CRUD ────────────────────────────────────────────────────────────────
+
+  const handleEntrySaved = (saved: ModuleEntry) => {
+    setEntries(prev => {
+      const idx = prev.findIndex(e => e.id === saved.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = saved;
+        return next;
+      }
+      return [saved, ...prev];
+    });
+  };
+
+  const handleDeleteEntry = async (entryId: string) => {
+    setEntries(prev => prev.filter(e => e.id !== entryId));
+    try {
+      await deleteModuleEntry(entryId);
+      window.dispatchEvent(new Event('takda:data_updated'));
+    } catch { /* silent — optimistic remove already done */ }
+  };
+
+  const openEdit = (entry: ModuleEntry) => {
+    setEditingEntry(entry);
+    setSheetOpen(true);
+  };
+
+  const openAdd = () => {
+    setEditingEntry(undefined);
+    setSheetOpen(true);
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+
   if (loading) return <WidgetSkeleton rows={3} />;
 
-  const layoutType = definition.layout?.type as string | undefined;
+  const layoutType   = definition.layout?.type as string | undefined;
+  const accentColor  = definition.brand_color || 'var(--modules-aly)';
+  const schema       = definition.schema ?? [];
 
-  if (layoutType === 'goal_progress') {
-    return <GoalProgressView layout={definition.layout} entries={entries} />;
-  }
-  if (layoutType === 'trend_chart' || layoutType === 'chart') {
-    return <TrendChartView layout={definition.layout} entries={entries} />;
-  }
-  if (layoutType === 'counter') {
-    return <CounterModuleView layout={definition.layout as Record<string, unknown>} entries={entries} />;
-  }
+  const DataView = () => {
+    if (layoutType === 'goal_progress') return <GoalProgressView layout={definition.layout} entries={entries} />;
+    if (layoutType === 'trend_chart' || layoutType === 'chart') return <TrendChartView layout={definition.layout} entries={entries} />;
+    if (layoutType === 'counter') return <CounterModuleView layout={definition.layout as Record<string, unknown>} entries={entries} />;
+    return (
+      <div className="px-4 py-4 text-center">
+        <p className="text-xs text-text-tertiary">Layout type not configured.</p>
+      </div>
+    );
+  };
 
+  // In widget / compact mode — just the data visualization
+  if (!showActions) return <DataView />;
+
+  // Full mode (hub page) — add button + data viz + entry list
   return (
-    <div className="px-4 py-4 text-center">
-      <p className="text-xs text-text-tertiary">Layout type not configured.</p>
+    <div className="flex flex-col">
+      {/* Add button strip */}
+      {userId && (
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border-primary/50">
+          <span className="text-[10px] text-text-tertiary">{entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</span>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
+            style={{ color: accentColor, backgroundColor: `${accentColor}15`, border: `1px solid ${accentColor}30` }}
+          >
+            <PlusIcon size={12} weight="bold" /> Add Entry
+          </button>
+        </div>
+      )}
+
+      {/* Data visualization */}
+      <DataView />
+
+      {/* Entry list */}
+      {entries.length > 0 && schema.length > 0 && (
+        <div className="border-t border-border-primary/50">
+          <p className="text-[9px] font-bold text-text-tertiary uppercase tracking-widest px-4 py-2">Recent Entries</p>
+          {entries.slice(0, 20).map(entry => (
+            <ModuleEntryRow
+              key={entry.id}
+              entry={entry}
+              schema={schema}
+              onEdit={openEdit}
+              onDelete={handleDeleteEntry}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state (full mode) */}
+      {entries.length === 0 && (
+        <div className="px-4 py-8 flex flex-col items-center gap-3 text-center">
+          <p className="text-sm text-text-tertiary">No entries yet.</p>
+          {userId && (
+            <button
+              onClick={openAdd}
+              className="text-xs font-semibold transition-opacity hover:opacity-80"
+              style={{ color: accentColor }}
+            >
+              Add your first entry →
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Entry sheet */}
+      {userId && (
+        <ModuleEntrySheet
+          definition={definition}
+          hubId={hubId}
+          userId={userId}
+          open={sheetOpen}
+          onClose={() => { setSheetOpen(false); setEditingEntry(undefined); }}
+          onSaved={handleEntrySaved}
+          existingEntry={editingEntry}
+        />
+      )}
     </div>
   );
 }

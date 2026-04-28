@@ -6,6 +6,7 @@ import { spacesService } from "@/services/spaces.service";
 import { hubsService } from "@/services/hubs.service";
 import { useRouter } from "next/navigation";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import { ASSISTANT_NAME } from "@/constants/brand";
 import {
   SignOut,
   ArrowLeft,
@@ -82,7 +83,7 @@ export default function ProfilePage() {
 
   const saveAssistantName = async () => {
     setSavingName(true);
-    await updateProfile({ assistant_name: nameInput.trim() || 'Aly' });
+    await updateProfile({ assistant_name: nameInput.trim() || ASSISTANT_NAME });
     setSavingName(false);
     setEditingName(false);
   };
@@ -196,7 +197,7 @@ export default function ProfilePage() {
                       value={nameInput}
                       onChange={e => setNameInput(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') saveAssistantName(); if (e.key === 'Escape') setEditingName(false); }}
-                      placeholder="Aly"
+                      placeholder={ASSISTANT_NAME}
                       maxLength={32}
                       autoFocus
                       className="flex-1 bg-background-tertiary border border-border-primary rounded-lg px-3 py-1.5 text-sm text-text-primary outline-none focus:border-modules-aly/50 transition-all"

@@ -9,6 +9,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { supabase } from '../../services/supabase'
 import { API_URL } from '../../services/apiConfig'
 import { useAlySheet } from '../../context/AlySheetContext'
+import { useUserProfile } from '../../context/UserProfileContext'
 import { colors } from '../../constants/colors'
 import { ASSISTANT_NAME } from '../../constants/brand'
 import { MarkdownRenderer } from '../../components/common/MarkdownRenderer'
@@ -1067,20 +1068,22 @@ function StravaStatsWidget({ userId }) {
 
 // ── SleepTrackerWidget ────────────────────────────────────────────────────────
 function SleepTrackerWidget() {
+  const { assistantName } = useUserProfile()
   return (
     <View style={wStyles.compactBody}>
       <Text style={wStyles.listSub}>Sleep data</Text>
-      <Text style={wStyles.listText}>Log via Aly chat</Text>
+      <Text style={wStyles.listText}>Log via {assistantName} chat</Text>
     </View>
   )
 }
 
 // ── WorkoutLogWidget ──────────────────────────────────────────────────────────
 function WorkoutLogWidget() {
+  const { assistantName } = useUserProfile()
   return (
     <View style={wStyles.compactBody}>
       <Text style={wStyles.listSub}>Workout log</Text>
-      <Text style={wStyles.listText}>Log via Aly chat</Text>
+      <Text style={wStyles.listText}>Log via {assistantName} chat</Text>
     </View>
   )
 }

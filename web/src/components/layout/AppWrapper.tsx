@@ -10,6 +10,7 @@ import { LandingNavbar } from "@/components/layout/LandingNavbar";
 import { supabase } from '@/services/supabase';
 import { UserProfileProvider, useUserProfile } from '@/contexts/UserProfileContext';
 import { Sparkle } from '@phosphor-icons/react';
+import { ASSISTANT_NAME } from '@/constants/brand';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ── First-login: assistant naming modal ──────────────────────────────────────
@@ -22,7 +23,7 @@ function AssistantNameModal() {
   const isVisible = !loading && profile?.assistant_name === null;
 
   const handleSave = async () => {
-    const trimmed = name.trim() || 'Aly';
+    const trimmed = name.trim() || ASSISTANT_NAME;
     setSaving(true);
     await updateProfile({ assistant_name: trimmed });
     setSaving(false);
@@ -60,7 +61,7 @@ function AssistantNameModal() {
                   value={name}
                   onChange={e => setName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
-                  placeholder="Aly"
+                  placeholder={ASSISTANT_NAME}
                   maxLength={32}
                   className="w-full bg-background-tertiary border border-border-primary rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-tertiary/50 outline-none focus:border-modules-aly/50 transition-all text-center font-semibold"
                   autoFocus
@@ -77,10 +78,10 @@ function AssistantNameModal() {
                   )}
                 </button>
                 <button
-                  onClick={() => updateProfile({ assistant_name: 'Aly' })}
+                  onClick={() => updateProfile({ assistant_name: ASSISTANT_NAME })}
                   className="text-xs text-text-tertiary hover:text-text-secondary text-center transition-colors"
                 >
-                  Skip — use "Aly"
+                  Skip — use &quot;{ASSISTANT_NAME}&quot;
                 </button>
               </div>
             </div>

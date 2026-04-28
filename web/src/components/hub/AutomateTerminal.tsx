@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { Briefing } from '@/services/automate.service';
 import { format } from 'date-fns';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 interface AutomateTerminalProps {
   briefings: Briefing[];
@@ -29,6 +30,7 @@ export const AutomateTerminal: React.FC<AutomateTerminalProps> = ({
   onGenerate, 
   onDelete 
 }) => {
+  const { assistantName } = useUserProfile();
   const [generating, setGenerating] = useState(false);
   const [selectedBriefing, setSelectedBriefing] = useState<Briefing | null>(null);
 
@@ -40,7 +42,7 @@ export const AutomateTerminal: React.FC<AutomateTerminalProps> = ({
   }, [briefings, selectedBriefing]);
 
   const handleGenerate = async (type: 'daily' | 'weekly') => {
-    if (!confirm(`Sychronize mission-critical ${type} intelligence now? This will initiate the Aly engine.`)) return;
+    if (!confirm(`Sychronize mission-critical ${type} intelligence now? This will initiate the ${assistantName} engine.`)) return;
     setGenerating(true);
     try {
       await onGenerate(type);
@@ -187,7 +189,7 @@ export const AutomateTerminal: React.FC<AutomateTerminalProps> = ({
               <footer className="p-6 border-t border-border-primary bg-background-tertiary/30 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Sparkle size={14} className="text-modules-aly animate-pulse" />
-                  <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Aly Synthesis Engine Status: Optimal</span>
+                  <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">{assistantName} Synthesis Engine Status: Optimal</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <button className="flex items-center gap-2 text-[10px] font-bold text-text-tertiary hover:text-text-primary transition-all">

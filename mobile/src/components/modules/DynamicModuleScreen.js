@@ -19,7 +19,7 @@ import React, {
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, TextInput, Pressable, KeyboardAvoidingView, Platform,
-  RefreshControl, Alert, ActivityIndicator,
+  RefreshControl, Alert, ActivityIndicator, Switch,
 } from 'react-native'
 import Svg, {
   Circle as SvgCircle, Rect as SvgRect, Text as SvgText, G as SvgG,
@@ -440,25 +440,38 @@ function TrendChartView({ layout, entries }) {
 
 // ── Generic list view (fallback for unknown layout.type) ──────────────────────
 
-function GenericListView({ layout, entries }) {
+function GenericListView({ layout, entries, schema, onDelete }) {
   const dateField = layout.dateField ?? 'created_at'
   const aggField  = layout.aggregate
+
+  // Derive the best label and sub-label from schema fields
+  const labelField = schema?.find(f => f.type === 'text' || f.type === 'string') ?? schema?.[0]
+  const subField   = schema?.find(f => f.type === 'date' || f.type === 'datetime')
+
   return (
     <View>
       {entries.length === 0 ? (
         <View style={com.empty}>
           <Text style={com.emptyText}>No entries yet</Text>
-          <Text style={com.emptySub}>Add the first one using the button above</Text>
+          <Text style={com.emptySub}>Tap + to add the first one</Text>
         </View>
-      ) : entries.map(e => (
-        <View key={e.id} style={com.group}>
-          <EntryRow entry={e} aggField={aggField}
-            label={Object.values(e.data ?? {})[0] ?? 'Entry'}
-            sub={e.data?.[dateField] ? new Date(e.data[dateField]).toLocaleDateString() : ''}
-            unit=""
-          />
-        </View>
-      ))}
+      ) : entries.map(e => {
+        const label = labelField ? String(e.data?.[labelField.key] ?? 'Entry') : String(Object.values(e.data ?? {})[0] ?? 'Entry')
+        const rawSub = subField ? e.data?.[subField.key] : e.data?.[dateField]
+        const sub = rawSub ? new Date(rawSub).toLocaleDateString() : ''
+        return (
+          <View key={e.id} style={com.group}>
+            <EntryRow
+              entry={e}
+              aggField={aggField}
+              label={label}
+              sub={sub}
+              unit=""
+              onDelete={onDelete}
+            />
+          </View>
+        )
+      })}
     </View>
   )
 }
@@ -467,6 +480,14 @@ function GenericListView({ layout, entries }) {
 
 function EntryRow({ entry, aggField, label, sub, unit, color, prefixUnit, onDelete }) {
   const val = aggField ? Number(entry.data?.[aggField]) || 0 : null
+
+  const confirmDelete = () => {
+    if (!onDelete) return
+    Alert.alert('Delete entry', 'Remove this entry?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => onDelete(entry.id) },
+    ])
+  }
 
   return (
     <View style={com.entryRow}>
@@ -483,6 +504,11 @@ function EntryRow({ entry, aggField, label, sub, unit, color, prefixUnit, onDele
         <Text style={com.entryVal}>
           {prefixUnit ? `${unit} ` : ''}{val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}{!prefixUnit && unit ? ` ${unit}` : ''}
         </Text>
+      )}
+      {onDelete && (
+        <TouchableOpacity onPress={confirmDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 8 }}>
+          <Trash size={14} color={colors.text.tertiary} />
+        </TouchableOpacity>
       )}
     </View>
   )
@@ -702,7 +728,17 @@ function GenericFormSheet({ visible, onClose, onSave, definition }) {
   const schema = definition?.schema ?? []
   const layout = definition?.layout ?? {}
 
-  const initValues = () => schema.reduce((acc, f) => { acc[f.key] = ''; return acc }, {})
+  const initValues = () => schema.reduce((acc, f) => {
+    switch (f.type) {
+      case 'boolean':  acc[f.key] = false; break
+      case 'counter':  acc[f.key] = 0; break
+      case 'date':     acc[f.key] = new Date().toLocaleDateString('en-CA'); break
+      case 'datetime': acc[f.key] = new Date().toISOString().slice(0, 16); break
+      default:         acc[f.key] = ''
+    }
+    return acc
+  }, {})
+
   const [values, setValues] = useState(initValues)
   const [saving, setSaving] = useState(false)
 
@@ -753,12 +789,22 @@ function GenericFormSheet({ visible, onClose, onSave, definition }) {
 
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }}>
             {schema.map((field, idx) => {
+              const cfg = field.config ?? {}
+              const labelEl = (
+                <Text style={form.label}>
+                  {field.label.toUpperCase()}
+                  {!field.required && <Text style={form.labelSub}> (optional)</Text>}
+                  {cfg.unit ? <Text style={form.labelSub}> ({cfg.unit})</Text> : ''}
+                </Text>
+              )
+
+              // ── select ───────────────────────────────────────────────────
               if (field.type === 'select') {
                 return (
                   <View key={field.key} style={{ marginBottom: 14 }}>
-                    <Text style={form.label}>{field.label.toUpperCase()}</Text>
+                    {labelEl}
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={form.chipRow}>
-                      {(field.options ?? []).map(opt => {
+                      {(cfg.options ?? []).map(opt => {
                         const sel = values[field.key] === opt
                         const hex = catHex(opt)
                         return (
@@ -772,13 +818,80 @@ function GenericFormSheet({ visible, onClose, onSave, definition }) {
                   </View>
                 )
               }
+
+              // ── boolean ──────────────────────────────────────────────────
+              if (field.type === 'boolean') {
+                return (
+                  <View key={field.key} style={{ marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {labelEl}
+                    <Switch
+                      value={!!values[field.key]}
+                      onValueChange={v => set(field.key, v)}
+                      trackColor={{ false: '#374151', true: colors.modules?.aly ?? '#6366f1' }}
+                      thumbColor="#fff"
+                    />
+                  </View>
+                )
+              }
+
+              // ── counter ──────────────────────────────────────────────────
+              if (field.type === 'counter') {
+                const num  = Number(values[field.key] ?? 0)
+                const step = cfg.step ?? 1
+                const min  = cfg.min  ?? 0
+                const max  = cfg.max  ?? 99999
+                return (
+                  <View key={field.key} style={{ marginBottom: 14 }}>
+                    {labelEl}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => set(field.key, Math.max(min, num - step))}
+                        style={[form.stepBtn, { borderColor: colors.border?.primary ?? '#374151' }]}
+                      >
+                        <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '600' }}>−</Text>
+                      </TouchableOpacity>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '700' }}>{num}</Text>
+                        {cfg.unit ? <Text style={form.labelSub}>{cfg.unit}</Text> : null}
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => set(field.key, Math.min(max, num + step))}
+                        style={[form.stepBtn, { borderColor: colors.modules?.aly ?? '#6366f1', backgroundColor: (colors.modules?.aly ?? '#6366f1') + '15' }]}
+                      >
+                        <Text style={{ color: colors.modules?.aly ?? '#6366f1', fontSize: 18, fontWeight: '600' }}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )
+              }
+
+              // ── date / datetime → text with YYYY-MM-DD hint ──────────────
+              if (field.type === 'date' || field.type === 'datetime') {
+                return (
+                  <View key={field.key} style={{ marginBottom: 14 }}>
+                    {labelEl}
+                    <TextInput
+                      style={form.input}
+                      placeholder={field.type === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:MM'}
+                      placeholderTextColor={colors.text.tertiary}
+                      value={String(values[field.key] ?? '')}
+                      onChangeText={v => set(field.key, v)}
+                      keyboardType="numbers-and-punctuation"
+                      autoFocus={idx === 0}
+                    />
+                  </View>
+                )
+              }
+
+              // ── number, text, string (default) ───────────────────────────
               return (
                 <View key={field.key} style={{ marginBottom: 14 }}>
-                  <Text style={form.label}>{field.label.toUpperCase()}{!field.required && <Text style={form.labelSub}> (optional)</Text>}{field.unit ? <Text style={form.labelSub}> ({field.unit})</Text> : ''}</Text>
+                  {labelEl}
                   <TextInput style={form.input}
-                    placeholder={field.placeholder ?? (field.type === 'number' ? '0' : '')}
+                    placeholder={cfg.placeholder ?? (field.type === 'number' ? '0' : '')}
                     placeholderTextColor={colors.text.tertiary}
-                    value={values[field.key]} onChangeText={v => set(field.key, v)}
+                    value={String(values[field.key] ?? '')}
+                    onChangeText={v => set(field.key, v)}
                     keyboardType={field.type === 'number' ? 'decimal-pad' : 'default'}
                     autoFocus={idx === 0} />
                 </View>
@@ -864,8 +977,12 @@ export default function DynamicModuleScreen({ definition, hub, userId: propUserI
   async function handleSave(data) {
     if (!userId || !definition?.id) throw new Error('Not ready')
     const newEntry = await addEntry(definition.id, hub?.id, userId, data)
-    // Optimistic: prepend to list immediately
     setEntries(prev => [newEntry, ...prev])
+  }
+
+  async function handleDeleteEntry(entryId) {
+    setEntries(prev => prev.filter(e => e.id !== entryId))
+    try { await deleteEntry(entryId) } catch { /* silent — optimistic */ }
   }
 
   const layout    = definition?.layout   ?? {}
@@ -892,7 +1009,9 @@ export default function DynamicModuleScreen({ definition, hub, userId: propUserI
         {/* ── Layout-driven body ── */}
         {layoutType === 'goal_progress' && <GoalProgressView layout={layout} entries={entries} />}
         {layoutType === 'trend_chart'   && <TrendChartView   layout={layout} entries={entries} />}
-        {!layoutType && <GenericListView layout={layout} entries={entries} />}
+        {(!layoutType || (layoutType !== 'goal_progress' && layoutType !== 'trend_chart')) && (
+          <GenericListView layout={layout} entries={entries} schema={definition?.schema} onDelete={handleDeleteEntry} />
+        )}
       </ScrollView>
 
       {/* ── Log FAB (where Aly button used to be) ── */}
@@ -1064,4 +1183,5 @@ const form = StyleSheet.create({
   saveBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.modules.aly, borderRadius: 14, paddingVertical: 14, marginTop: 8 },
   saveBtnDis: { opacity: 0.4 },
   saveTxt:    { fontSize: 14, fontWeight: '700', color: '#fff' },
+  stepBtn:    { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 })

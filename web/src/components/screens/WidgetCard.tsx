@@ -12,6 +12,7 @@ import {
   XIcon, FlameIcon, ChartBarIcon,
 } from '@phosphor-icons/react';
 import { ScreenWidget, WidgetType, screensService } from '@/services/screens.service';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { Space } from '@/services/spaces.service';
 import { Hub } from '@/services/hubs.service';
 import { trackService, Task } from '@/services/track.service';
@@ -46,7 +47,7 @@ const TYPE_META: Record<WidgetType, { label: string; icon: React.ReactNode; acce
   checklist:        { label: 'Checklist',        icon: <CheckSquareIcon    size={13} weight="bold" />, accent: 'text-modules-track'     },
   chart:            { label: 'Chart',            icon: <ChartBarIcon       size={13} weight="bold" />, accent: 'text-indigo-400'        },
   streak:           { label: 'Streak',           icon: <FlameIcon          size={13} weight="bold" />, accent: 'text-orange-400'        },
-  aly_nudge:        { label: 'Aly Nudge',        icon: <SparkleIcon        size={13} weight="bold" />, accent: 'text-modules-aly'       },
+  aly_nudge:        { label: 'Nudge',            icon: <SparkleIcon        size={13} weight="bold" />, accent: 'text-modules-aly'       },
   hub_snapshot:     { label: 'Hub Snapshot',     icon: <CameraIcon         size={13} weight="bold" />, accent: 'text-modules-knowledge' },
 };
 
@@ -1177,8 +1178,10 @@ interface WidgetCardProps {
 
 export function WidgetCard({ widget, hubName, spaceName, userId, spaces = [], hubs = [], onDelete, readOnly }: WidgetCardProps) {
   const router = useRouter();
+  const { assistantName } = useUserProfile();
   const meta  = TYPE_META[widget.type];
-  const title = widget.title || meta.label;
+  const label = widget.type === 'aly_nudge' ? `${assistantName} Nudge` : meta.label;
+  const title = widget.title || label;
 
   const handleNavToHub = (e: React.MouseEvent) => {
     e.stopPropagation();

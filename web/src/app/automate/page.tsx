@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { motion } from 'framer-motion';
 import { 
   TreeStructure, 
@@ -17,6 +18,7 @@ import {
 const AUTOMATE_TEXT = 'text-amber-500';
 
 export default function AutomatePage() {
+  const { assistantName } = useUserProfile();
   const [isHoveringCanvas, setIsHoveringCanvas] = useState(false);
 
   return (
@@ -68,7 +70,7 @@ export default function AutomatePage() {
             <div className="flex flex-col gap-2">
               <div className="p-3 bg-background-tertiary border border-border-primary rounded-xl flex items-center gap-3 cursor-grab hover:border-amber-500/50 transition-all opacity-50">
                 <Sparkle size={18} className="text-amber-500" />
-                <span className="text-xs font-bold text-text-secondary">Aly Synthesis</span>
+                <span className="text-xs font-bold text-text-secondary">{assistantName} Synthesis</span>
               </div>
               <div className="p-3 bg-background-tertiary border border-border-primary rounded-xl flex items-center gap-3 cursor-grab hover:border-amber-500/50 transition-all opacity-50">
                 <GitMerge size={18} className="text-purple-500" />

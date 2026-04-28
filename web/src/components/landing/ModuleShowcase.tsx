@@ -10,6 +10,7 @@ import {
   Cpu,
   DotsThreeCircle
 } from '@phosphor-icons/react';
+import { ASSISTANT_NAME } from '@/constants/brand';
 import {
   TrackShowcase,
   VaultShowcase,
@@ -28,7 +29,7 @@ const coreModules = [
   { id: 'vault', name: 'Vault', icon: Folder, color: 'var(--modules-knowledge)', domain: 'Knowledge' },
   { id: 'annotate', name: 'Annotate', icon: Brain, color: 'var(--modules-annotate)', domain: 'Intelligence' },
   { id: 'automate', name: 'Automate', icon: Cpu, color: 'var(--modules-automate)', domain: 'Process' },
-  { id: 'aly', name: 'Aly', icon: Sparkle, color: 'var(--modules-aly)', domain: 'Intelligence' },
+  { id: 'aly', name: ASSISTANT_NAME, icon: Sparkle, color: 'var(--modules-aly)', domain: 'Intelligence' },
 ];
 
 const domainModules = [

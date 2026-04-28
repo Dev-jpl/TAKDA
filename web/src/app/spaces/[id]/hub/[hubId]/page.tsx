@@ -34,6 +34,8 @@ import { DeliverTerminal } from '@/components/hub/DeliverTerminal';
 import { listAddons, HubAddon } from '@/services/addons.service';
 import { CalorieCounterAddon } from '@/components/addons/CalorieCounterAddon';
 import { ExpenseTrackerAddon } from '@/components/addons/ExpenseTrackerAddon';
+import { DynamicModuleView } from '@/components/modules/DynamicModuleView';
+import { getModuleDefinitions, ModuleDefinition } from '@/services/modules.service';
 
 export default function HubDetailPage() {
   const params  = useParams();
@@ -48,6 +50,7 @@ export default function HubDetailPage() {
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [deliveries,  setDeliveries]  = useState<Delivery[]>([]);
   const [addons,        setAddons]        = useState<HubAddon[]>([]);
+  const [moduleDefs,    setModuleDefs]    = useState<ModuleDefinition[]>([]);
   const [userId,        setUserId]        = useState<string | null>(null);
   const [activeAddon,   setActiveAddon]   = useState<string | null>(null);
   const [showModulePicker, setShowModulePicker] = useState(false);
@@ -97,14 +100,16 @@ export default function HubDetailPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated.');
       setUserId(user.id);
-      const [spaceData, hubData, addonData] = await Promise.all([
+      const [spaceData, hubData, addonData, defsData] = await Promise.all([
         spacesService.getSpaces(user.id).then(list => list.find(s => s.id === spaceId)),
         hubsService.getHubsBySpace(spaceId).then(list => list.find(h => h.id === hubId)),
         listAddons(hubId),
+        getModuleDefinitions(user.id).catch(() => [] as ModuleDefinition[]),
       ]);
       if (spaceData) setSpace(spaceData);
       if (hubData)   setHub(hubData);
       setAddons(addonData);
+      setModuleDefs(defsData);
       // Auto-select first addon so it renders immediately
       if (addonData.length === 1) setActiveAddon(addonData[0].type);
     } catch (err) { console.error(err); }
@@ -280,7 +285,7 @@ export default function HubDetailPage() {
   const hasCoreModules = hasTrack || hasAnnotate || hasKnowledge || hasDeliver;
   const hasAnything    = hasCoreModules || addons.length > 0;
 
-  // Full module catalog for the picker
+  // Full module catalog — static core + dynamic user modules
   const MODULE_CATALOG = [
     { id: 'track',           label: 'Tasks',          description: 'To-dos and missions',       icon: CheckCircleIcon,    color: 'var(--modules-track)',     group: 'core' as const },
     { id: 'annotate',        label: 'Notes',          description: 'Write and organize notes',  icon: PencilSimpleIcon,   color: 'var(--modules-aly)',       group: 'core' as const },
@@ -289,6 +294,17 @@ export default function HubDetailPage() {
     { id: 'automate',        label: 'Automations',    description: 'Connect n8n workflows',     icon: GitBranchIcon,      color: '#a78bfa',                  group: 'core' as const },
     { id: 'calorie_counter', label: 'Calorie Counter',description: 'Log food and calories',     icon: ForkKnifeIcon,      color: '#22c55e',                  group: 'data' as const },
     { id: 'expense_tracker', label: 'Expense Tracker',description: 'Log spending by category',  icon: CurrencyDollarIcon, color: '#f59e0b',                  group: 'data' as const },
+    // Dynamic: user-created modules (excluded if already in static list above)
+    ...moduleDefs
+      .filter(d => !['calorie_counter', 'expense_tracker'].includes(d.slug) && !d.is_global)
+      .map(d => ({
+        id:          d.slug,
+        label:       d.name,
+        description: d.description || 'Custom module',
+        icon:        PuzzlePieceIcon,
+        color:       d.brand_color || 'var(--modules-aly)',
+        group:       'data' as const,
+      })),
   ];
 
   function isInstalled(id: string) {
@@ -507,13 +523,25 @@ export default function HubDetailPage() {
                     Remove
                   </button>
                 </div>
-                <div className="p-5">
+                <div className={addon.type === 'calorie_counter' || addon.type === 'expense_tracker' ? 'p-5' : ''}>
                   {userId && addon.type === 'calorie_counter' && (
                     <CalorieCounterAddon hubId={hubId} userId={userId} config={addon.config} />
                   )}
                   {userId && addon.type === 'expense_tracker' && (
                     <ExpenseTrackerAddon hubId={hubId} userId={userId} config={addon.config} />
                   )}
+                  {userId && !['calorie_counter', 'expense_tracker'].includes(addon.type) && (() => {
+                    const def = moduleDefs.find(d => d.slug === addon.type);
+                    if (!def) return null;
+                    return (
+                      <DynamicModuleView
+                        definition={def}
+                        hubId={hubId}
+                        userId={userId}
+                        showActions
+                      />
+                    );
+                  })()}
                 </div>
               </div>
             );

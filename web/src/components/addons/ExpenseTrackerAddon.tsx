@@ -8,6 +8,7 @@ import {
   ChartDonutIcon, ListIcon, CurrencyCircleDollarIcon, ChartBarIcon,
 } from '@phosphor-icons/react';
 import { getExpenses, logExpense, deleteExpense, Expense } from '@/services/addons.service';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 // ── Category config ───────────────────────────────────────────────────────────
 
@@ -149,6 +150,7 @@ type Tab = 'overview' | 'trend' | 'transactions';
 type TrendPeriod = 'week' | 'month' | 'year';
 
 export function ExpenseTrackerAddon({ hubId, userId, config }: Props) {
+  const { assistantName } = useUserProfile();
   const currency = (config.currency as string) ?? '₱';
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -577,7 +579,7 @@ export function ExpenseTrackerAddon({ hubId, userId, config }: Props) {
             <ReceiptIcon size={36} className="text-text-tertiary/20" weight="duotone" />
             <div>
               <p className="text-sm font-semibold text-text-primary">No transactions this month</p>
-              <p className="text-xs text-text-tertiary mt-1">Log an expense or ask Aly to track it.</p>
+              <p className="text-xs text-text-tertiary mt-1">Log an expense or ask {assistantName} to track it.</p>
             </div>
           </div>
         ) : (

@@ -354,7 +354,7 @@ export default function ChatSessionPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold tracking-tight text-text-primary">
-                  {sessionId && sessions.find(s => s.id === sessionId)?.title || 'Ask Aly'}
+                  {sessionId && sessions.find(s => s.id === sessionId)?.title || `Ask ${assistantName}`}
                 </h1>
                 {isStreaming && (
                   <div className="flex gap-0.5 ml-2">

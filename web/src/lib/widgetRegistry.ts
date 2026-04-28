@@ -154,10 +154,10 @@ export const WIDGET_REGISTRY: Record<string, WidgetTypeDefinition> = {
     accentColor: '#6366f1',
   },
 
-  // ── NEW: Aly Nudge ────────────────────────────────────────────────────────
+  // ── NEW: Assistant Nudge ─────────────────────────────────────────────────
   aly_nudge: {
     type: 'aly_nudge',
-    label: 'Aly Nudge',
+    label: 'Nudge',           // overridden at render time via getWidgetLabel()
     description: 'A daily personalised message from your assistant.',
     category: 'assistant',
     isGlobal: true,
@@ -183,6 +183,16 @@ export const WIDGET_REGISTRY: Record<string, WidgetTypeDefinition> = {
 
 export function getWidgetDef(type: string): WidgetTypeDefinition | undefined {
   return WIDGET_REGISTRY[type];
+}
+
+/**
+ * Returns the display label for a widget type.
+ * Substitutes the dynamic assistant name for the "aly_nudge" type so
+ * the string "Aly" never appears literally in any rendered label.
+ */
+export function getWidgetLabel(type: string, assistantName: string): string {
+  if (type === 'aly_nudge') return `${assistantName} Nudge`;
+  return WIDGET_REGISTRY[type]?.label ?? type;
 }
 
 export const GLOBAL_WIDGET_TYPES = new Set(

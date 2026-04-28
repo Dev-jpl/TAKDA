@@ -9,6 +9,7 @@ import {
 } from "@phosphor-icons/react";
 import { supabase } from "@/services/supabase";
 import { API_URL } from "@/services/apiConfig";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 // ── Types & Constants ─────────────────────────────────────────────────────────
 
@@ -118,6 +119,7 @@ function VaultCard({
   onSelect: (item: VaultItem) => void;
   onDelete: (id: string) => void;
 }) {
+  const { assistantName } = useUserProfile();
   const Icon = TYPE_ICONS[item.content_type] || FileText;
   const isSuggested = item.status === "suggested";
 
@@ -155,7 +157,7 @@ function VaultCard({
             {isSuggested && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-modules-aly/10 border border-modules-aly/20 text-[9px] font-bold text-modules-aly uppercase tracking-widest">
                 <Sparkle size={8} weight="fill" />
-                Aly
+                {assistantName}
               </span>
             )}
           </div>
@@ -194,6 +196,7 @@ function VaultEditor({
   onDismiss: (id: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const { assistantName } = useUserProfile();
   const [content, setContent]               = useState(item.content || "");
   const [saving, setSaving]                 = useState(false);
   const [showSuggestion, setShowSuggestion] = useState(true);
@@ -245,7 +248,7 @@ function VaultEditor({
                 }`}
               >
                 <Sparkle size={12} weight={showSuggestion ? "fill" : "regular"} />
-                Aly
+                {assistantName}
               </button>
             )}
             <button
@@ -288,7 +291,7 @@ function VaultEditor({
             <div className="px-5 py-4 border-b border-border-primary flex items-center gap-2.5 relative">
               <div className="absolute left-0 top-0 h-full w-0.5 bg-modules-aly" />
               <Sparkle size={13} weight="fill" className="text-modules-aly" />
-              <h3 className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Aly Suggestion</h3>
+              <h3 className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">{assistantName} Suggestion</h3>
             </div>
 
             <div className="flex-1 p-5 overflow-y-auto space-y-5">
@@ -344,6 +347,7 @@ function VaultEditor({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function VaultPage() {
+  const { assistantName } = useUserProfile();
   const [userId,      setUserId]      = useState<string | null>(null);
   const [activeTab,   setActiveTab]   = useState<Tab>("Inbox");
   const [activeType,  setActiveType]  = useState("all");

@@ -16,6 +16,7 @@ import { screensService, Screen, ScreenWidget, WidgetType } from '@/services/scr
 import { spacesService, Space } from '@/services/spaces.service';
 import { hubsService, Hub } from '@/services/hubs.service';
 import { CanvasScreen } from '@/components/screens/canvas/CanvasScreen';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { WidgetCard } from '@/components/screens/WidgetCard';
 
 // ── Widget metadata ───────────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ const WIDGET_META: Record<WidgetType, {
   checklist:        { label: 'Checklist',        Icon: CheckSquareIcon,    color: 'var(--modules-track)',     desc: 'Persistent to-do list'         },
   streak:           { label: 'Streak',           Icon: FlameIcon,          color: '#f97316',                  desc: 'Consecutive-day habit tracker' },
   chart:            { label: 'Chart',            Icon: ChartBarIcon,       color: '#6366f1',                  desc: 'Habit completion chart'        },
-  aly_nudge:        { label: 'Aly Nudge',        Icon: SparkleIcon,        color: 'var(--modules-aly)',       desc: 'Daily AI message'              },
+  aly_nudge:        { label: 'Nudge',             Icon: SparkleIcon,        color: 'var(--modules-aly)',       desc: 'Daily personalised message'    },
   // ── Hub widgets ──────────────────────────────────────────────────────────
   hub_snapshot:     { label: 'Hub Snapshot',     Icon: CameraIcon,         color: 'var(--modules-knowledge)', desc: 'Hub activity + AI summary'    },
   tasks:            { label: 'Tasks',            Icon: CheckCircleIcon,    color: 'var(--modules-track)',     desc: 'Active tasks from a hub'       },
@@ -101,7 +102,9 @@ function CanvasWidgetCard({
   spaceMap: Record<string, Space>;
 }) {
   const isGlobal = GLOBAL_WIDGET_TYPES.has(item.type);
-  const { label, Icon, color } = WIDGET_META[item.type];
+  const { label: rawLabel, Icon, color } = WIDGET_META[item.type];
+  const { assistantName: aName } = useUserProfile();
+  const label = item.type === 'aly_nudge' ? `${aName} Nudge` : rawLabel;
   const [editingHub, setEditingHub] = useState(!item.hubId);
   const [selectedHubId, setSelectedHubId] = useState(item.hubId ?? '');
   const [saving, setSaving] = useState(false);
@@ -273,6 +276,7 @@ export default function ScreenEditorPage() {
   const params   = useParams();
   const router   = useRouter();
   const screenId = params.screenId as string;
+  const { assistantName } = useUserProfile();
 
   const [screen,        setScreen]        = useState<Screen | null>(null);
   const [canvas,        setCanvas]        = useState<CanvasItem[]>([]);
@@ -662,7 +666,7 @@ export default function ScreenEditorPage() {
                   <def.Icon size={17} style={{ color: def.color }} weight="duotone" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-text-primary leading-tight">{def.label}</p>
+                  <p className="text-xs font-bold text-text-primary leading-tight">{def.type === 'aly_nudge' ? `${assistantName} Nudge` : def.label}</p>
                   <p className="text-[10px] text-text-tertiary mt-0.5 leading-tight truncate">{def.desc}</p>
                 </div>
               </div>
@@ -696,7 +700,7 @@ export default function ScreenEditorPage() {
                   <def.Icon size={17} style={{ color: def.color }} weight="duotone" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-text-primary leading-tight">{def.label}</p>
+                  <p className="text-xs font-bold text-text-primary leading-tight">{def.type === 'aly_nudge' ? `${assistantName} Nudge` : def.label}</p>
                   <p className="text-[10px] text-text-tertiary mt-0.5 leading-tight truncate">{def.desc}</p>
                 </div>
               </div>
@@ -732,7 +736,7 @@ export default function ScreenEditorPage() {
                   <def.Icon size={17} style={{ color: def.color }} weight="duotone" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-text-primary leading-tight">{def.label}</p>
+                  <p className="text-xs font-bold text-text-primary leading-tight">{def.type === 'aly_nudge' ? `${assistantName} Nudge` : def.label}</p>
                   <p className="text-[10px] text-text-tertiary mt-0.5 leading-tight truncate">{def.desc}</p>
                 </div>
               </div>

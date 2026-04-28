@@ -120,6 +120,22 @@ export async function createModuleEntry(defId: string, data: Record<string, unkn
   return res.json();
 }
 
+export async function updateModuleEntry(
+  defId: string,
+  entryId: string,
+  data: Record<string, any>,
+  userId: string,
+  hubId?: string,
+): Promise<ModuleEntry> {
+  const res = await fetch(`${API}/modules/${defId}/entries/${entryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, hub_id: hubId, data }),
+  });
+  if (!res.ok) throw new Error('Failed to update module entry');
+  return res.json();
+}
+
 export async function deleteModuleEntry(entryId: string): Promise<void> {
   const res = await fetch(`${API}/modules/entries/${entryId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete module entry');

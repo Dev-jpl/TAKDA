@@ -13,6 +13,7 @@ import {
   Database
 } from '@phosphor-icons/react';
 import Link from 'next/link';
+import { ASSISTANT_NAME } from '@/constants/brand';
 
 // Social Proof Registry (Testimonials & Global Stats)
 export const SocialProofRegistry = () => {
@@ -20,13 +21,13 @@ export const SocialProofRegistry = () => {
       {
         user: "Sarah M.",
         role: "Product Designer",
-        text: "TAKDA completely changed how I manage my work and personal life. Everything I need is in one place — and Aly actually gets things done.",
+        text: `TAKDA completely changed how I manage my work and personal life. Everything I need is in one place — and ${ASSISTANT_NAME} actually gets things done.`,
         color: "var(--modules-knowledge)"
       },
       {
         user: "James K.",
         role: "Software Engineer",
-        text: "Aly surfaced patterns in my habits I never noticed. It's like having a thoughtful assistant who actually pays attention.",
+        text: `${ASSISTANT_NAME} surfaced patterns in my habits I never noticed. It's like having a thoughtful assistant who actually pays attention.`,
         color: "var(--modules-aly)"
       },
       {
@@ -161,7 +162,7 @@ export const AccessRegistry = () => {
                         <ul className="space-y-3 md:space-y-4 mb-10 md:mb-16 flex-1">
                             {[
                                 "Everything in Free",
-                                "Full Aly AI assistant",
+                                `Full ${ASSISTANT_NAME} AI assistant`,
                                 "Unlimited Vault storage",
                                 "Advanced insights & summaries",
                                 "Priority support"

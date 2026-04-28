@@ -11,6 +11,7 @@ import {
   CaretRight
 } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
+import { ASSISTANT_NAME } from '@/constants/brand';
 
 // Mock Track Terminal
 export const TrackShowcase = () => (
@@ -167,7 +168,7 @@ export const AlyShowcase = () => (
         </motion.div>
     </div>
     <div className="mt-4 p-3 bg-background-secondary border border-border-primary rounded-xl flex items-center justify-between text-text-tertiary">
-        <span className="text-[10px] font-bold tracking-widest uppercase">Ask Aly anything...</span>
+        <span className="text-[10px] font-bold tracking-widest uppercase">Ask {ASSISTANT_NAME} anything...</span>
         <CaretRight size={14} />
     </div>
   </div>

@@ -93,13 +93,19 @@ async def delete_module_definition(def_id: str):
 
 
 @router.get("/{def_id}/entries")
-async def get_module_entries(def_id: str, hub_id: Optional[str] = None, user_id: Optional[str] = None):
+async def get_module_entries(
+    def_id: str,
+    hub_id:  Optional[str] = None,
+    user_id: Optional[str] = None,
+    limit:   int = 50,
+    offset:  int = 0,
+):
     query = supabase.table("module_entries").select("*").eq("module_def_id", def_id)
     if hub_id and hub_id not in ("null", "all"):
         query = query.eq("hub_id", hub_id)
     if user_id:
         query = query.eq("user_id", user_id)
-    res = query.order("created_at", desc=True).execute()
+    res = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
     return res.data
 
 
@@ -115,6 +121,21 @@ async def create_module_entry(def_id: str, body: ModuleEntryCreate):
     res = supabase.table("module_entries").insert(row).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create module entry")
+    return res.data[0]
+
+
+@router.put("/{def_id}/entries/{entry_id}")
+async def update_module_entry(def_id: str, entry_id: str, body: ModuleEntryCreate):
+    updates: dict[str, Any] = {"data": body.data}
+    if body.hub_id is not None:
+        updates["hub_id"] = body.hub_id
+    res = supabase.table("module_entries") \
+        .update(updates) \
+        .eq("id", entry_id) \
+        .eq("user_id", body.user_id) \
+        .execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Entry not found or not authorized")
     return res.data[0]
 
 

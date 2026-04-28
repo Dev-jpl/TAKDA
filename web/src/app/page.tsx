@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { ModuleShowcase } from '@/components/landing/ModuleShowcase';
 import { SocialProofRegistry, AccessRegistry } from '@/components/landing/MarketingSections';
 import { LandingNavbar } from '@/components/layout/LandingNavbar';
+import { ASSISTANT_NAME } from '@/constants/brand';
 
 const features = [
   {
@@ -32,8 +33,8 @@ const features = [
     span: "md:col-span-1"
   },
   {
-    title: "Aly — your AI companion",
-    desc: "Ask Aly anything. She knows your tasks, your schedule, and what matters most.",
+    title: `${ASSISTANT_NAME} — your AI companion`,
+    desc: `Ask ${ASSISTANT_NAME} anything. They know your tasks, your schedule, and what matters most.`,
     icon: Sparkle,
     color: "var(--modules-aly)",
     span: "md:col-span-1"

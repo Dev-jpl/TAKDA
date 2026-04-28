@@ -14,6 +14,7 @@ import { useFocusEffect, DrawerActions } from '@react-navigation/native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Plus, MagnifyingGlass, List, Sparkle } from 'phosphor-react-native'
 import { useAlySheet } from '../../context/AlySheetContext'
+import { useUserProfile } from '../../context/UserProfileContext'
 import { colors } from '../../constants/colors'
 import { spacesService } from '../../services/spaces'
 import { supabase } from '../../services/supabase'
@@ -54,6 +55,7 @@ const skelStyles = StyleSheet.create({
 
 export default function SpacesScreen({ navigation }) {
   const { openSheet } = useAlySheet()
+  const { assistantName } = useUserProfile()
   const [spaces, setSpaces] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -210,13 +212,13 @@ export default function SpacesScreen({ navigation }) {
           !loading && (
             <View style={styles.empty}>
               <Sparkle color={colors.modules.aly} size={32} weight="fill" />
-              <Text style={styles.emptyTitle}>Aly can set up your spaces</Text>
-              <Text style={styles.emptyBody}>Tell her what areas of life you want to organize</Text>
+              <Text style={styles.emptyTitle}>{assistantName} can set up your spaces</Text>
+              <Text style={styles.emptyBody}>Tell {assistantName} what areas of life you want to organize</Text>
               <TouchableOpacity
                 style={styles.emptyAlyBtn}
                 onPress={openSheet}
               >
-                <Text style={styles.emptyAlyBtnText}>Talk to Aly</Text>
+                <Text style={styles.emptyAlyBtnText}>Talk to {assistantName}</Text>
               </TouchableOpacity>
             </View>
           )

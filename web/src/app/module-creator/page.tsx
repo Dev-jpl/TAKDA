@@ -1,19 +1,20 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash, ArrowRight, ArrowLeft, FloppyDisk, Check,
   Sparkle, Lock, CaretDown, CaretUp, X, Tag,
-  NumberSquareOne, NumberSquareTwo, NumberSquareThree, NumberSquareFour,
   ToggleLeft, CalendarBlank, ListBullets, ChartBar,
-  NumberCircleOne, TextT, Hash, ArrowsCounterClockwise, SlidersHorizontal,
+  TextT, Hash, ArrowsCounterClockwise,
 } from '@phosphor-icons/react';
 import {
   ModuleDefinition, SchemaField, AlyConfig, FieldType, FieldConfig,
   createModuleDefinition,
 } from '@/services/modules.service';
+import { UIDefinition } from '@/types/ui-builder';
+import { UIBuilder } from '@/components/modules/UIBuilder';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { supabase } from '@/services/supabase';
 
@@ -35,38 +36,12 @@ const FIELD_TYPES: { value: FieldType; label: string; icon: React.ElementType; d
   { value: 'select',  label: 'Select',  icon: ListBullets,        desc: 'One of several options' },
 ];
 
-interface WidgetOption {
-  type: string;
-  label: string;
-  desc: string;
-  icon: React.ElementType;
-  /** Which schema field types are needed */
-  needs: FieldType[];
-}
-
-const WIDGET_OPTIONS: WidgetOption[] = [
-  { type: 'counter',      label: 'Counter',       icon: NumberCircleOne, desc: 'Running total today vs a goal.', needs: ['number', 'counter'] },
-  { type: 'goal_progress',label: 'Goal Progress', icon: SlidersHorizontal, desc: 'Progress bar with macro breakdown.', needs: ['number', 'counter'] },
-  { type: 'trend_chart',  label: 'Trend Chart',   icon: ChartBar,        desc: 'Bar chart over time with category split.', needs: ['number'] },
-];
-
 const inputCls = "w-full bg-background-primary border border-border-primary rounded-xl px-4 py-2.5 text-sm text-text-primary outline-none focus:border-modules-aly/50 focus:ring-1 focus:ring-modules-aly/20 transition-all placeholder:text-text-tertiary";
-const selectCls = `${inputCls} cursor-pointer`;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toSlug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-}
-
-function numberFields(schema: SchemaField[]) {
-  return schema.filter(f => f.type === 'number' || f.type === 'counter');
-}
-function dateFields(schema: SchemaField[]) {
-  return schema.filter(f => f.type === 'date');
-}
-function textFields(schema: SchemaField[]) {
-  return schema.filter(f => f.type === 'text' || f.type === 'select');
 }
 
 // ── Live Preview ──────────────────────────────────────────────────────────────
@@ -357,12 +332,12 @@ export default function ModuleCreatorPage() {
   // ── Form state ──────────────────────────────────────────────────────────────
 
   const { assistantName } = useUserProfile();
-  const [name,        setName]        = useState('');
-  const [slug,        setSlug]        = useState('');
-  const [description, setDescription] = useState('');
-  const [schema,      setSchema]      = useState<SchemaField[]>([]);
-  const [layout,      setLayout]      = useState<Record<string, unknown>>({ type: '' });
-  const [alyConfig,   setAlyConfig]   = useState<AlyConfig>({
+  const [name,         setName]        = useState('');
+  const [slug,         setSlug]        = useState('');
+  const [description,  setDescription] = useState('');
+  const [schema,       setSchema]      = useState<SchemaField[]>([]);
+  const [uiDefinition, setUiDefinition]= useState<UIDefinition | null>(null);
+  const [alyConfig,    setAlyConfig]   = useState<AlyConfig>({
     intent_keywords: [],
     context_hint:   '',
     log_prompt:     '',
@@ -393,22 +368,20 @@ export default function ModuleCreatorPage() {
     setSchema(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  // ── Layout helpers ──────────────────────────────────────────────────────────
-
-  const patchLayout = (patch: Record<string, unknown>) =>
-    setLayout(prev => ({ ...prev, ...patch }));
-
   // ── Validation ──────────────────────────────────────────────────────────────
 
   const step1Valid = name.trim().length > 0 && schema.length > 0 &&
     schema.every(f => f.key && f.label);
 
-  const step2Valid = !!(layout.type) && (() => {
-    const t = layout.type as string;
-    if (t === 'counter')       return !!(layout.value_field);
-    if (t === 'goal_progress') return !!(layout.aggregate && layout.dateField);
-    if (t === 'trend_chart')   return !!(layout.aggregate && layout.dateField);
-    return true;
+  const step2Valid = (() => {
+    if (!uiDefinition || uiDefinition.rows.length === 0) return false;
+    const allBlocks = uiDefinition.rows.flatMap(r => r.columns.map(c => c.block));
+    const hasSave   = allBlocks.some(b => b.type === 'save_button');
+    const validKeys = new Set(schema.map(f => f.key));
+    const badField  = allBlocks.some(
+      b => b.type === 'field_input' && !validKeys.has(b.field_key)
+    );
+    return hasSave && !badField;
   })();
 
   const step3Valid = alyConfig.context_hint.trim().length > 0;
@@ -426,10 +399,12 @@ export default function ModuleCreatorPage() {
         name:          name.trim(),
         description:   description.trim(),
         schema_fields: schema,
-        layout,
+        layout:        { type: 'custom' },
         is_global:     false,
         is_private:    true,
         aly_config:    alyConfig,
+        ui_definition: uiDefinition ?? undefined,
+        status:        'draft',
       } as Parameters<typeof createModuleDefinition>[0]);
       router.push('/creator/dashboard');
     } catch (e) {
@@ -439,11 +414,17 @@ export default function ModuleCreatorPage() {
     }
   };
 
-  // ── Derived info for preview / review ───────────────────────────────────────
+  // ── Validation hints for Step 2 ─────────────────────────────────────────────
 
-  const numFields  = useMemo(() => numberFields(schema), [schema]);
-  const dtFields   = useMemo(() => dateFields(schema),   [schema]);
-  const txtFields  = useMemo(() => textFields(schema),   [schema]);
+  const step2Hints = (() => {
+    const hints: string[] = [];
+    if (!uiDefinition || uiDefinition.rows.length === 0) hints.push('Add at least one component to the canvas');
+    else {
+      const allBlocks = uiDefinition.rows.flatMap(r => r.columns.map(c => c.block));
+      if (!allBlocks.some(b => b.type === 'save_button')) hints.push('Your form needs a Save button — add one from Actions');
+    }
+    return hints;
+  })();
 
   // ── Step indicator ──────────────────────────────────────────────────────────
 
@@ -505,11 +486,11 @@ export default function ModuleCreatorPage() {
           <StepDots />
         </header>
 
-        {/* ── Two-column body ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+        {/* ── Body — two-col for steps 1/3/4, full-width for step 2 ── */}
+        <div className={step === 2 ? 'w-full' : 'grid grid-cols-1 lg:grid-cols-5 gap-8 items-start'}>
 
-          {/* Left: builder (3 cols) */}
-          <div className="lg:col-span-3">
+          {/* Builder column (3/5 for steps 1/3/4, full for step 2) */}
+          <div className={step === 2 ? 'w-full' : 'lg:col-span-3'}>
             <AnimatePresence mode="wait">
 
               {/* ── Step 1: Schema ── */}
@@ -602,132 +583,33 @@ export default function ModuleCreatorPage() {
                 </motion.div>
               )}
 
-              {/* ── Step 2: Widget ── */}
+              {/* ── Step 2: UI Builder ── */}
               {step === 2 && (
                 <motion.div key="s2" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="flex flex-col gap-6">
+                  exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="flex flex-col gap-4">
 
-                  {/* Widget type picker */}
-                  <div className="bg-background-secondary border border-border-primary rounded-2xl p-6 flex flex-col gap-4">
-                    <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest">Widget Type</h2>
-                    <div className="flex flex-col gap-2">
-                      {WIDGET_OPTIONS.map(opt => {
-                        const selected = layout.type === opt.type;
-                        const hasNeeded = opt.needs.some(n => schema.some(f => f.type === n));
-                        return (
-                          <button
-                            key={opt.type}
-                            onClick={() => patchLayout({ type: opt.type })}
-                            disabled={!hasNeeded}
-                            className={`flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${
-                              selected    ? 'border-modules-aly bg-modules-aly/5'
-                              : !hasNeeded? 'opacity-40 border-border-primary cursor-not-allowed bg-background-primary'
-                              : 'border-border-primary bg-background-primary hover:border-modules-aly/30'
-                            }`}
-                          >
-                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${selected ? 'bg-modules-aly/10' : 'bg-background-tertiary'}`}>
-                              <opt.icon size={18} className={selected ? 'text-modules-aly' : 'text-text-tertiary'} weight="duotone" />
-                            </div>
-                            <div>
-                              <p className={`text-sm font-semibold ${selected ? 'text-text-primary' : 'text-text-secondary'}`}>
-                                {opt.label}
-                              </p>
-                              <p className="text-[11px] text-text-tertiary mt-0.5">{opt.desc}</p>
-                              {!hasNeeded && (
-                                <p className="text-[10px] text-amber-400 mt-1">
-                                  Requires a {opt.needs.join(' or ')} field in your schema.
-                                </p>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
+                  {/* UI Builder canvas */}
+                  <UIBuilder
+                    schema={schema}
+                    initialDefinition={uiDefinition}
+                    brandColor={undefined}
+                    assistantName={assistantName}
+                    moduleName={name || 'Module'}
+                    onChange={setUiDefinition}
+                  />
+
+                  {/* Validation hints */}
+                  {step2Hints.length > 0 && (
+                    <div className="flex flex-col gap-1 px-1">
+                      {step2Hints.map((hint, i) => (
+                        <p key={i} className="text-[11px] text-orange-400 flex items-center gap-1.5">
+                          <span className="w-1 h-1 rounded-full bg-orange-400 shrink-0" /> {hint}
+                        </p>
+                      ))}
                     </div>
-                  </div>
-
-                  {/* Field mapping (shown once a type is selected) */}
-                  {layout.type && (
-                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                      className="bg-background-secondary border border-border-primary rounded-2xl p-6 flex flex-col gap-4">
-                      <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest">Field Mapping</h2>
-
-                      {/* Counter */}
-                      {layout.type === 'counter' && (
-                        <div className="flex flex-col gap-3">
-                          <div>
-                            <label className="text-xs font-medium text-text-secondary block mb-1.5">Value field (summed for today)</label>
-                            <select className={selectCls} value={(layout.value_field as string) ?? ''}
-                              onChange={e => {
-                                const f = schema.find(sf => sf.key === e.target.value);
-                                patchLayout({ value_field: e.target.value, unit: f?.config?.unit ?? '', goal: f?.config?.goal ?? null });
-                              }}>
-                              <option value="">Select…</option>
-                              {numFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-text-secondary block mb-1.5">Date field (filter for today)</label>
-                            <select className={selectCls} value={(layout.date_field as string) ?? ''}
-                              onChange={e => patchLayout({ date_field: e.target.value })}>
-                              <option value="">Select…</option>
-                              {dtFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                              <option value="created_at">created_at (auto)</option>
-                            </select>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Goal progress / trend chart */}
-                      {(layout.type === 'goal_progress' || layout.type === 'trend_chart') && (
-                        <div className="flex flex-col gap-3">
-                          <div>
-                            <label className="text-xs font-medium text-text-secondary block mb-1.5">Aggregate field (number to sum)</label>
-                            <select className={selectCls} value={(layout.aggregate as string) ?? ''}
-                              onChange={e => patchLayout({ aggregate: e.target.value })}>
-                              <option value="">Select…</option>
-                              {numFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-text-secondary block mb-1.5">Date field</label>
-                            <select className={selectCls} value={(layout.dateField as string) ?? ''}
-                              onChange={e => patchLayout({ dateField: e.target.value })}>
-                              <option value="">Select…</option>
-                              {dtFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                              <option value="created_at">created_at (auto)</option>
-                            </select>
-                          </div>
-                          {layout.type === 'goal_progress' && (
-                            <div>
-                              <label className="text-xs font-medium text-text-secondary block mb-1.5">Daily goal</label>
-                              <input type="number" className={inputCls} placeholder="e.g. 2000"
-                                value={(layout.goal as number) ?? ''}
-                                onChange={e => patchLayout({ goal: Number(e.target.value) || null })} />
-                            </div>
-                          )}
-                          {layout.type === 'trend_chart' && txtFields.length > 0 && (
-                            <div>
-                              <label className="text-xs font-medium text-text-secondary block mb-1.5">Category field <span className="text-text-tertiary font-normal">(optional)</span></label>
-                              <select className={selectCls} value={(layout.categoryField as string) ?? ''}
-                                onChange={e => patchLayout({ categoryField: e.target.value || undefined })}>
-                                <option value="">None</option>
-                                {txtFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                              </select>
-                            </div>
-                          )}
-                          {layout.type === 'trend_chart' && (
-                            <div>
-                              <label className="text-xs font-medium text-text-secondary block mb-1.5">Currency symbol <span className="text-text-tertiary font-normal">(optional)</span></label>
-                              <input className={inputCls} placeholder="e.g. ₱, $, €"
-                                value={(layout.defaultCurrency as string) ?? ''}
-                                onChange={e => patchLayout({ defaultCurrency: e.target.value || undefined })} />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </motion.div>
                   )}
 
+                  {/* Navigation */}
                   <div className="flex gap-3">
                     <button onClick={() => setStep(1)}
                       className="flex items-center gap-2 px-5 py-3 border border-border-primary rounded-xl text-sm font-semibold text-text-secondary hover:text-text-primary transition-all">
@@ -740,6 +622,7 @@ export default function ModuleCreatorPage() {
                   </div>
                 </motion.div>
               )}
+
 
               {/* ── Step 3: Assistant Config ── */}
               {step === 3 && (
@@ -857,7 +740,7 @@ export default function ModuleCreatorPage() {
                     <div>
                       <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-2">Widget</p>
                       <span className="text-[11px] px-2.5 py-1 bg-modules-aly/10 border border-modules-aly/20 rounded-lg text-modules-aly font-semibold">
-                        {WIDGET_OPTIONS.find(w => w.type === layout.type)?.label ?? layout.type as string}
+                        Custom Form · {uiDefinition?.rows.length ?? 0} row{(uiDefinition?.rows.length ?? 0) !== 1 ? 's' : ''}
                       </span>
                     </div>
 
@@ -907,7 +790,8 @@ export default function ModuleCreatorPage() {
             </AnimatePresence>
           </div>
 
-          {/* Right: live preview (2 cols) */}
+          {/* Right: live preview (2 cols) — hidden on step 2, UIBuilder has its own canvas */}
+          {step !== 2 && (
           <div className="lg:col-span-2 lg:sticky lg:top-8 flex flex-col gap-4">
             <div className="bg-background-secondary border border-border-primary rounded-2xl overflow-hidden">
               <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border-primary">
@@ -916,11 +800,11 @@ export default function ModuleCreatorPage() {
                 </div>
                 <div>
                   <p className="text-xs font-bold text-text-primary">{name || 'New Module'}</p>
-                  <p className="text-[10px] text-text-tertiary">{WIDGET_OPTIONS.find(w => w.type === layout.type)?.label ?? 'Widget preview'}</p>
+                  <p className="text-[10px] text-text-tertiary">Module preview</p>
                 </div>
               </div>
               <div className="min-h-32">
-                <LivePreview schema={schema} layout={layout} />
+                <LivePreview schema={schema} layout={{}} />
               </div>
             </div>
 
@@ -959,6 +843,7 @@ export default function ModuleCreatorPage() {
               </div>
             )}
           </div>
+          )}
 
         </div>
       </div>

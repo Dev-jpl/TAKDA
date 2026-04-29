@@ -1,5 +1,8 @@
+import json
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional, Any
 from database import supabase
 from services.ai import get_ai_response_async
 from config import ASSISTANT_NAME
@@ -194,3 +197,72 @@ Recent notes:
     except Exception as e:
         print(f"[hub_snapshot] error: {e}")
         return {"summary": "", "tasks": [], "annotations": [], "hub_name": ""}
+
+
+# ── UI Layout Assistant ───────────────────────────────────────────────────────
+
+class UIAssistRequest(BaseModel):
+    message: str
+    current_definition: dict[str, Any]
+    schema_fields: list[dict[str, Any]]
+    assistant_name: str = "Assistant"
+
+
+@router.post("/ui-assist")
+async def ui_layout_assist(body: UIAssistRequest):
+    """AI assistant for the Module Creator UI Builder canvas."""
+    schema_text = "\n".join(
+        f"- {f.get('key')}: {f.get('label')} ({f.get('type')}{'*' if f.get('required') else ''})"
+        + (f"  options={f.get('options')}" if f.get('options') else "")
+        for f in body.schema_fields
+    )
+    current_json = json.dumps(body.current_definition, separators=(',', ':'))
+
+    system = (
+        f"You are a UI layout assistant for TAKDA, a personal life management app.\n"
+        "The user is designing a module entry form using a canvas. Help them modify the layout.\n\n"
+        f"SCHEMA FIELDS AVAILABLE:\n{schema_text}\n\n"
+        f"CURRENT LAYOUT:\n{current_json}\n\n"
+        "AVAILABLE BLOCK TYPES: field_input, section_header, divider, spacer (size: sm/md/lg), "
+        "assistant_nudge, save_button, cancel_button\n\n"
+        "COMPONENT TYPES FOR FIELD INPUTS: text_input, longtext_input, number_input, currency_input, "
+        "counter_stepper, boolean_toggle, date_picker, datetime_picker, select_chips, select_dropdown\n\n"
+        "RULES:\n"
+        "- Never invent field_key values. Only use keys from the schema above.\n"
+        "- Always keep at least one save_button block.\n"
+        "- Use span 12 for most blocks. Use span 6 for side-by-side pairs.\n"
+        "- IDs must be unique strings: row_1, row_2... col_1, col_2...\n"
+        "- version must be exactly \"1.0\"\n\n"
+        "Respond with exactly two parts:\n"
+        "1. A plain-text description of what you changed (2-5 bullet points, no JSON)\n"
+        "2. The complete updated UIDefinition JSON wrapped in <ui_definition>...</ui_definition> tags\n\n"
+        "Do not include any other text outside these two parts."
+    )
+
+    try:
+        response_text = await get_ai_response_async(system, body.message)
+
+        # Extract description (everything before the first <ui_definition> tag)
+        tag = "<ui_definition>"
+        end_tag = "</ui_definition>"
+        tag_idx = response_text.find(tag)
+        if tag_idx < 0:
+            raise ValueError("No <ui_definition> tag in response")
+
+        description = response_text[:tag_idx].strip()
+        json_start = tag_idx + len(tag)
+        json_end = response_text.find(end_tag, json_start)
+        if json_end < 0:
+            raise ValueError("Unclosed <ui_definition> tag")
+
+        raw_json = response_text[json_start:json_end].strip()
+        new_definition = json.loads(raw_json)
+
+        return {"description": description, "new_definition": new_definition}
+
+    except Exception as e:
+        print(f"[ui_layout_assist] error: {e}")
+        raise HTTPException(
+            status_code=422,
+            detail="Agent returned an invalid layout. Try rephrasing your request.",
+        )

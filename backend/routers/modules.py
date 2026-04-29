@@ -22,6 +22,8 @@ class ModuleDefinitionCreate(BaseModel):
     is_global: bool = False
     is_private: bool = True
     aly_config: Optional[dict[str, Any]] = None
+    ui_definition: Optional[dict[str, Any]] = None
+    status: Optional[str] = None
 
 
 class ModuleDefinitionUpdate(BaseModel):
@@ -33,6 +35,8 @@ class ModuleDefinitionUpdate(BaseModel):
     is_global: Optional[bool] = None
     is_private: Optional[bool] = None
     aly_config: Optional[dict[str, Any]] = None
+    ui_definition: Optional[dict[str, Any]] = None
+    status: Optional[str] = None
 
 
 @router.get("/definitions")
@@ -52,15 +56,17 @@ async def get_module_definitions(user_id: Optional[str] = None):
 @router.post("/definitions")
 async def create_module_definition(body: ModuleDefinitionCreate):
     res = supabase.table("module_definitions").insert({
-        "user_id":    body.user_id,
-        "slug":       body.slug,
-        "name":       body.name,
-        "description": body.description,
-        "schema":     body.schema_fields,
-        "layout":     body.layout,
-        "is_global":  body.is_global,
-        "is_private": body.is_private,
-        "aly_config": body.aly_config or {},
+        "user_id":      body.user_id,
+        "slug":         body.slug,
+        "name":         body.name,
+        "description":  body.description,
+        "schema":       body.schema_fields,
+        "layout":       body.layout,
+        "is_global":    body.is_global,
+        "is_private":   body.is_private,
+        "aly_config":   body.aly_config or {},
+        "ui_definition": body.ui_definition,
+        "status":       body.status or "draft",
     }).execute()
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to create module definition")
@@ -70,14 +76,16 @@ async def create_module_definition(body: ModuleDefinitionCreate):
 @router.put("/definitions/{def_id}")
 async def update_module_definition(def_id: str, body: ModuleDefinitionUpdate):
     updates: dict[str, Any] = {}
-    if body.slug        is not None: updates["slug"]       = body.slug
-    if body.name        is not None: updates["name"]       = body.name
-    if body.description is not None: updates["description"]= body.description
-    if body.schema_fields is not None: updates["schema"]   = body.schema_fields
-    if body.layout      is not None: updates["layout"]     = body.layout
-    if body.is_global   is not None: updates["is_global"]  = body.is_global
-    if body.is_private  is not None: updates["is_private"] = body.is_private
-    if body.aly_config  is not None: updates["aly_config"] = body.aly_config
+    if body.slug          is not None: updates["slug"]         = body.slug
+    if body.name          is not None: updates["name"]         = body.name
+    if body.description   is not None: updates["description"]  = body.description
+    if body.schema_fields is not None: updates["schema"]       = body.schema_fields
+    if body.layout        is not None: updates["layout"]       = body.layout
+    if body.is_global     is not None: updates["is_global"]    = body.is_global
+    if body.is_private    is not None: updates["is_private"]   = body.is_private
+    if body.aly_config    is not None: updates["aly_config"]   = body.aly_config
+    if body.ui_definition is not None: updates["ui_definition"]= body.ui_definition
+    if body.status        is not None: updates["status"]       = body.status
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     res = supabase.table("module_definitions").update(updates).eq("id", def_id).execute()

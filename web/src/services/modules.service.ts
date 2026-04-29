@@ -1,3 +1,5 @@
+import type { UIDefinition } from '@/types/ui-builder';
+
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // ── Schema field types ────────────────────────────────────────────────────────
@@ -49,6 +51,8 @@ export interface ModuleDefinition {
   is_global: boolean;
   is_private: boolean;
   aly_config: AlyConfig;
+  ui_definition?: UIDefinition | null;
+  status?: 'draft' | 'published' | 'archived';
   price?: number | string | null;
   brand_color?: string | null;
   icon_name?: string | null;

@@ -9,6 +9,8 @@ import { AlyAssistant } from "@/components/aly/AlyAssistant";
 import { LandingNavbar } from "@/components/layout/LandingNavbar";
 import { supabase } from '@/services/supabase';
 import { UserProfileProvider, useUserProfile } from '@/contexts/UserProfileContext';
+import { SidebarProvider, useSidebar } from '@/contexts/SidebarContext';
+import { SIDEBAR_COLLAPSED_W, SIDEBAR_EXPANDED_W } from '@/components/layout/Sidebar';
 import { Sparkle } from '@phosphor-icons/react';
 import { ASSISTANT_NAME } from '@/constants/brand';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -92,12 +94,13 @@ function AssistantNameModal() {
   );
 }
 
-// ── Inner layout (needs context) ─────────────────────────────────────────────
+// ── Inner layout (needs both UserProfile + Sidebar contexts) ─────────────────
 
 function AppLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const [isAlyOpen, setIsAlyOpen] = useState(false);
-  const [userId,    setUserId]    = useState<string | null>(null);
+  const pathname                   = usePathname();
+  const { isCollapsed } = useSidebar();
+  const [isAlyOpen, setIsAlyOpen]  = useState(false);
+  const [userId,    setUserId]     = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -105,7 +108,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const isPublicPage = pathname === "/" || pathname?.startsWith("/auth");
+  const isPublicPage = pathname === '/' || pathname?.startsWith('/auth');
 
   if (isPublicPage) {
     return (
@@ -116,25 +119,36 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Sidebar is fixed-position; content area needs left margin equal to the
+  // rail width. In hover-expanded state the sidebar overlays content —
+  // margin stays at collapsed width so there's no layout reflow.
+  const marginLeft = isCollapsed
+    ? SIDEBAR_COLLAPSED_W   // collapsed (or hover-expanded overlay): 56px
+    : SIDEBAR_EXPANDED_W;   // fully expanded: 240px
+
   return (
     <>
       <AssistantNameModal />
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <div className="flex-1 flex flex-col overflow-hidden bg-background-primary">
-          <TopNav userId={userId} />
-          <div className="flex-1 overflow-y-auto relative">
-            <div className="max-w-7xl mx-auto w-full">
-              {children}
-            </div>
-
-            {pathname !== '/chat' && (
-              <>
-                <AlyFAB isOpen={isAlyOpen} onClick={() => setIsAlyOpen(true)} />
-                <AlyAssistant isOpen={isAlyOpen} onClose={() => setIsAlyOpen(false)} />
-              </>
-            )}
+      <Sidebar />
+      <div
+        className="flex flex-col h-screen overflow-hidden bg-background-primary"
+        style={{
+          marginLeft,
+          transition: 'margin-left 200ms ease-out',
+        }}
+      >
+        <TopNav userId={userId} />
+        <div className="flex-1 overflow-y-auto relative">
+          <div className="max-w-7xl mx-auto w-full">
+            {children}
           </div>
+
+          {pathname !== '/chat' && (
+            <>
+              <AlyFAB isOpen={isAlyOpen} onClick={() => setIsAlyOpen(true)} />
+              <AlyAssistant isOpen={isAlyOpen} onClose={() => setIsAlyOpen(false)} />
+            </>
+          )}
         </div>
       </div>
     </>
@@ -146,7 +160,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 export function AppWrapper({ children }: { children: React.ReactNode }) {
   return (
     <UserProfileProvider>
-      <AppLayout>{children}</AppLayout>
+      <SidebarProvider>
+        <AppLayout>{children}</AppLayout>
+      </SidebarProvider>
     </UserProfileProvider>
   );
 }

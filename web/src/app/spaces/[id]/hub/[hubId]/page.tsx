@@ -35,13 +35,16 @@ import { listAddons, HubAddon } from '@/services/addons.service';
 import { CalorieCounterAddon } from '@/components/addons/CalorieCounterAddon';
 import { ExpenseTrackerAddon } from '@/components/addons/ExpenseTrackerAddon';
 import { DynamicModuleView } from '@/components/modules/DynamicModuleView';
-import { getModuleDefinitions, ModuleDefinition } from '@/services/modules.service';
+import { DynamicUIRenderer } from '@/components/modules/DynamicUIRenderer';
+import { getModuleDefinitions, ModuleDefinition, createModuleEntry } from '@/services/modules.service';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 export default function HubDetailPage() {
   const params  = useParams();
   const router  = useRouter();
   const spaceId = params.id as string;
   const hubId   = params.hubId as string;
+  const { assistantName } = useUserProfile();
 
   const [space,       setSpace]       = useState<Space | null>(null);
   const [hub,         setHub]         = useState<Hub | null>(null);
@@ -533,6 +536,23 @@ export default function HubDetailPage() {
                   {userId && !['calorie_counter', 'expense_tracker'].includes(addon.type) && (() => {
                     const def = moduleDefs.find(d => d.slug === addon.type);
                     if (!def) return null;
+
+                    if (def.ui_definition) {
+                      return (
+                        <DynamicUIRenderer
+                          uiDefinition={def.ui_definition}
+                          schema={def.schema}
+                          mode="entry"
+                          onSubmit={async (data) => {
+                            await createModuleEntry(def.id, data, userId!, hubId);
+                            window.dispatchEvent(new Event('takda:data_updated'));
+                          }}
+                          brandColor={def.brand_color ?? undefined}
+                          assistantName={assistantName}
+                        />
+                      );
+                    }
+
                     return (
                       <DynamicModuleView
                         definition={def}

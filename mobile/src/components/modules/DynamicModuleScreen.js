@@ -25,11 +25,12 @@ import Svg, {
   Circle as SvgCircle, Rect as SvgRect, Text as SvgText, G as SvgG,
   Polygon as SvgPolygon, Polyline as SvgPolyline,
 } from 'react-native-svg'
+import DateTimePicker from '@react-native-community/datetimepicker'
 import { supabase } from '../../services/supabase'
 import { getEntries, addEntry, deleteEntry } from '../../services/moduleData'
 import { colors } from '../../constants/colors'
 import Shimmer from '../common/Shimmer'
-import { Plus, X, Check, Trash } from 'phosphor-react-native'
+import { Plus, X, Check, Trash, CalendarBlank } from 'phosphor-react-native'
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const CAT_HEX = {
@@ -722,6 +723,80 @@ function ExpenseFormSheet({ visible, onClose, onSave, layout }) {
   )
 }
 
+// ── DateField — Pressable + DateTimePicker ────────────────────────────────────
+
+function DateField({ field, labelEl, value, onChange }) {
+  const isDatetime = field.type === 'datetime'
+  const [open, setOpen] = useState(false)
+
+  // Parse stored string → Date object for the picker
+  const toDate = (v) => {
+    if (!v) return new Date()
+    const d = new Date(v)
+    return isNaN(d.getTime()) ? new Date() : d
+  }
+
+  // Format Date → storage string
+  const fromDate = (d) => {
+    if (isDatetime) return d.toISOString()
+    return d.toLocaleDateString('en-CA') // YYYY-MM-DD
+  }
+
+  // Human-readable display
+  const display = (() => {
+    if (!value) return isDatetime ? 'Select date & time' : 'Select date'
+    const d = toDate(value)
+    if (isNaN(d.getTime())) return String(value)
+    if (isDatetime) {
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+           + ' · '
+           + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    }
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  })()
+
+  const handleChange = (_event, selected) => {
+    // On Android, picker closes itself after selection; on iOS keep it open
+    if (Platform.OS === 'android') setOpen(false)
+    if (selected) onChange(fromDate(selected))
+  }
+
+  return (
+    <View style={{ marginBottom: 14 }}>
+      {labelEl}
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={[form.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+      >
+        <Text style={{ color: value ? colors.text.primary : colors.text.tertiary, fontSize: 14 }}>
+          {display}
+        </Text>
+        <CalendarBlank size={16} color={colors.text.tertiary} />
+      </Pressable>
+
+      {open && (
+        <DateTimePicker
+          value={toDate(value)}
+          mode={isDatetime ? 'datetime' : 'date'}
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleChange}
+        />
+      )}
+
+      {/* iOS: explicit Done button to dismiss the spinner */}
+      {open && Platform.OS === 'ios' && (
+        <TouchableOpacity
+          onPress={() => setOpen(false)}
+          style={{ alignSelf: 'flex-end', marginTop: 4, paddingHorizontal: 12, paddingVertical: 6,
+            backgroundColor: (colors.modules?.aly ?? '#6366f1') + '20', borderRadius: 8 }}
+        >
+          <Text style={{ color: colors.modules?.aly ?? '#6366f1', fontWeight: '700', fontSize: 13 }}>Done</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  )
+}
+
 // ── Generic Form Sheet (fallback for unknown module types) ────────────────────
 
 function GenericFormSheet({ visible, onClose, onSave, definition }) {
@@ -732,8 +807,8 @@ function GenericFormSheet({ visible, onClose, onSave, definition }) {
     switch (f.type) {
       case 'boolean':  acc[f.key] = false; break
       case 'counter':  acc[f.key] = 0; break
-      case 'date':     acc[f.key] = new Date().toLocaleDateString('en-CA'); break
-      case 'datetime': acc[f.key] = new Date().toISOString().slice(0, 16); break
+      case 'date':     acc[f.key] = new Date().toLocaleDateString('en-CA'); break  // YYYY-MM-DD
+      case 'datetime': acc[f.key] = new Date().toISOString(); break               // full ISO
       default:         acc[f.key] = ''
     }
     return acc
@@ -865,21 +940,16 @@ function GenericFormSheet({ visible, onClose, onSave, definition }) {
                 )
               }
 
-              // ── date / datetime → text with YYYY-MM-DD hint ──────────────
+              // ── date / datetime → Pressable + DateTimePicker ─────────────
               if (field.type === 'date' || field.type === 'datetime') {
                 return (
-                  <View key={field.key} style={{ marginBottom: 14 }}>
-                    {labelEl}
-                    <TextInput
-                      style={form.input}
-                      placeholder={field.type === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:MM'}
-                      placeholderTextColor={colors.text.tertiary}
-                      value={String(values[field.key] ?? '')}
-                      onChangeText={v => set(field.key, v)}
-                      keyboardType="numbers-and-punctuation"
-                      autoFocus={idx === 0}
-                    />
-                  </View>
+                  <DateField
+                    key={field.key}
+                    field={field}
+                    labelEl={labelEl}
+                    value={values[field.key]}
+                    onChange={v => set(field.key, v)}
+                  />
                 )
               }
 

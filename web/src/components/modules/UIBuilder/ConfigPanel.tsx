@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CursorTextIcon, SparkleIcon, PaperPlaneRightIcon } from '@phosphor-icons/react';
-import { UIBlock, UIRow, BlockSpan, ComponentType } from '@/types/ui-builder';
+import { CursorTextIcon, SparkleIcon, PaperPlaneRightIcon, XIcon, PlusIcon } from '@phosphor-icons/react';
+import { UIBlock, UIRow, BlockSpan, ComponentType, LeafBlock, ContainerChild } from '@/types/ui-builder';
 import { SchemaField } from '@/services/modules.service';
 import { ConfigTab, ChatMessage } from './useUIBuilder';
 
-// ── Span options ──────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const ALL_SPANS: BlockSpan[] = [3, 4, 6, 8, 9, 12];
 
@@ -23,21 +23,45 @@ const COMPONENT_LABELS: Record<ComponentType, string> = {
   select_dropdown:  'Dropdown',
 };
 
+const CHILD_TYPE_LABELS: Record<string, string> = {
+  field_input:    'Field',
+  section_header: 'Header',
+  divider:        'Divider',
+  spacer:         'Spacer',
+  save_button:    'Save',
+  cancel_button:  'Cancel',
+};
+
+function makeDefaultChild(type: string, schema: SchemaField[]): LeafBlock {
+  switch (type) {
+    case 'field_input': {
+      const firstKey = schema[0]?.key ?? '';
+      const first    = schema[0];
+      return { type: 'field_input', field_key: firstKey, component: 'text_input', label: first?.label ?? 'Field', show_label: true, placeholder: '' };
+    }
+    case 'section_header': return { type: 'section_header', title: 'Section', subtitle: '' };
+    case 'divider':         return { type: 'divider' };
+    case 'spacer':          return { type: 'spacer', size: 'md' };
+    case 'save_button':     return { type: 'save_button', label: 'Save' };
+    case 'cancel_button':   return { type: 'cancel_button', label: 'Cancel' };
+    default:                return { type: 'divider' };
+  }
+}
+
 // ── Debounced input ───────────────────────────────────────────────────────────
 
 function DebouncedInput({
   value, onChange, placeholder, multiline = false, delay = 150,
 }: {
-  value:       string;
-  onChange:    (v: string) => void;
+  value:        string;
+  onChange:     (v: string) => void;
   placeholder?: string;
-  multiline?:  boolean;
-  delay?:      number;
+  multiline?:   boolean;
+  delay?:       number;
 }) {
   const [local, setLocal] = useState(value);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync when external value changes (e.g. switching selected block)
   useEffect(() => { setLocal(value); }, [value]);
 
   const handleChange = (v: string) => {
@@ -46,25 +70,27 @@ function DebouncedInput({
     timer.current = setTimeout(() => onChange(v), delay);
   };
 
-  const cls =
-    'w-full bg-background-primary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-modules-aly/50 transition-all placeholder:text-text-tertiary resize-none';
+  const cls = 'w-full bg-background-primary border border-border-primary rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-modules-aly/50 transition-all placeholder:text-text-tertiary resize-none';
 
   return multiline ? (
-    <textarea
-      className={cls}
-      rows={2}
-      value={local}
-      placeholder={placeholder}
-      onChange={e => handleChange(e.target.value)}
-    />
+    <textarea className={cls} rows={2} value={local} placeholder={placeholder} onChange={e => handleChange(e.target.value)} />
   ) : (
-    <input
-      type="text"
-      className={cls}
-      value={local}
-      placeholder={placeholder}
-      onChange={e => handleChange(e.target.value)}
-    />
+    <input type="text" className={cls} value={local} placeholder={placeholder} onChange={e => handleChange(e.target.value)} />
+  );
+}
+
+function Toggle({ checked, onChange, brandColor }: { checked: boolean; onChange: (v: boolean) => void; brandColor: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+        checked ? '' : 'bg-background-tertiary border border-border-primary'
+      }`}
+      style={checked ? { backgroundColor: brandColor } : undefined}
+    >
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+    </button>
   );
 }
 
@@ -76,33 +102,252 @@ function Section({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-col gap-2">{children}</div>;
 }
 
+// ── Container config ──────────────────────────────────────────────────────────
+
+interface ContainerConfigProps {
+  block:                    Extract<UIBlock, { type: 'container' }>;
+  rowId:                    string;
+  colId:                    string;
+  row:                      UIRow;
+  schema:                   SchemaField[];
+  brandColor:               string;
+  currentSpan:              BlockSpan;
+  validSpans:               BlockSpan[];
+  onUpdateContainer:        (patch: Partial<{ label: string; bordered: boolean; background: boolean }>) => void;
+  onUpdateSpan:             (rowId: string, colId: string, span: BlockSpan) => void;
+  onAddContainerChild:      (rowId: string, colId: string, block: LeafBlock) => void;
+  onRemoveContainerChild:   (rowId: string, colId: string, childId: string) => void;
+  onUpdateContainerChild:   (rowId: string, colId: string, childId: string, patch: Partial<LeafBlock>) => void;
+  onUpdateContainerChildSpan: (rowId: string, colId: string, childId: string, span: BlockSpan) => void;
+}
+
+function ContainerConfig({
+  block, rowId, colId, row, schema, brandColor,
+  currentSpan, validSpans,
+  onUpdateContainer, onUpdateSpan,
+  onAddContainerChild, onRemoveContainerChild,
+  onUpdateContainerChild, onUpdateContainerChildSpan,
+}: ContainerConfigProps) {
+  const [addType, setAddType] = useState('field_input');
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Container-level settings */}
+      <Section>
+        <Label>Label (optional)</Label>
+        <DebouncedInput
+          value={block.label ?? ''}
+          onChange={v => onUpdateContainer({ label: v })}
+          placeholder="e.g. Personal Info"
+        />
+      </Section>
+
+      <div className="flex items-center justify-between gap-4">
+        <Section>
+          <Label>Bordered</Label>
+          <Toggle checked={block.bordered} onChange={v => onUpdateContainer({ bordered: v })} brandColor={brandColor} />
+        </Section>
+        <Section>
+          <Label>Background</Label>
+          <Toggle checked={block.background} onChange={v => onUpdateContainer({ background: v })} brandColor={brandColor} />
+        </Section>
+      </div>
+
+      {/* Children list */}
+      <Section>
+        <Label>Children ({block.children.length}/4)</Label>
+        {block.children.length === 0 && (
+          <p className="text-[11px] text-text-tertiary/60 italic">No children yet — add one below.</p>
+        )}
+        {block.children.map((child, idx) => (
+          <div key={child.id} className="border border-border-primary rounded-xl overflow-hidden">
+            {/* Child header */}
+            <div className="flex items-center gap-2 px-3 py-2 bg-background-tertiary/40">
+              <span className="text-[9px] font-bold text-text-tertiary uppercase tracking-widest flex-1">
+                {CHILD_TYPE_LABELS[child.block.type] ?? child.block.type}
+              </span>
+              {/* Child span buttons */}
+              <div className="flex gap-0.5">
+                {ALL_SPANS.map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => onUpdateContainerChildSpan(rowId, colId, child.id, s)}
+                    className={`w-7 h-5 rounded text-[9px] font-bold transition-all ${
+                      child.span === s ? 'text-white' : 'text-text-tertiary hover:text-text-primary'
+                    }`}
+                    style={child.span === s ? { backgroundColor: brandColor } : undefined}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              {/* Remove child */}
+              <button
+                type="button"
+                onClick={() => onRemoveContainerChild(rowId, colId, child.id)}
+                className="p-0.5 text-text-tertiary hover:text-red-400 transition-colors"
+              >
+                <XIcon size={12} />
+              </button>
+            </div>
+
+            {/* Inline child config — one key field per type */}
+            <div className="px-3 py-2">
+              {child.block.type === 'field_input' && (
+                <div className="flex flex-col gap-1.5">
+                  <select
+                    className="w-full bg-background-primary border border-border-primary rounded-md px-2 py-1 text-xs text-text-primary outline-none"
+                    value={child.block.field_key}
+                    onChange={e => {
+                      const sf = schema.find(f => f.key === e.target.value);
+                      onUpdateContainerChild(rowId, colId, child.id, {
+                        field_key: e.target.value,
+                        label: sf?.label ?? e.target.value,
+                      } as Partial<LeafBlock>);
+                    }}
+                  >
+                    {schema.map(f => <option key={f.key} value={f.key}>{f.label} ({f.key})</option>)}
+                  </select>
+                  <DebouncedInput
+                    value={child.block.label}
+                    onChange={v => onUpdateContainerChild(rowId, colId, child.id, { label: v } as Partial<LeafBlock>)}
+                    placeholder="Label"
+                  />
+                </div>
+              )}
+              {(child.block.type === 'save_button' || child.block.type === 'cancel_button') && (
+                <DebouncedInput
+                  value={child.block.label}
+                  onChange={v => onUpdateContainerChild(rowId, colId, child.id, { label: v } as Partial<LeafBlock>)}
+                  placeholder="Button label"
+                />
+              )}
+              {child.block.type === 'section_header' && (
+                <DebouncedInput
+                  value={child.block.title}
+                  onChange={v => onUpdateContainerChild(rowId, colId, child.id, { title: v } as Partial<LeafBlock>)}
+                  placeholder="Header title"
+                />
+              )}
+              {(child.block.type === 'divider' || child.block.type === 'spacer' || child.block.type === 'assistant_nudge') && (
+                <p className="text-[10px] text-text-tertiary/60">{CHILD_TYPE_LABELS[child.block.type]}</p>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Add child */}
+        {block.children.length < 4 && (
+          <div className="flex gap-2">
+            <select
+              className="flex-1 bg-background-primary border border-border-primary rounded-lg px-2 py-1.5 text-xs text-text-primary outline-none focus:border-modules-aly/50"
+              value={addType}
+              onChange={e => setAddType(e.target.value)}
+            >
+              {Object.entries(CHILD_TYPE_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                const newBlock = makeDefaultChild(addType, schema);
+                onAddContainerChild(rowId, colId, newBlock);
+              }}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:opacity-90"
+              style={{ backgroundColor: brandColor }}
+            >
+              <PlusIcon size={11} weight="bold" /> Add
+            </button>
+          </div>
+        )}
+      </Section>
+
+      {/* Outer column span */}
+      <Section>
+        <Label>Column span (of 12)</Label>
+        <div className="flex gap-1.5 flex-wrap">
+          {ALL_SPANS.map(s => {
+            const isValid = validSpans.includes(s);
+            return (
+              <button
+                key={s}
+                type="button"
+                disabled={!isValid}
+                onClick={() => onUpdateSpan(rowId, colId, s)}
+                className={`w-9 h-8 rounded-lg border text-xs font-bold transition-all ${
+                  currentSpan === s ? 'text-white' : 'border-border-primary text-text-secondary'
+                } disabled:opacity-30 disabled:cursor-not-allowed`}
+                style={currentSpan === s ? { backgroundColor: brandColor, borderColor: brandColor } : undefined}
+              >
+                {s}
+              </button>
+            );
+          })}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
 // ── Block config fields ───────────────────────────────────────────────────────
+
+interface BlockConfigProps {
+  block:                      UIBlock;
+  rowId:                      string;
+  colId:                      string;
+  row:                        UIRow;
+  schema:                     SchemaField[];
+  brandColor:                 string;
+  onUpdate:                   (rowId: string, colId: string, patch: Partial<UIBlock>) => void;
+  onUpdateSpan:               (rowId: string, colId: string, span: BlockSpan) => void;
+  onUpdateContainerBlock:     (rowId: string, colId: string, patch: Partial<{ label: string; bordered: boolean; background: boolean }>) => void;
+  onAddContainerChild:        (rowId: string, colId: string, block: LeafBlock) => void;
+  onRemoveContainerChild:     (rowId: string, colId: string, childId: string) => void;
+  onUpdateContainerChild:     (rowId: string, colId: string, childId: string, patch: Partial<LeafBlock>) => void;
+  onUpdateContainerChildSpan: (rowId: string, colId: string, childId: string, span: BlockSpan) => void;
+}
 
 function BlockConfig({
   block, rowId, colId, row, schema, brandColor,
   onUpdate, onUpdateSpan,
-}: {
-  block:        UIBlock;
-  rowId:        string;
-  colId:        string;
-  row:          UIRow;
-  schema:       SchemaField[];
-  brandColor:   string;
-  onUpdate:     (rowId: string, colId: string, patch: Partial<UIBlock>) => void;
-  onUpdateSpan: (rowId: string, colId: string, span: BlockSpan) => void;
-}) {
+  onUpdateContainerBlock, onAddContainerChild,
+  onRemoveContainerChild, onUpdateContainerChild, onUpdateContainerChildSpan,
+}: BlockConfigProps) {
   const col         = row.columns.find(c => c.id === colId);
   const currentSpan = col?.span ?? 12;
   const siblingSpan = row.columns.find(c => c.id !== colId)?.span;
 
-  // Which spans are valid given siblings
   const validSpans = ALL_SPANS.filter(s => {
-    if (row.columns.length === 1) return true;           // solo column: any span
-    if (row.columns.length === 2) return s + (siblingSpan ?? 0) === 12; // must sum to 12
+    if (row.columns.length === 1) return true;
+    if (row.columns.length === 2) return s + (siblingSpan ?? 0) === 12;
     return true;
   });
 
   const patch = (p: Partial<UIBlock>) => onUpdate(rowId, colId, p);
+
+  // ── Container block ─────────────────────────────────────────────────────────
+  if (block.type === 'container') {
+    return (
+      <ContainerConfig
+        block={block}
+        rowId={rowId}
+        colId={colId}
+        row={row}
+        schema={schema}
+        brandColor={brandColor}
+        currentSpan={currentSpan}
+        validSpans={validSpans}
+        onUpdateContainer={p => onUpdateContainerBlock(rowId, colId, p)}
+        onUpdateSpan={onUpdateSpan}
+        onAddContainerChild={onAddContainerChild}
+        onRemoveContainerChild={onRemoveContainerChild}
+        onUpdateContainerChild={onUpdateContainerChild}
+        onUpdateContainerChildSpan={onUpdateContainerChildSpan}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -117,16 +362,7 @@ function BlockConfig({
             </Section>
             <Section>
               <Label>Show label</Label>
-              <button
-                type="button"
-                onClick={() => patch({ show_label: !block.show_label } as Partial<UIBlock>)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  block.show_label ? '' : 'bg-background-tertiary border border-border-primary'
-                }`}
-                style={block.show_label ? { backgroundColor: brandColor } : undefined}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${block.show_label ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
+              <Toggle checked={block.show_label} onChange={v => patch({ show_label: v } as Partial<UIBlock>)} brandColor={brandColor} />
             </Section>
             <Section>
               <Label>Placeholder</Label>
@@ -250,7 +486,7 @@ function ChatTab({
   brandColor:      string;
   assistantName:   string;
 }) {
-  const [input,       setInput]       = useState('');
+  const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -266,7 +502,6 @@ function ChatTab({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 p-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-8 text-center">
@@ -287,23 +522,15 @@ function ChatTab({
             }`}>
               {m.content}
             </div>
-
-            {/* Apply/dismiss for the most recent agent message with a proposal */}
             {m.role === 'assistant' && m.hasProposal && i === messages.length - 1 && pendingProposal && (
               <div className="flex gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={onApply}
+                <button type="button" onClick={onApply}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:opacity-90"
-                  style={{ backgroundColor: brandColor }}
-                >
+                  style={{ backgroundColor: brandColor }}>
                   ✓ Apply
                 </button>
-                <button
-                  type="button"
-                  onClick={onDismiss}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border-primary text-text-secondary hover:bg-background-tertiary transition-all"
-                >
+                <button type="button" onClick={onDismiss}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border-primary text-text-secondary hover:bg-background-tertiary transition-all">
                   ✕ Dismiss
                 </button>
               </div>
@@ -321,7 +548,6 @@ function ChatTab({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <div className="border-t border-border-primary p-3 flex gap-2">
         <textarea
           rows={2}
@@ -349,21 +575,26 @@ function ChatTab({
 // ── ConfigPanel ───────────────────────────────────────────────────────────────
 
 interface ConfigPanelProps {
-  rows:             UIRow[];
-  selectedBlockId:  string | null;
-  chatMessages:     ChatMessage[];
-  pendingProposal:  import('@/types/ui-builder').UIDefinition | null;
-  isChatLoading:    boolean;
-  configTab:        ConfigTab;
-  schema:           SchemaField[];
-  brandColor:       string;
-  assistantName:    string;
-  onSetConfigTab:   (tab: ConfigTab) => void;
-  onUpdateBlock:    (rowId: string, colId: string, patch: Partial<UIBlock>) => void;
-  onUpdateSpan:     (rowId: string, colId: string, span: BlockSpan) => void;
-  onSendChat:       (msg: string) => void;
-  onApplyProposal:  () => void;
-  onDismissProposal:() => void;
+  rows:                       UIRow[];
+  selectedBlockId:            string | null;
+  chatMessages:               ChatMessage[];
+  pendingProposal:            import('@/types/ui-builder').UIDefinition | null;
+  isChatLoading:              boolean;
+  configTab:                  ConfigTab;
+  schema:                     SchemaField[];
+  brandColor:                 string;
+  assistantName:              string;
+  onSetConfigTab:             (tab: ConfigTab) => void;
+  onUpdateBlock:              (rowId: string, colId: string, patch: Partial<UIBlock>) => void;
+  onUpdateSpan:               (rowId: string, colId: string, span: BlockSpan) => void;
+  onSendChat:                 (msg: string) => void;
+  onApplyProposal:            () => void;
+  onDismissProposal:          () => void;
+  onUpdateContainerBlock:     (rowId: string, colId: string, patch: Partial<{ label: string; bordered: boolean; background: boolean }>) => void;
+  onAddContainerChild:        (rowId: string, colId: string, block: LeafBlock) => void;
+  onRemoveContainerChild:     (rowId: string, colId: string, childId: string) => void;
+  onUpdateContainerChild:     (rowId: string, colId: string, childId: string, patch: Partial<LeafBlock>) => void;
+  onUpdateContainerChildSpan: (rowId: string, colId: string, childId: string, span: BlockSpan) => void;
 }
 
 export function ConfigPanel({
@@ -371,8 +602,9 @@ export function ConfigPanel({
   configTab, schema, brandColor, assistantName,
   onSetConfigTab, onUpdateBlock, onUpdateSpan,
   onSendChat, onApplyProposal, onDismissProposal,
+  onUpdateContainerBlock, onAddContainerChild,
+  onRemoveContainerChild, onUpdateContainerChild, onUpdateContainerChildSpan,
 }: ConfigPanelProps) {
-  // Resolve selected block from the rows
   const selected = (() => {
     if (!selectedBlockId) return null;
     const [rowId, colId] = selectedBlockId.split(':');
@@ -385,18 +617,17 @@ export function ConfigPanel({
   return (
     <div className="flex flex-col h-full">
       {/* Tab strip */}
-      <div className="flex border-b border-border-primary shrink-0">
+      <div className="flex gap-1 p-2 border-b border-border-primary shrink-0">
         {(['configure', 'chat'] as const).map(tab => (
           <button
             key={tab}
             type="button"
             onClick={() => onSetConfigTab(tab)}
-            className={`flex-1 py-2.5 text-xs font-semibold capitalize transition-all ${
+            className={`flex-1 py-1.5 text-[11px] font-medium rounded-xl transition-all border ${
               configTab === tab
-                ? 'text-text-primary border-b-2'
-                : 'text-text-tertiary hover:text-text-secondary border-b-2 border-transparent'
+                ? 'bg-modules-aly/10 text-modules-aly border-modules-aly/20'
+                : 'text-text-tertiary hover:bg-background-tertiary hover:text-text-secondary border-transparent'
             }`}
-            style={configTab === tab ? { borderBottomColor: brandColor } : undefined}
           >
             {tab === 'chat' ? `Ask ${assistantName}` : 'Configure'}
           </button>
@@ -421,6 +652,11 @@ export function ConfigPanel({
               brandColor={brandColor}
               onUpdate={onUpdateBlock}
               onUpdateSpan={onUpdateSpan}
+              onUpdateContainerBlock={onUpdateContainerBlock}
+              onAddContainerChild={onAddContainerChild}
+              onRemoveContainerChild={onRemoveContainerChild}
+              onUpdateContainerChild={onUpdateContainerChild}
+              onUpdateContainerChildSpan={onUpdateContainerChildSpan}
             />
           )}
         </div>

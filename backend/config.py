@@ -3,4 +3,4 @@
 
 # System-level default only. Per-user name is stored in user_profiles.assistant_name
 # and loaded into every agent request via node_load_context → state["assistant_name"].
-ASSISTANT_NAME = "Aly"
+ASSISTANT_NAME = "Aly"  # Default assistant name, can be overridden by user profile

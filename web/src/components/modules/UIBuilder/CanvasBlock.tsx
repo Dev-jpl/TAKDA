@@ -128,6 +128,44 @@ function BlockPreview({
         </button>
       );
 
+    case 'container': {
+      const wrapperCls = [
+        'w-full rounded-lg p-2 flex flex-col gap-2',
+        block.bordered   ? 'border border-border-primary' : '',
+        block.background ? 'bg-background-secondary' : '',
+      ].filter(Boolean).join(' ');
+      return (
+        <div className={wrapperCls}>
+          {block.label && (
+            <p className="text-[9px] font-bold text-text-tertiary uppercase tracking-widest px-1">
+              {block.label}
+            </p>
+          )}
+          {block.children.length === 0 ? (
+            <div className="flex items-center justify-center py-4 border border-dashed border-border-primary/30 rounded-md">
+              <span className="text-[9px] text-text-tertiary/40 uppercase tracking-widest">
+                No children — configure in panel
+              </span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-12 gap-1.5">
+              {block.children.map(child => (
+                <div key={child.id} className={`${SPAN_CLASS[child.span]} pointer-events-none opacity-80`}>
+                  {/* child.block is LeafBlock — no container case — safe to call BlockPreview */}
+                  <BlockPreview
+                    block={child.block}
+                    schema={schema}
+                    brandColor={brandColor}
+                    assistantName={assistantName}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     default:
       return <div className="text-xs text-text-tertiary">Unknown block</div>;
   }
@@ -156,7 +194,7 @@ export const CanvasBlock = memo(function CanvasBlock({
       className={`relative group/block p-3 rounded-xl border-2 cursor-pointer transition-all bg-background-primary ${
         isSelected
           ? 'shadow-sm'
-          : 'border-border-primary hover:border-border-primary/80'
+          : 'border-transparent hover:border-border-primary/30'
       }`}
       style={isSelected ? { borderColor: brandColor } : undefined}
     >

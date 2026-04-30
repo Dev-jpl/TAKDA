@@ -27,6 +27,24 @@ export type UIBlock =
   | { type: 'assistant_nudge'; hint?: string }
   | { type: 'save_button'; label: string }
   | { type: 'cancel_button'; label: string }
+  | {
+      type:       'container'
+      label?:     string        // optional caption above children
+      bordered:   boolean       // border border-border-primary
+      background: boolean       // bg-background-secondary
+      children:   ContainerChild[]
+    }
+
+/** A UIBlock that is not itself a container — enforces max 1 level of nesting. */
+export type LeafBlock = Exclude<UIBlock, { type: 'container' }>
+
+/** A child entry inside a container block. Structurally identical to UIColumn
+ *  but its block is constrained to LeafBlock (no nested containers). */
+export interface ContainerChild {
+  id:    string
+  span:  BlockSpan
+  block: LeafBlock
+}
 
 export interface UIColumn {
   id: string

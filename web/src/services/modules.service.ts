@@ -1,21 +1,19 @@
 import type { UIDefinition } from '@/types/ui-builder';
+import type { ModuleDefinitionV2 } from '@/types/module-creator';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// ── Schema field types ────────────────────────────────────────────────────────
+// ── Legacy field types (kept for backward compat with existing UIBuilder) ─────
 
 export type FieldType = 'text' | 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'select' | 'counter';
 
 export interface FieldConfig {
-  // number + counter
   min?: number;
   max?: number;
   unit?: string;
   goal?: number;
   step?: number;
-  // select
   options?: string[];
-  // text
   placeholder?: string;
 }
 
@@ -27,18 +25,11 @@ export interface SchemaField {
   config?: FieldConfig;
 }
 
-// ── Aly integration config ────────────────────────────────────────────────────
-
 export interface AlyConfig {
-  /** Words/phrases that trigger loading this module in context */
   intent_keywords: string[];
-  /** One-sentence description Aly uses when referencing this module */
   context_hint: string;
-  /** Example of how to log an entry via chat */
   log_prompt: string;
 }
-
-// ── Module definition ─────────────────────────────────────────────────────────
 
 export interface ModuleDefinition {
   id: string;
@@ -56,22 +47,67 @@ export interface ModuleDefinition {
   price?: number | string | null;
   brand_color?: string | null;
   icon_name?: string | null;
+  version?: number;
+  updated_at?: string;
   created_at: string;
 }
-
-// ── Module entry ──────────────────────────────────────────────────────────────
 
 export interface ModuleEntry {
   id: string;
   module_def_id: string;
   user_id: string;
   hub_id: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: Record<string, any>;   // Generic JSONB — schema varies by module definition
+  data: Record<string, any>;
+  schema_key?: string;
   created_at: string;
 }
 
-// ── API helpers ───────────────────────────────────────────────────────────────
+// ── V2 API functions ──────────────────────────────────────────────────────────
+
+export async function getModuleDefinitionById(defId: string): Promise<ModuleDefinitionV2> {
+  const res = await fetch(`${API}/modules/definitions/${defId}`);
+  if (!res.ok) throw new Error('Failed to fetch module definition');
+  return res.json();
+}
+
+export async function autosaveModuleDefinition(defId: string, patch: Partial<ModuleDefinitionV2>): Promise<void> {
+  await fetch(`${API}/modules/definitions/${defId}/autosave`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function publishModuleDefinition(
+  defId: string,
+  visibility: 'private' | 'unlisted' | 'public',
+  notes: string,
+): Promise<ModuleDefinitionV2> {
+  const res = await fetch(`${API}/modules/definitions/${defId}/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visibility, notes }),
+  });
+  if (!res.ok) throw new Error('Failed to publish module definition');
+  return res.json();
+}
+
+export async function getModuleEntriesBySchemaKey(
+  defId: string,
+  schemaKey: string,
+  hubId?: string,
+  userId?: string,
+): Promise<ModuleEntry[]> {
+  const url = new URL(`${API}/modules/${defId}/entries`);
+  url.searchParams.set('schema_key', schemaKey);
+  if (hubId)  url.searchParams.set('hub_id',  hubId);
+  if (userId) url.searchParams.set('user_id', userId);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error('Failed to fetch module entries');
+  return res.json();
+}
+
+// ── Legacy API functions (unchanged) ─────────────────────────────────────────
 
 export async function getModuleDefinitions(userId?: string): Promise<ModuleDefinition[]> {
   const url = new URL(`${API}/modules/definitions`);
@@ -114,11 +150,17 @@ export async function getModuleEntries(defId: string, hubId?: string, userId?: s
   return res.json();
 }
 
-export async function createModuleEntry(defId: string, data: Record<string, unknown>, userId: string, hubId?: string): Promise<ModuleEntry> {
+export async function createModuleEntry(
+  defId: string,
+  data: Record<string, unknown>,
+  userId: string,
+  hubId?: string,
+  schemaKey?: string,
+): Promise<ModuleEntry> {
   const res = await fetch(`${API}/modules/${defId}/entries`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, hub_id: hubId, data }),
+    body: JSON.stringify({ user_id: userId, hub_id: hubId, data, schema_key: schemaKey ?? 'default' }),
   });
   if (!res.ok) throw new Error('Failed to create module entry');
   return res.json();

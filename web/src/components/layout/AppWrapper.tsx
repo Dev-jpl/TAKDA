@@ -126,6 +126,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     ? SIDEBAR_COLLAPSED_W   // collapsed (or hover-expanded overlay): 56px
     : SIDEBAR_EXPANDED_W;   // fully expanded: 240px
 
+  // Pages that need to fill the entire content area without max-width or scroll constraints
+  const isFullbleed = pathname?.startsWith('/module-creator');
+
   return (
     <>
       <AssistantNameModal />
@@ -138,10 +141,14 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         }}
       >
         <TopNav userId={userId} />
-        <div className="flex-1 overflow-y-auto relative">
-          <div className="max-w-7xl mx-auto w-full">
-            {children}
-          </div>
+        <div className={`flex-1 relative ${isFullbleed ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+          {isFullbleed ? (
+            children
+          ) : (
+            <div className="max-w-7xl mx-auto w-full">
+              {children}
+            </div>
+          )}
 
           {pathname !== '/chat' && (
             <>

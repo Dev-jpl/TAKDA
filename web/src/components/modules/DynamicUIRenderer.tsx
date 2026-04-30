@@ -415,6 +415,36 @@ function BlockRouter({
         </button>
       );
 
+    case 'container': {
+      const wrapperCls = [
+        'rounded-xl overflow-hidden',
+        block.bordered   ? 'border border-border-primary' : '',
+        block.background ? 'bg-background-secondary' : '',
+        (block.bordered || block.background) ? 'p-4' : '',
+      ].filter(Boolean).join(' ');
+      const sharedRouterProps = {
+        schema, values, errors, setValues, mode,
+        brandColor, assistantName, submitting, handleSubmit, onCancel,
+      };
+      return (
+        <div className={wrapperCls}>
+          {block.label && (
+            <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-3">
+              {block.label}
+            </p>
+          )}
+          <div className="grid grid-cols-12 gap-3">
+            {block.children.map(child => (
+              <div key={child.id} className={`col-span-12 ${SPAN_CLASS[child.span]}`}>
+                {/* child.block is LeafBlock — no container case, so this never recurses beyond 1 level */}
+                <BlockRouter block={child.block} {...sharedRouterProps} />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     default:
       return null;
   }
@@ -442,7 +472,11 @@ export function DynamicUIRenderer({
     // Validate required fields
     const allFieldBlocks = uiDefinition.rows
       .flatMap(r => r.columns)
-      .map(c => c.block)
+      .flatMap(col =>
+        col.block.type === 'container'
+          ? col.block.children.map(c => c.block)
+          : [col.block],
+      )
       .filter((b): b is Extract<UIBlock, { type: 'field_input' }> => b.type === 'field_input');
 
     const newErrors: Record<string, string> = {};

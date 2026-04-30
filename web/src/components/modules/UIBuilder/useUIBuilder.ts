@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { UIBlock, UIDefinition, UIRow, BlockSpan } from '@/types/ui-builder';
+import { UIBlock, UIDefinition, UIRow, BlockSpan, LeafBlock, ContainerChild } from '@/types/ui-builder';
 import { SchemaField } from '@/services/modules.service';
 import { generateDefaultLayout } from './autoLayout';
 import { callUIBuilderAgent } from './agentChat';
@@ -160,6 +160,98 @@ export function useUIBuilder(
     }));
   }, []);
 
+  // ── Container mutations ──────────────────────────────────────────────────────
+
+  /** Update top-level container properties (label, bordered, background). */
+  const updateContainerBlock = useCallback((
+    rowId: string, colId: string, patch: Partial<{ label: string; bordered: boolean; background: boolean }>,
+  ) => {
+    setRows(prev => prev.map(row =>
+      row.id !== rowId ? row : {
+        ...row,
+        columns: row.columns.map(col =>
+          col.id !== colId ? col : { ...col, block: { ...col.block, ...patch } as UIBlock },
+        ),
+      },
+    ));
+  }, []);
+
+  /** Append a child block to a container. Max 4 children. */
+  const addContainerChild = useCallback((rowId: string, colId: string, block: LeafBlock) => {
+    setRows(prev => prev.map(row =>
+      row.id !== rowId ? row : {
+        ...row,
+        columns: row.columns.map(col => {
+          if (col.id !== colId || col.block.type !== 'container') return col;
+          const existing = col.block.children;
+          if (existing.length >= 4) return col;
+          const newSpan: BlockSpan = existing.length === 0 ? 12 : 6;
+          const newChild: ContainerChild = { id: `cc_${uid()}`, span: newSpan, block };
+          return { ...col, block: { ...col.block, children: [...existing, newChild] } };
+        }),
+      },
+    ));
+  }, []);
+
+  /** Remove a child from a container by its id. */
+  const removeContainerChild = useCallback((rowId: string, colId: string, childId: string) => {
+    setRows(prev => prev.map(row =>
+      row.id !== rowId ? row : {
+        ...row,
+        columns: row.columns.map(col => {
+          if (col.id !== colId || col.block.type !== 'container') return col;
+          return { ...col, block: { ...col.block, children: col.block.children.filter(c => c.id !== childId) } };
+        }),
+      },
+    ));
+  }, []);
+
+  /** Update a container child's block data (label, placeholder, etc.). */
+  const updateContainerChild = useCallback((
+    rowId: string, colId: string, childId: string, patch: Partial<LeafBlock>,
+  ) => {
+    setRows(prev => prev.map(row =>
+      row.id !== rowId ? row : {
+        ...row,
+        columns: row.columns.map(col => {
+          if (col.id !== colId || col.block.type !== 'container') return col;
+          return {
+            ...col,
+            block: {
+              ...col.block,
+              children: col.block.children.map(c =>
+                c.id !== childId ? c : { ...c, block: { ...c.block, ...patch } as LeafBlock },
+              ),
+            },
+          };
+        }),
+      },
+    ));
+  }, []);
+
+  /** Update a container child's span independently (no sum-to-12 constraint). */
+  const updateContainerChildSpan = useCallback((
+    rowId: string, colId: string, childId: string, span: BlockSpan,
+  ) => {
+    setRows(prev => prev.map(row =>
+      row.id !== rowId ? row : {
+        ...row,
+        columns: row.columns.map(col => {
+          if (col.id !== colId || col.block.type !== 'container') return col;
+          return {
+            ...col,
+            block: {
+              ...col.block,
+              children: col.block.children.map(c =>
+                c.id !== childId ? c : { ...c, span },
+              ),
+            },
+          };
+        }),
+      },
+    ));
+  }, []);
+
   const selectBlock = useCallback((rowId: string, colId: string) => {
     setSelectedBlockId(`${rowId}:${colId}`);
     setConfigTab('configure');
@@ -229,5 +321,11 @@ export function useUIBuilder(
     sendChatMessage,
     applyProposal,
     dismissProposal,
+    // container mutations
+    updateContainerBlock,
+    addContainerChild,
+    removeContainerChild,
+    updateContainerChild,
+    updateContainerChildSpan,
   };
 }

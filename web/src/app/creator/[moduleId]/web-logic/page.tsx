@@ -7,7 +7,7 @@ import {
   GitBranch, Sparkle, ChatCircle, ArrowsClockwise,
 } from '@phosphor-icons/react';
 import { useModuleEditor } from '@/contexts/ModuleEditorContext';
-import type { ModuleAction, ActionStep, ActionTrigger, ActionStepType } from '@/types/module-creator';
+import type { ModuleAction, ActionStep, ActionTrigger, ActionStepType, SchemaCollection } from '@/types/module-creator';
 
 function uid() { return crypto.randomUUID().replace(/-/g, '').slice(0, 8); }
 
@@ -47,8 +47,15 @@ function stepSummary(step: ActionStep): string {
   }
 }
 
-function StepConfigPanel({ step, onChange }: { step: ActionStep; onChange: (s: ActionStep) => void }) {
+function StepConfigPanel({
+  step, onChange, collections,
+}: {
+  step:        ActionStep;
+  onChange:    (s: ActionStep) => void;
+  collections: SchemaCollection[];
+}) {
   const upd = (p: Partial<ActionStep['config']>) => onChange({ ...step, config: { ...step.config, ...p } });
+  const selectedColl = collections.find(c => c.key === (step.config.collection as string));
 
   if (step.type === 'compute') return (
     <div className="flex flex-col gap-2 pt-2">
@@ -84,6 +91,93 @@ function StepConfigPanel({ step, onChange }: { step: ActionStep; onChange: (s: A
     </div>
   );
 
+  if (step.type === 'mutate_create' || step.type === 'mutate_update') return (
+    <div className="flex flex-col gap-2 pt-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-[9px] text-text-tertiary">Collection</span>
+        <select
+          value={(step.config.collection as string) ?? ''}
+          onChange={e => upd({ collection: e.target.value })}
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none"
+        >
+          <option value="">— pick collection —</option>
+          {collections.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+      </label>
+      {selectedColl && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[9px] text-text-tertiary">Field mappings</span>
+          <p className="text-[9px] text-text-tertiary/50">Use <code>entry.field_key</code> or <code>computed.key</code> as values.</p>
+          {selectedColl.fields.map(f => {
+            const mappings = (step.config.mappings as Record<string, string>) ?? {};
+            return (
+              <div key={f.key} className="flex items-center gap-2">
+                <span className="text-[10px] text-text-secondary w-24 shrink-0 truncate">{f.label}</span>
+                <input
+                  value={mappings[f.key] ?? ''}
+                  onChange={e => upd({ mappings: { ...mappings, [f.key]: e.target.value } })}
+                  placeholder={`entry.${f.key}`}
+                  className="flex-1 bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] font-mono text-text-primary outline-none"
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  if (step.type === 'mutate_delete') return (
+    <div className="flex flex-col gap-2 pt-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-[9px] text-text-tertiary">Collection</span>
+        <select
+          value={(step.config.collection as string) ?? ''}
+          onChange={e => upd({ collection: e.target.value })}
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none"
+        >
+          <option value="">— pick collection —</option>
+          {collections.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[9px] text-text-tertiary">Entry ID expression</span>
+        <input
+          value={(step.config.entry_id as string) ?? ''}
+          onChange={e => upd({ entry_id: e.target.value })}
+          placeholder="entry.id"
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] font-mono text-text-primary outline-none w-full"
+        />
+      </label>
+    </div>
+  );
+
+  if (step.type === 'ui_navigate') return (
+    <div className="flex flex-col gap-2 pt-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-[9px] text-text-tertiary">Target type</span>
+        <select
+          value={(step.config.target_type as string) ?? 'page'}
+          onChange={e => upd({ target_type: e.target.value })}
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none"
+        >
+          <option value="page">App page</option>
+          <option value="hub">Hub</option>
+          <option value="url">External URL</option>
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[9px] text-text-tertiary">Target path</span>
+        <input
+          value={(step.config.target as string) ?? ''}
+          onChange={e => upd({ target: e.target.value })}
+          placeholder="/spaces/... or https://..."
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] font-mono text-text-primary outline-none w-full"
+        />
+      </label>
+    </div>
+  );
+
   if (step.type === 'conditional') return (
     <div className="flex flex-col gap-2 pt-2">
       <div className="flex gap-2 items-center">
@@ -100,11 +194,12 @@ function StepConfigPanel({ step, onChange }: { step: ActionStep; onChange: (s: A
   return <p className="text-[10px] text-text-tertiary/50 pt-2">Configure in the step panel after creation.</p>;
 }
 
-function ActionCard({ action, computedKeys, onUpdate, onDelete }: {
-  action: ModuleAction;
+function ActionCard({ action, computedKeys, collections, onUpdate, onDelete }: {
+  action:       ModuleAction;
   computedKeys: string[];
-  onUpdate: (a: ModuleAction) => void;
-  onDelete: () => void;
+  collections:  SchemaCollection[];
+  onUpdate:     (a: ModuleAction) => void;
+  onDelete:     () => void;
 }) {
   const [expanded, setExpanded]         = useState(false);
   const [editingStep, setEditingStep]   = useState<string | null>(null);
@@ -197,7 +292,7 @@ function ActionCard({ action, computedKeys, onUpdate, onDelete }: {
                   </div>
                   {isEditing && (
                     <div className="border-t border-border-primary/30 px-3 pb-3">
-                      <StepConfigPanel step={step} onChange={s => updateStep(s.id, s)} />
+                      <StepConfigPanel step={step} onChange={s => updateStep(s.id, s)} collections={collections} />
                     </div>
                   )}
                 </div>
@@ -237,9 +332,10 @@ export default function WebLogicPage() {
 
   if (!definition) return <div className="flex items-center justify-center h-full"><span className="w-5 h-5 border-2 border-border-primary border-t-modules-aly rounded-full animate-spin" /></div>;
 
-  const behaviors  = definition.behaviors;
-  const actions    = behaviors.web_actions ?? [];
+  const behaviors    = definition.behaviors;
+  const actions      = behaviors.web_actions ?? [];
   const computedKeys = (definition.computed_properties ?? []).map(c => c.key);
+  const collections  = Object.values(definition.schemas ?? {}) as SchemaCollection[];
   const autoBehaviors = behaviors.auto_behaviors ?? {};
 
   const saveActions = (updated: ModuleAction[]) =>
@@ -263,7 +359,7 @@ export default function WebLogicPage() {
         </div>
         {actions.length === 0 && <p className="text-[11px] text-text-tertiary/50 py-4 text-center">No actions defined</p>}
         {actions.map(action => (
-          <ActionCard key={action.id} action={action} computedKeys={computedKeys}
+          <ActionCard key={action.id} action={action} computedKeys={computedKeys} collections={collections}
             onUpdate={a => saveActions(actions.map(x => x.id === a.id ? a : x))}
             onDelete={() => { if (window.confirm('Delete action?')) saveActions(actions.filter(x => x.id !== action.id)); }}
           />

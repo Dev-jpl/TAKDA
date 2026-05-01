@@ -110,6 +110,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isPublicPage = pathname === '/' || pathname?.startsWith('/auth');
 
+  // Creator workspace has its own layout (header + sidebar); exclude global chrome
+  const isCreatorWorkspace = /^\/creator\/[0-9a-f-]{36}(\/|$)/i.test(pathname ?? '');
+
   if (isPublicPage) {
     return (
       <div className="relative min-h-screen bg-background-primary flex flex-col">
@@ -125,6 +128,10 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const marginLeft = isCollapsed
     ? SIDEBAR_COLLAPSED_W   // collapsed (or hover-expanded overlay): 56px
     : SIDEBAR_EXPANDED_W;   // fully expanded: 240px
+
+  if (isCreatorWorkspace) {
+    return <>{children}</>;
+  }
 
   // Pages that need to fill the entire content area without max-width or scroll constraints
   const isFullbleed = pathname?.startsWith('/module-creator');

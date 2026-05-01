@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash, CaretDown, CaretUp, X, Sparkle } from '@phosphor-icons/react';
 import { useModuleEditor } from '@/contexts/ModuleEditorContext';
-import type { ModuleAction, ActionStep, ActionTrigger, ActionStepType } from '@/types/module-creator';
+import type { ModuleAction, ActionStep, ActionTrigger, ActionStepType, SchemaCollection } from '@/types/module-creator';
 
 function uid() { return crypto.randomUUID().replace(/-/g, '').slice(0, 8); }
 
@@ -28,28 +28,145 @@ const MOBILE_STEP_TYPES: { value: ActionStepType; label: string }[] = [
   { value: 'conditional',   label: 'Condition' },
 ];
 
-function MobileActionCard({ action, allActions, onUpdate, onDelete }: {
-  action: ModuleAction;
-  allActions: ModuleAction[];
-  onUpdate: (a: ModuleAction) => void;
-  onDelete: () => void;
+function MobileStepConfig({
+  step, onChange, collections,
+}: {
+  step:        ActionStep;
+  onChange:    (s: ActionStep) => void;
+  collections: SchemaCollection[];
 }) {
-  const [expanded, setExpanded]       = useState(false);
-  const [showPicker, setShowPicker]   = useState(false);
+  const upd = (p: Partial<ActionStep['config']>) => onChange({ ...step, config: { ...step.config, ...p } });
+  const selectedColl = collections.find(c => c.key === (step.config.collection as string));
+
+  if (step.type === 'compute') return (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Variable name</span>
+        <input value={(step.config.variable_name as string) ?? ''} onChange={e => upd({ variable_name: e.target.value })}
+          placeholder="result" className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] font-mono text-text-primary outline-none w-full" />
+      </label>
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Expression</span>
+        <input value={(step.config.expression as string) ?? ''} onChange={e => upd({ expression: e.target.value })}
+          placeholder="entry.calories + 100" className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] font-mono text-text-primary outline-none w-full" />
+      </label>
+    </div>
+  );
+
+  if (step.type === 'ui_show') return (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Style</span>
+        <select value={(step.config.style as string) ?? 'toast'} onChange={e => upd({ style: e.target.value })}
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none">
+          <option value="toast">Toast</option><option value="banner">Banner</option>
+        </select>
+      </label>
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Message</span>
+        <input value={(step.config.message as string) ?? ''} onChange={e => upd({ message: e.target.value })}
+          placeholder="Great job! {{refs.result}}" className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none w-full" />
+      </label>
+    </div>
+  );
+
+  if (step.type === 'ui_feedback') return (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Haptic</span>
+        <select value={(step.config.haptic as string) ?? 'light'} onChange={e => upd({ haptic: e.target.value })}
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none">
+          {['none','light','medium','heavy','success','warning','error'].map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Animation</span>
+        <select value={(step.config.play_animation as string) ?? 'none'} onChange={e => upd({ play_animation: e.target.value })}
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none">
+          {['none','checkmark','confetti','shake'].map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+
+  if (step.type === 'notify_aly') return (
+    <div>
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Message for Aly</span>
+        <textarea value={(step.config.message as string) ?? ''} onChange={e => upd({ message: e.target.value })} rows={2}
+          placeholder="User logged {{refs.result}} calories." className="bg-background-primary border border-border-primary rounded-lg px-2 py-1.5 text-[11px] text-text-primary outline-none resize-none w-full" />
+      </label>
+    </div>
+  );
+
+  if (step.type === 'mutate_create' || step.type === 'mutate_update') return (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Collection</span>
+        <select value={(step.config.collection as string) ?? ''} onChange={e => upd({ collection: e.target.value })}
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none">
+          <option value="">— pick collection —</option>
+          {collections.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+      </label>
+      {selectedColl && selectedColl.fields.map(f => {
+        const mappings = (step.config.mappings as Record<string, string>) ?? {};
+        return (
+          <div key={f.key} className="flex items-center gap-2">
+            <span className="text-[10px] text-text-secondary w-20 shrink-0 truncate">{f.label}</span>
+            <input value={mappings[f.key] ?? ''} onChange={e => upd({ mappings: { ...mappings, [f.key]: e.target.value } })}
+              placeholder={`entry.${f.key}`} className="flex-1 bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] font-mono text-text-primary outline-none" />
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  if (step.type === 'mutate_delete') return (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Collection</span>
+        <select value={(step.config.collection as string) ?? ''} onChange={e => upd({ collection: e.target.value })}
+          className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] text-text-primary outline-none">
+          <option value="">— pick collection —</option>
+          {collections.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1"><span className="text-[9px] text-text-tertiary">Entry ID</span>
+        <input value={(step.config.entry_id as string) ?? ''} onChange={e => upd({ entry_id: e.target.value })}
+          placeholder="entry.id" className="bg-background-primary border border-border-primary rounded-lg px-2 py-1 text-[11px] font-mono text-text-primary outline-none w-full" />
+      </label>
+    </div>
+  );
+
+  return <p className="text-[10px] text-text-tertiary/50">No config needed for this step type.</p>;
+}
+
+function MobileActionCard({ action, collections, onUpdate, onDelete }: {
+  action:      ModuleAction;
+  collections: SchemaCollection[];
+  onUpdate:    (a: ModuleAction) => void;
+  onDelete:    () => void;
+}) {
+  const [expanded,    setExpanded]    = useState(false);
+  const [showPicker,  setShowPicker]  = useState(false);
+  const [editingStep, setEditingStep] = useState<string | null>(null);
 
   const addStep = (type: ActionStepType) => {
-    onUpdate({ ...action, steps: [...action.steps, { id: uid(), type, config: {} }] });
+    const step: ActionStep = { id: uid(), type, config: {} };
+    onUpdate({ ...action, steps: [...action.steps, step] });
     setShowPicker(false);
+    setEditingStep(step.id);
   };
 
-  const removeStep = (id: string) => onUpdate({ ...action, steps: action.steps.filter(s => s.id !== id) });
+  const updateStep = (id: string, s: ActionStep) =>
+    onUpdate({ ...action, steps: action.steps.map(x => x.id === id ? s : x) });
+
+  const removeStep = (id: string) => {
+    onUpdate({ ...action, steps: action.steps.filter(s => s.id !== id) });
+    if (editingStep === id) setEditingStep(null);
+  };
 
   const stepLabel = (s: ActionStep): string => {
-    if (s.type === 'ui_feedback') return `Haptic: ${(s.config.haptic as string) ?? 'light'}, animation: ${(s.config.play_animation as string) ?? 'none'}`;
-    if (s.type === 'ui_show') return `Show: ${(s.config.message as string)?.slice(0,30) ?? '…'}`;
-    if (s.type === 'compute') return `Calculate ${(s.config.variable_name as string) ?? '…'}`;
-    if (s.type === 'notify_aly') return `Tell Aly: ${(s.config.message as string)?.slice(0,30) ?? '…'}`;
-    return s.type.replace('_', ' ');
+    if (s.type === 'ui_feedback') return `Haptic: ${(s.config.haptic as string) ?? 'light'}, anim: ${(s.config.play_animation as string) ?? 'none'}`;
+    if (s.type === 'ui_show')     return `Show: ${(s.config.message as string)?.slice(0, 28) ?? '…'}`;
+    if (s.type === 'compute')     return `Calculate ${(s.config.variable_name as string) ?? '…'}`;
+    if (s.type === 'notify_aly')  return `Tell Aly: ${(s.config.message as string)?.slice(0, 28) ?? '…'}`;
+    if (s.type === 'mutate_create') return `Create in ${(s.config.collection as string) || '…'}`;
+    if (s.type === 'mutate_update') return `Update ${(s.config.collection as string) || '…'}`;
+    if (s.type === 'mutate_delete') return `Delete from ${(s.config.collection as string) || '…'}`;
+    return s.type.replace(/_/g, ' ');
   };
 
   return (
@@ -79,12 +196,25 @@ function MobileActionCard({ action, allActions, onUpdate, onDelete }: {
 
           <div>
             <p className="text-[9px] text-text-tertiary uppercase tracking-widest mb-2">Steps</p>
-            {action.steps.map(step => (
-              <div key={step.id} className="flex items-center gap-2 bg-background-tertiary rounded-xl px-3 py-2 mb-1.5">
-                <span className="text-[11px] text-text-secondary flex-1">{stepLabel(step)}</span>
-                <button type="button" onClick={() => removeStep(step.id)} className="text-text-tertiary hover:text-red-400"><X size={12} /></button>
-              </div>
-            ))}
+            {action.steps.map(step => {
+              const isEditing = editingStep === step.id;
+              return (
+                <div key={step.id} className="bg-background-tertiary rounded-xl mb-1.5 overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <span className="text-[11px] text-text-secondary flex-1">{stepLabel(step)}</span>
+                    <button type="button" onClick={() => setEditingStep(isEditing ? null : step.id)} className="text-text-tertiary hover:text-text-primary">
+                      {isEditing ? <CaretUp size={12} /> : <CaretDown size={12} />}
+                    </button>
+                    <button type="button" onClick={() => removeStep(step.id)} className="text-text-tertiary hover:text-red-400"><X size={12} /></button>
+                  </div>
+                  {isEditing && (
+                    <div className="border-t border-border-primary/30 px-3 pb-3 pt-2">
+                      <MobileStepConfig step={step} onChange={s => updateStep(s.id, s)} collections={collections} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {showPicker ? (
               <div className="bg-background-tertiary rounded-xl p-2 grid grid-cols-2 gap-1 mb-2">
                 {MOBILE_STEP_TYPES.map(t => (
@@ -112,9 +242,10 @@ export default function MobileLogicPage() {
 
   if (!definition) return <div className="flex items-center justify-center h-full"><span className="w-5 h-5 border-2 border-border-primary border-t-modules-aly rounded-full animate-spin" /></div>;
 
-  const behaviors = definition.behaviors;
-  const actions   = behaviors.mobile_actions ?? [];
-  const mc        = definition.mobile_config;
+  const behaviors   = definition.behaviors;
+  const actions     = behaviors.mobile_actions ?? [];
+  const mc          = definition.mobile_config;
+  const collections = Object.values(definition.schemas ?? {}) as SchemaCollection[];
 
   const saveActions = (updated: ModuleAction[]) =>
     updateBehaviors({ ...behaviors, mobile_actions: updated });
@@ -171,7 +302,7 @@ export default function MobileLogicPage() {
         </div>
         {actions.length === 0 && <p className="text-[11px] text-text-tertiary/50 py-4 text-center">No actions defined</p>}
         {actions.map(a => (
-          <MobileActionCard key={a.id} action={a} allActions={actions}
+          <MobileActionCard key={a.id} action={a} collections={collections}
             onUpdate={updated => saveActions(actions.map(x => x.id === updated.id ? updated : x))}
             onDelete={() => { if (window.confirm('Delete action?')) saveActions(actions.filter(x => x.id !== a.id)); }}
           />

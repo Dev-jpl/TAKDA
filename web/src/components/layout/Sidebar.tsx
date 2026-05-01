@@ -247,8 +247,7 @@ export const Sidebar: React.FC = () => {
     { type: 'item', href: '/vault',            icon: 'Tray',                 label: 'Vault'       },
     { type: 'item', href: '/automate',         icon: 'TreeStructure',        label: 'Automate'    },
     { type: 'item', href: '/marketplace',      icon: 'HandbagIcon',          label: 'Marketplace' },
-    { type: 'item', href: '/module-creator',   icon: 'PencilLine',           label: 'Creator'     },
-    { type: 'item', href: '/creator/dashboard',icon: 'ChartPie',             label: 'Earnings'    },
+    { type: 'item', href: '/creator',           icon: 'PencilLine',           label: 'Creator'     },
     { type: 'item', href: '/history',          icon: 'ClockCounterClockwise',label: 'History'     },
   ];
 

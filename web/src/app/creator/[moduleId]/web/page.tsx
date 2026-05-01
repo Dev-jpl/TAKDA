@@ -3,7 +3,9 @@
 import React, { useMemo, useState } from 'react';
 import { useModuleEditor } from '@/contexts/ModuleEditorContext';
 import { UIBuilder } from '@/components/modules/UIBuilder';
-import type { UIDefinition } from '@/types/ui-builder';
+import { WidgetStudio } from '@/components/modules/WidgetStudio';
+import { HubViewEditor } from '@/components/modules/HubViewEditor';
+import type { UIDefinition, WidgetDefinition, HubViewDefinition } from '@/types/ui-builder';
 import type { SchemaField } from '@/services/modules.service';
 
 type Surface = 'hub_view' | 'entry_form' | 'detail_view' | 'widget';
@@ -21,7 +23,8 @@ export default function WebInterfacePage() {
   const { definition, updateDefinition, updateWebConfig } = useModuleEditor();
   const [activeSurface, setActiveSurface] = useState<Surface>('entry_form');
 
-  const uiDefs = useMemo<Record<Surface, UIDefinition | null>>(() => {
+  // Normalise ui_definition into the per-surface map
+  const uiDefs = useMemo<Record<Surface, UIDefinition | WidgetDefinition | HubViewDefinition | null>>(() => {
     const raw = definition?.ui_definition as any;
     if (!raw) return { hub_view: null, entry_form: null, detail_view: null, widget: null };
     if (Array.isArray(raw?.rows)) return { hub_view: null, entry_form: raw as UIDefinition, detail_view: null, widget: null };
@@ -33,6 +36,7 @@ export default function WebInterfacePage() {
     };
   }, [definition?.ui_definition]);
 
+  // Flatten V2 schema for UIBuilder (expects flat SchemaField[])
   const schema = useMemo<SchemaField[]>(() => {
     if (!definition) return [];
     if (Object.keys(definition.schemas ?? {}).length > 0) {
@@ -43,14 +47,14 @@ export default function WebInterfacePage() {
     return (definition.schema ?? []) as SchemaField[];
   }, [definition]);
 
-  if (!definition) return <div className="flex items-center justify-center h-full"><span className="w-5 h-5 border-2 border-border-primary border-t-modules-aly rounded-full animate-spin" /></div>;
+  if (!definition) return null;
 
-  const widgetSpan = definition.web_config?.widget_col_span ?? 2;
-
-  const handleChange = (def: UIDefinition) => {
+  const handleChange = (def: UIDefinition | WidgetDefinition | HubViewDefinition) => {
     const allDefs = { ...uiDefs, [activeSurface]: def };
     updateDefinition({ ui_definition: allDefs });
   };
+
+  const widgetSpan = definition.web_config?.widget_col_span ?? 2;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -61,18 +65,31 @@ export default function WebInterfacePage() {
             key={s.id}
             type="button"
             onClick={() => setActiveSurface(s.id)}
-            className={`px-4 py-2.5 text-[11px] font-medium transition-all border-b-2 ${activeSurface === s.id ? 'text-text-primary border-modules-aly' : 'text-text-tertiary border-transparent hover:text-text-secondary'}`}
+            className={`px-4 py-2.5 text-[11px] font-medium transition-all border-b-2 ${
+              activeSurface === s.id
+                ? 'text-text-primary border-modules-aly'
+                : 'text-text-tertiary border-transparent hover:text-text-secondary'
+            }`}
           >
             {s.label}
           </button>
         ))}
 
+        {/* Widget col-span selector */}
         {activeSurface === 'widget' && (
           <div className="flex items-center gap-1 ml-auto px-4">
             <span className="text-[10px] text-text-tertiary mr-2">Width</span>
             {([1, 2, 3] as const).map(n => (
-              <button key={n} type="button" onClick={() => updateWebConfig({ widget_col_span: n })}
-                className={`w-7 h-7 rounded-lg text-[11px] border transition-all ${widgetSpan === n ? 'bg-modules-aly/10 text-modules-aly border-modules-aly/20' : 'border-border-primary text-text-tertiary hover:text-text-secondary'}`}>
+              <button
+                key={n}
+                type="button"
+                onClick={() => updateWebConfig({ widget_col_span: n })}
+                className={`w-7 h-7 rounded-lg text-[11px] border transition-all ${
+                  widgetSpan === n
+                    ? 'bg-modules-aly/10 text-modules-aly border-modules-aly/20'
+                    : 'border-border-primary text-text-tertiary hover:text-text-secondary'
+                }`}
+              >
                 {n}
               </button>
             ))}
@@ -80,19 +97,53 @@ export default function WebInterfacePage() {
         )}
       </div>
 
-      {/* Canvas */}
-      <div className={`flex-1 overflow-hidden flex flex-col ${activeSurface === 'widget' ? 'items-center pt-6' : ''}`}>
-        <div className={activeSurface === 'widget' ? `${WIDGET_WIDTH[widgetSpan]} w-full flex-1 overflow-hidden` : 'flex-1 overflow-hidden'}>
-          <UIBuilder
-            schema={schema}
-            initialDefinition={uiDefs[activeSurface]}
-            brandColor={definition.brand_color ?? undefined}
-            assistantName="Aly"
-            moduleName={definition.name || 'Module'}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
+      {/* Surface editors */}
+      {activeSurface === 'entry_form' && (
+        <UIBuilder
+          schema={schema}
+          initialDefinition={uiDefs.entry_form as UIDefinition | null}
+          brandColor={definition.brand_color ?? undefined}
+          assistantName="Aly"
+          moduleName={definition.name || 'Module'}
+          onChange={handleChange}
+        />
+      )}
+
+      {activeSurface === 'detail_view' && (
+        <UIBuilder
+          schema={schema}
+          initialDefinition={uiDefs.detail_view as UIDefinition | null}
+          brandColor={definition.brand_color ?? undefined}
+          assistantName="Aly"
+          moduleName={definition.name || 'Module'}
+          onChange={handleChange}
+        />
+      )}
+
+      {activeSurface === 'widget' && (
+        <WidgetStudio
+          schema={schema}
+          computedProperties={definition.computed_properties ?? []}
+          actions={definition.behaviors?.web_actions ?? []}
+          initialDefinition={uiDefs.widget as WidgetDefinition | null}
+          brandColor={definition.brand_color ?? undefined}
+          assistantName="Aly"
+          moduleName={definition.name || 'Module'}
+          colSpan={widgetSpan}
+          onChange={handleChange}
+        />
+      )}
+
+      {activeSurface === 'hub_view' && (
+        <HubViewEditor
+          schema={schema}
+          computedProperties={definition.computed_properties ?? []}
+          initialDefinition={uiDefs.hub_view as HubViewDefinition | null}
+          brandColor={definition.brand_color ?? undefined}
+          moduleName={definition.name || 'Module'}
+          onChange={handleChange}
+        />
+      )}
     </div>
   );
 }

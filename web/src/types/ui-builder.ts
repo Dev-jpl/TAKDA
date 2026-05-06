@@ -112,6 +112,29 @@ export type HubSectionConfig =
   | { type: 'entry_list';       limit: number; show_fields: string[]; title?: string }
   | { type: 'stats_row';        computed_keys: string[] }
   | { type: 'divider' }
+  // ── Smart Sections ──────────────────────────────────────────────────────────
+  | {
+      type:       'date_nav';
+      date_field: string;           // entry field key to filter by (e.g. 'logged_at')
+    }
+  | {
+      type:             'summary_bar';
+      primary_key:      string;     // computed_key for the "consumed" value
+      goal_value:       number;     // absolute goal (e.g. 2000)
+      goal_label?:      string;     // default 'Goal'
+      consumed_label?:  string;     // default 'Consumed'
+      remaining_label?: string;     // default 'Left'
+      macro_keys?:      string[];   // up to 4 computed_keys shown as sub-progress bars
+    }
+  | {
+      type:             'grouped_entries';
+      group_by_field:   string;                           // e.g. 'meal_type'
+      groups:           { key: string; label: string }[]; // ordered group definitions
+      show_fields:      string[];                         // fields displayed per row (1–3)
+      stat_key?:        string;                           // computed_key in group header
+      inline_form:      boolean;                          // per-group quick-add form
+      limit_per_group?: number;                           // default 20
+    }
 
 export interface HubSection {
   id:     string

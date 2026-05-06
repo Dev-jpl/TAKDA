@@ -7,15 +7,18 @@ import {
   ModuleDefinition, ModuleEntry, SchemaField,
   createModuleEntry, updateModuleEntry,
 } from '@/services/modules.service';
+import type { UIDefinition } from '@/types/ui-builder';
+import { DynamicUIRenderer } from './DynamicUIRenderer';
 
 interface Props {
-  definition: ModuleDefinition;
-  hubId: string;
-  userId: string;
-  open: boolean;
-  onClose: () => void;
-  onSaved: (entry: ModuleEntry) => void;
+  definition:    ModuleDefinition;
+  hubId:         string;
+  userId:        string;
+  open:          boolean;
+  onClose:       () => void;
+  onSaved:       (entry: ModuleEntry) => void;
   existingEntry?: ModuleEntry;
+  uiDefinition?: UIDefinition | null;
 }
 
 // ── Field renderers ───────────────────────────────────────────────────────────
@@ -171,7 +174,7 @@ function FieldInput({
 
 // ── Main sheet ────────────────────────────────────────────────────────────────
 
-export function ModuleEntrySheet({ definition, hubId, userId, open, onClose, onSaved, existingEntry }: Props) {
+export function ModuleEntrySheet({ definition, hubId, userId, open, onClose, onSaved, existingEntry, uiDefinition }: Props) {
   const schema    = definition.schema ?? [];
   const isEditing = !!existingEntry;
 
@@ -253,6 +256,21 @@ export function ModuleEntrySheet({ definition, hubId, userId, open, onClose, onS
 
   const accentColor = definition.brand_color || 'var(--modules-aly)';
 
+  // When a UIDefinition is provided, DynamicUIRenderer handles the form body.
+  // Its onSubmit receives validated data; we wire it to the module entry API.
+  const handleDynamicSubmit = async (data: Record<string, unknown>) => {
+    let saved: ModuleEntry;
+    if (isEditing && existingEntry) {
+      saved = await updateModuleEntry(definition.id, existingEntry.id, data as any, userId, hubId);
+    } else {
+      saved = await createModuleEntry(definition.id, data as any, userId, hubId);
+    }
+    window.dispatchEvent(new Event('takda:data_updated'));
+    onSaved(saved);
+    onClose();
+    // Re-throw on error so DynamicUIRenderer can display errors._submit
+  };
+
   return (
     <AnimatePresence>
       {open && (
@@ -290,56 +308,74 @@ export function ModuleEntrySheet({ definition, hubId, userId, open, onClose, onS
                 </button>
               </div>
 
-              {/* Form */}
-              <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
-                {schema.map(field => (
-                  <div key={field.key}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-semibold text-text-secondary uppercase tracking-widest">
-                        {field.label}
-                        {field.required && <span className="text-red-400 ml-1">*</span>}
-                        {field.config?.unit && field.type !== 'number' && (
-                          <span className="text-text-tertiary normal-case ml-1">({field.config.unit})</span>
+              {/* Form body */}
+              <div className="flex-1 overflow-y-auto">
+                {uiDefinition ? (
+                  // Designed entry form — DynamicUIRenderer owns validation, state, and buttons
+                  <DynamicUIRenderer
+                    uiDefinition={uiDefinition}
+                    schema={schema}
+                    mode="entry"
+                    existingValues={existingEntry?.data}
+                    onSubmit={handleDynamicSubmit}
+                    onCancel={onClose}
+                    brandColor={accentColor}
+                  />
+                ) : (
+                  // Generic fallback — render schema fields manually
+                  <div className="px-5 py-4 flex flex-col gap-4">
+                    {schema.map(field => (
+                      <div key={field.key}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-semibold text-text-secondary uppercase tracking-widest">
+                            {field.label}
+                            {field.required && <span className="text-red-400 ml-1">*</span>}
+                            {field.config?.unit && field.type !== 'number' && (
+                              <span className="text-text-tertiary normal-case ml-1">({field.config.unit})</span>
+                            )}
+                          </label>
+                          {field.type === 'boolean' && (
+                            <span className="text-xs text-text-tertiary">{values[field.key] ? 'Yes' : 'No'}</span>
+                          )}
+                        </div>
+                        <FieldInput
+                          field={field}
+                          value={values[field.key]}
+                          onChange={v => set(field.key, v)}
+                          error={errors[field.key]}
+                        />
+                        {errors[field.key] && (
+                          <p className="text-[11px] text-red-400 mt-1">{errors[field.key]}</p>
                         )}
-                      </label>
-                      {field.type === 'boolean' && (
-                        <span className="text-xs text-text-tertiary">{values[field.key] ? 'Yes' : 'No'}</span>
-                      )}
-                    </div>
-                    <FieldInput
-                      field={field}
-                      value={values[field.key]}
-                      onChange={v => set(field.key, v)}
-                      error={errors[field.key]}
-                    />
-                    {errors[field.key] && (
-                      <p className="text-[11px] text-red-400 mt-1">{errors[field.key]}</p>
+                      </div>
+                    ))}
+
+                    {errors._global && (
+                      <p className="text-xs text-red-400 bg-red-500/10 border border-red-400/20 rounded-xl px-4 py-2.5">
+                        {errors._global}
+                      </p>
                     )}
                   </div>
-                ))}
-
-                {errors._global && (
-                  <p className="text-xs text-red-400 bg-red-500/10 border border-red-400/20 rounded-xl px-4 py-2.5">
-                    {errors._global}
-                  </p>
                 )}
               </div>
 
-              {/* Save button */}
-              <div className="px-5 pb-5 pt-3 border-t border-border-primary shrink-0">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-50 transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  {saving ? (
-                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <><CheckIcon size={15} weight="bold" /> {isEditing ? 'Save Changes' : 'Add Entry'}</>
-                  )}
-                </button>
-              </div>
+              {/* Save button — only shown for generic form (DynamicUIRenderer has its own) */}
+              {!uiDefinition && (
+                <div className="px-5 pb-5 pt-3 border-t border-border-primary shrink-0">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-50 transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    {saving ? (
+                      <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <><CheckIcon size={15} weight="bold" /> {isEditing ? 'Save Changes' : 'Add Entry'}</>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </motion.div>
         </>

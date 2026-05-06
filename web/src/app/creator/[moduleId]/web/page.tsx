@@ -36,13 +36,14 @@ export default function WebInterfacePage() {
     };
   }, [definition?.ui_definition]);
 
-  // Flatten V2 schema for UIBuilder (expects flat SchemaField[])
+  // Only primary collection fields go into the entry form
   const schema = useMemo<SchemaField[]>(() => {
     if (!definition) return [];
-    if (Object.keys(definition.schemas ?? {}).length > 0) {
-      return Object.values(definition.schemas)
-        .flatMap(c => c.fields)
-        .map(f => ({ key: f.key, label: f.label, type: f.type as any, required: f.required, config: f.config as any }));
+    const schemas     = definition.schemas ?? {};
+    const collections = Object.values(schemas);
+    if (collections.length > 0) {
+      const primary = collections.find(c => c.role === 'primary') ?? collections[0];
+      return primary.fields.map(f => ({ key: f.key, label: f.label, type: f.type as any, required: f.required, config: f.config as any }));
     }
     return (definition.schema ?? []) as SchemaField[];
   }, [definition]);

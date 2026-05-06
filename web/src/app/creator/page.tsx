@@ -8,6 +8,7 @@ import {
   Package,
   CheckCircle,
   PencilLine,
+  Eye,
   Trash,
   ArrowClockwise,
 } from '@phosphor-icons/react';
@@ -62,32 +63,14 @@ function relativeTime(dateStr: string): string {
 
 function completionCount(m: ModuleRow): number {
   let count = 0;
-
-  // Schema
-  const hasSchema =
-    Object.keys(m.schemas ?? {}).length > 0 || (m.schema?.length ?? 0) > 0;
-  if (hasSchema) count++;
-
-  // Web Interface
-  const hasUi =
-    m.ui_definition != null &&
-    (typeof m.ui_definition === 'object'
-      ? Object.keys(m.ui_definition as object).length > 0
-      : true);
-  if (hasUi) count++;
-
-  // Mobile Interface
-  if (m.mobile_config?._configured === true) count++;
-
-  // Web Logic
-  if ((m.behaviors?.web_actions?.length ?? 0) > 0) count++;
-
-  // Mobile Logic
-  if ((m.behaviors?.mobile_actions?.length ?? 0) > 0) count++;
-
-  // Intelligence
+  // 1. Schema
+  if (Object.keys(m.schemas ?? {}).length > 0 || (m.schema?.length ?? 0) > 0) count++;
+  // 2. Intelligence
   if (m.aly_config?.context_hint) count++;
-
+  // 3. Web interface
+  if (m.ui_definition != null && (typeof m.ui_definition !== 'object' || Object.keys(m.ui_definition as object).length > 0)) count++;
+  // 4. Published
+  if (m.status === 'published') count++;
   return count;
 }
 
@@ -228,7 +211,7 @@ export default function CreatorPage() {
         {/* Rows */}
         {!loading && modules.map(m => {
           const count = completionCount(m);
-          const pct = Math.round((count / 6) * 100);
+          const pct = Math.round((count / 4) * 100);
           const dateStr = m.updated_at ?? m.created_at;
 
           return (
@@ -266,12 +249,12 @@ export default function CreatorPage() {
               <div className="flex flex-col gap-1">
                 <div className="h-1 bg-background-tertiary rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-modules-aly rounded-full transition-all"
-                    style={{ width: `${pct}%` }}
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, backgroundColor: m.brand_color || 'var(--modules-aly)' }}
                   />
                 </div>
                 <span className="text-[10px] text-text-tertiary">
-                  {count}/6
+                  {count}/4
                 </span>
               </div>
 
@@ -284,6 +267,14 @@ export default function CreatorPage() {
                   title="Edit"
                 >
                   <PencilLine size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/creator/${m.id}/preview`)}
+                  className="text-text-tertiary hover:text-text-primary transition-colors p-1"
+                  title="Preview"
+                >
+                  <Eye size={14} />
                 </button>
                 <button
                   type="button"

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   SparkleIcon,
@@ -538,13 +539,26 @@ export default function HubDetailPage() {
                   {userId && !['calorie_counter', 'expense_tracker'].includes(addon.type) && (() => {
                     const def = moduleDefs.find(d => d.slug === addon.type);
                     if (!def) return null;
+                    const isCreator = def.user_id === userId;
                     return (
-                      <CustomModuleView
-                        definition={def as unknown as ModuleDefinitionV2}
-                        hubId={hubId}
-                        userId={userId}
-                        assistantName={assistantName}
-                      />
+                      <>
+                        {isCreator && (
+                          <div className="flex justify-end px-4 pt-2">
+                            <Link
+                              href={`/creator/${def.id}/schema`}
+                              className="flex items-center gap-1 text-[10px] text-text-tertiary hover:text-text-primary transition-colors"
+                            >
+                              <PencilSimpleIcon size={11} /> Edit module
+                            </Link>
+                          </div>
+                        )}
+                        <CustomModuleView
+                          definition={def as unknown as ModuleDefinitionV2}
+                          hubId={hubId}
+                          userId={userId}
+                          assistantName={assistantName}
+                        />
+                      </>
                     );
                   })()}
                 </div>

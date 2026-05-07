@@ -1,11 +1,14 @@
 "use client";
 
 import React, { useState } from 'react';
-import { CursorTextIcon, XIcon, PlusIcon } from '@phosphor-icons/react';
+import { CursorTextIcon, XIcon, PlusIcon, PaintBrushIcon } from '@phosphor-icons/react';
 import { DebouncedInput, Toggle, Label, Section } from './_configHelpers';
 import { ChatTab } from './_ChatTab';
-import { UIBlock, UIRow, UIDefinition, BlockSpan, ComponentType, LeafBlock, ContainerChild } from '@/types/ui-builder';
+import { AppearancePanel } from './AppearancePanel';
+import { getDefaultAppearance } from '@/lib/defaultAppearances';
+import { UIBlock, UIRow, UIDefinition, BlockSpan, ComponentType, LeafBlock, ContainerChild, PlatformStyle } from '@/types/ui-builder';
 import { SchemaField } from '@/services/modules.service';
+import type { ComputedProperty } from '@/types/module-creator';
 import { ConfigTab, ChatMessage } from './useUIBuilder';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -430,6 +433,7 @@ interface ConfigPanelProps {
   schema:                     SchemaField[];
   brandColor:                 string;
   assistantName:              string;
+  computedProps?:             ComputedProperty[];
   onSetConfigTab:             (tab: ConfigTab) => void;
   onUpdateBlock:              (rowId: string, colId: string, patch: Partial<UIBlock>) => void;
   onUpdateSpan:               (rowId: string, colId: string, span: BlockSpan) => void;
@@ -445,12 +449,14 @@ interface ConfigPanelProps {
 
 export function ConfigPanel({
   rows, selectedBlockId, chatMessages, pendingProposal, isChatLoading,
-  configTab, schema, brandColor, assistantName,
+  configTab, schema, brandColor, assistantName, computedProps,
   onSetConfigTab, onUpdateBlock, onUpdateSpan,
   onSendChat, onApplyProposal, onDismissProposal,
   onUpdateContainerBlock, onAddContainerChild,
   onRemoveContainerChild, onUpdateContainerChild, onUpdateContainerChildSpan,
 }: ConfigPanelProps) {
+  const [appearancePlatform, setAppearancePlatform] = useState<'web' | 'mobile'>('web');
+
   const selected = (() => {
     if (!selectedBlockId) return null;
     const [rowId, colId] = selectedBlockId.split(':');
@@ -460,24 +466,34 @@ export function ConfigPanel({
     return { row, rowId, colId, col };
   })();
 
+  const TABS: { id: ConfigTab; label: string; icon?: React.ElementType }[] = [
+    { id: 'configure',  label: 'Configure' },
+    { id: 'appearance', label: 'Appearance', icon: PaintBrushIcon },
+    { id: 'chat',       label: `Ask ${assistantName}` },
+  ];
+
   return (
     <div className="flex flex-col h-full">
       {/* Tab strip */}
       <div className="flex gap-1 p-2 border-b border-border-primary shrink-0">
-        {(['configure', 'chat'] as const).map(tab => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => onSetConfigTab(tab)}
-            className={`flex-1 py-1.5 text-[11px] font-medium rounded-xl transition-all border ${
-              configTab === tab
-                ? 'bg-modules-aly/10 text-modules-aly border-modules-aly/20'
-                : 'text-text-tertiary hover:bg-background-tertiary hover:text-text-secondary border-transparent'
-            }`}
-          >
-            {tab === 'chat' ? `Ask ${assistantName}` : 'Configure'}
-          </button>
-        ))}
+        {TABS.map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onSetConfigTab(tab.id)}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium rounded-xl transition-all border ${
+                configTab === tab.id
+                  ? 'bg-modules-aly/10 text-modules-aly border-modules-aly/20'
+                  : 'text-text-tertiary hover:bg-background-tertiary hover:text-text-secondary border-transparent'
+              }`}
+            >
+              {Icon && <Icon size={11} />}
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Configure tab */}
@@ -503,6 +519,45 @@ export function ConfigPanel({
               onRemoveContainerChild={onRemoveContainerChild}
               onUpdateContainerChild={onUpdateContainerChild}
               onUpdateContainerChildSpan={onUpdateContainerChildSpan}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Appearance tab */}
+      {configTab === 'appearance' && (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {!selected ? (
+            <div className="flex flex-col items-center gap-3 py-10 text-center px-4">
+              <PaintBrushIcon size={24} className="text-text-tertiary/30" />
+              <p className="text-xs text-text-tertiary">Select a component to style it.</p>
+            </div>
+          ) : (
+            <AppearancePanel
+              style={selected.col.block.appearance?.[appearancePlatform] ?? {}}
+              onChange={patch => {
+                const current = selected.col.block.appearance ?? {};
+                const platStyle = current[appearancePlatform] ?? {};
+                onUpdateBlock(selected.rowId, selected.colId, {
+                  appearance: { ...current, [appearancePlatform]: { ...platStyle, ...patch } },
+                } as Partial<UIBlock>);
+              }}
+              platform={appearancePlatform}
+              onPlatformChange={setAppearancePlatform}
+              brandColor={brandColor}
+              computedProps={computedProps}
+              conditional={selected.col.block.appearance?.conditional}
+              onConditionalChange={c => {
+                const current = selected.col.block.appearance ?? {};
+                onUpdateBlock(selected.rowId, selected.colId, {
+                  appearance: { ...current, conditional: c },
+                } as Partial<UIBlock>);
+              }}
+              showLayoutControls={
+                selected.col.block.type === 'container' ||
+                selected.col.block.type === 'section_header'
+              }
+              defaultStyle={getDefaultAppearance(selected.col.block.type)}
             />
           )}
         </div>

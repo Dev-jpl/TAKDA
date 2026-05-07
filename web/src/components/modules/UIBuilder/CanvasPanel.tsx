@@ -9,6 +9,7 @@ import { UIRow, UIBlock, BlockSpan } from '@/types/ui-builder';
 import { SchemaField } from '@/services/modules.service';
 import { CanvasRow } from './CanvasRow';
 import { SPAN_CLASS } from './CanvasBlock';
+import { resolveBlockAppearance } from '@/lib/styleResolver';
 
 // ── Quick-add toolbar items ───────────────────────────────────────────────────
 
@@ -26,12 +27,13 @@ const TOOLBAR_TOOLS: { label: string; icon: React.ElementType; factory: () => UI
 // ── Preview block renderer (no edit chrome) ───────────────────────────────────
 
 function PreviewBlock({
-  block, schema, brandColor, assistantName,
+  block, schema, brandColor, assistantName, computedValues,
 }: {
-  block:         UIBlock;
-  schema:        SchemaField[];
-  brandColor:    string;
-  assistantName: string;
+  block:          UIBlock;
+  schema:         SchemaField[];
+  brandColor:     string;
+  assistantName:  string;
+  computedValues?: Record<string, unknown>;
 }) {
   const inputMock = 'w-full bg-background-tertiary/50 border border-border-primary/40 rounded-lg px-3 py-2.5 text-xs text-text-tertiary';
 
@@ -127,13 +129,14 @@ function PreviewBlock({
 // ── Preview canvas ────────────────────────────────────────────────────────────
 
 function PreviewCanvas({
-  rows, schema, moduleName, brandColor, assistantName,
+  rows, schema, moduleName, brandColor, assistantName, computedValues = {},
 }: {
-  rows:          UIRow[];
-  schema:        SchemaField[];
-  moduleName:    string;
-  brandColor:    string;
-  assistantName: string;
+  rows:           UIRow[];
+  schema:         SchemaField[];
+  moduleName:     string;
+  brandColor:     string;
+  assistantName:  string;
+  computedValues?: Record<string, unknown>;
 }) {
   return (
     <div
@@ -157,15 +160,35 @@ function PreviewCanvas({
         <div className="px-5 py-4 flex flex-col gap-4">
           {rows.length === 0 ? (
             <p className="text-xs text-text-tertiary text-center py-8">No components yet</p>
-          ) : rows.map(row => (
-            <div key={row.id} className="grid grid-cols-12 gap-3">
-              {row.columns.map(col => (
-                <div key={col.id} className={SPAN_CLASS[col.span]}>
-                  <PreviewBlock block={col.block} schema={schema} brandColor={brandColor} assistantName={assistantName} />
-                </div>
-              ))}
-            </div>
-          ))}
+          ) : rows.map(row => {
+            const rowAppear = resolveBlockAppearance(row.appearance, 'web', brandColor, computedValues);
+            return (
+              <div
+                key={row.id}
+                className={`grid grid-cols-12 gap-3 ${rowAppear.className}`}
+                style={rowAppear.style}
+              >
+                {row.columns.map(col => {
+                  const blockAppear = resolveBlockAppearance(col.block.appearance, 'web', brandColor, computedValues);
+                  return (
+                    <div
+                      key={col.id}
+                      className={`${SPAN_CLASS[col.span]} ${blockAppear.className}`}
+                      style={blockAppear.style}
+                    >
+                      <PreviewBlock
+                        block={col.block}
+                        schema={schema}
+                        brandColor={brandColor}
+                        assistantName={assistantName}
+                        computedValues={computedValues}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

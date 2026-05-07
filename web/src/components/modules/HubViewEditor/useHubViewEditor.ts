@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { HubSection, HubSectionConfig, HubViewDefinition } from '@/types/ui-builder';
 
 function uid() { return crypto.randomUUID().replace(/-/g, '').slice(0, 8); }
@@ -22,31 +22,27 @@ export function useHubViewEditor(
   initialDef: HubViewDefinition | null,
   onChange: (def: HubViewDefinition) => void,
 ): UseHubViewEditorReturn {
-  const [sections,    setSections]    = useState<HubSection[]>(() => initialDef?.sections ?? []);
-  const [selectedId,  setSelectedId]  = useState<string | null>(null);
-  const onChangeRef = useRef(onChange);
+  const [sections,   setSections]   = useState<HubSection[]>(() => initialDef?.sections ?? []);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const onChangeRef  = useRef(onChange);
   onChangeRef.current = onChange;
 
-  const commit = useCallback((next: HubSection[]) => {
-    setSections(next);
-    onChangeRef.current(buildDef(next));
-  }, []);
+  // Skip calling onChange on the initial mount — sections are already
+  // derived from initialDef so we don't need to write them back.
+  const skipRef = useRef(true);
+  useEffect(() => {
+    if (skipRef.current) { skipRef.current = false; return; }
+    onChangeRef.current(buildDef(sections));
+  }, [sections]);
 
   const addSection = useCallback((config: HubSectionConfig) => {
-    setSections(prev => {
-      const next = [...prev, { id: uid(), config }];
-      onChangeRef.current(buildDef(next));
-      return next;
-    });
+    setSections(prev => [...prev, { id: uid(), config }]);
   }, []);
 
   const removeSection = useCallback((id: string) => {
-    setSections(prev => {
-      const next = prev.filter(s => s.id !== id);
-      onChangeRef.current(buildDef(next));
-      return next;
-    });
-    setSelectedId(v => v === id ? null : v);
+    setSections(prev => prev.filter(s => s.id !== id));
+    setSelectedId(v => (v === id ? null : v));
   }, []);
 
   const moveSection = useCallback((from: number, to: number) => {
@@ -55,17 +51,12 @@ export function useHubViewEditor(
       const next = [...prev];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
-      onChangeRef.current(buildDef(next));
       return next;
     });
   }, []);
 
   const updateSection = useCallback((id: string, config: HubSectionConfig) => {
-    setSections(prev => {
-      const next = prev.map(s => s.id === id ? { ...s, config } : s);
-      onChangeRef.current(buildDef(next));
-      return next;
-    });
+    setSections(prev => prev.map(s => (s.id === id ? { ...s, config } : s)));
   }, []);
 
   const selectSection  = useCallback((id: string) => setSelectedId(id), []);

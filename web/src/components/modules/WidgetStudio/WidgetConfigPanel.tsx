@@ -1,12 +1,13 @@
 "use client";
 
-import React from 'react';
-import { CursorText, Sparkle } from '@phosphor-icons/react';
-import type { WidgetElementConfig, WidgetRow, WidgetRowAlign, WidgetRowJustify } from '@/types/ui-builder';
+import React, { useState } from 'react';
+import { CursorText, Sparkle, PaintBrush } from '@phosphor-icons/react';
+import type { WidgetElementConfig, WidgetRow, WidgetRowAlign, WidgetRowJustify, PlatformStyle } from '@/types/ui-builder';
 import type { ComputedProperty } from '@/types/module-creator';
 import type { SchemaField } from '@/services/modules.service';
 import type { ModuleAction } from '@/types/module-creator';
 import { DebouncedInput, Toggle, Label, Section } from '../UIBuilder/_configHelpers';
+import { AppearancePanel } from '../UIBuilder/AppearancePanel';
 
 const WINDOWS = [
   { value: 'today',    label: 'Today' },
@@ -302,31 +303,44 @@ interface Props {
   actions:       ModuleAction[];
   brandColor:    string;
   assistantName: string;
-  onUpdateEl:    (rowId: string, elId: string, patch: Partial<WidgetElementConfig>) => void;
-  onUpdateRow:   (rowId: string, patch: { justify?: WidgetRowJustify; align?: WidgetRowAlign }) => void;
+  onUpdateEl:    (rowId: string, elId: string, patch: Partial<WidgetElementConfig> & { appearance?: PlatformStyle }) => void;
+  onUpdateRow:   (rowId: string, patch: { justify?: WidgetRowJustify; align?: WidgetRowAlign; appearance?: PlatformStyle }) => void;
 }
+
+type WTab = 'configure' | 'appearance' | 'chat';
 
 export function WidgetConfigPanel({
   rows, selectedRowId, selectedElId, computed, schema, actions,
   brandColor, assistantName, onUpdateEl, onUpdateRow,
 }: Props) {
-  const [tab, setTab] = React.useState<'configure' | 'chat'>('configure');
+  const [tab,               setTab]               = useState<WTab>('configure');
+  const [appearPlatform,    setAppearPlatform]    = useState<'web' | 'mobile'>('web');
 
   const selectedRow = selectedRowId ? rows.find(r => r.id === selectedRowId) : null;
   const selectedEl  = selectedRow && selectedElId ? selectedRow.elements.find(e => e.id === selectedElId) : null;
+
+  const TABS: { id: WTab; label: string; icon?: React.ElementType }[] = [
+    { id: 'configure',  label: 'Configure' },
+    { id: 'appearance', label: 'Style', icon: PaintBrush },
+    { id: 'chat',       label: `Ask ${assistantName}` },
+  ];
 
   return (
     <div className="w-64 border-l border-border-primary bg-background-secondary flex flex-col h-full shrink-0">
       {/* Tab strip */}
       <div className="flex gap-1 p-2 border-b border-border-primary shrink-0">
-        {(['configure', 'chat'] as const).map(t => (
-          <button key={t} type="button" onClick={() => setTab(t)}
-            className={`flex-1 py-1.5 text-[11px] font-medium rounded-xl transition-all border ${
-              tab === t ? 'bg-modules-aly/10 text-modules-aly border-modules-aly/20' : 'text-text-tertiary hover:bg-background-tertiary border-transparent'
-            }`}>
-            {t === 'chat' ? `Ask ${assistantName}` : 'Configure'}
-          </button>
-        ))}
+        {TABS.map(t => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} type="button" onClick={() => setTab(t.id)}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-medium rounded-xl transition-all border ${
+                tab === t.id ? 'bg-modules-aly/10 text-modules-aly border-modules-aly/20' : 'text-text-tertiary hover:bg-background-tertiary border-transparent'
+              }`}>
+              {Icon && <Icon size={11} />}
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {tab === 'configure' && (
@@ -350,6 +364,51 @@ export function WidgetConfigPanel({
             <div className="flex flex-col items-center gap-3 py-10 text-center">
               <CursorText size={24} className="text-text-tertiary/30" />
               <p className="text-xs text-text-tertiary">Select an element to configure it, or click a row to adjust layout.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'appearance' && (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {selectedEl ? (
+            <AppearancePanel
+              style={selectedEl.appearance?.[appearPlatform] ?? {}}
+              onChange={patch => {
+                const cur = selectedEl.appearance ?? {};
+                onUpdateEl(selectedRowId!, selectedElId!, {
+                  appearance: { ...cur, [appearPlatform]: { ...(cur[appearPlatform] ?? {}), ...patch } },
+                });
+              }}
+              platform={appearPlatform}
+              onPlatformChange={setAppearPlatform}
+              brandColor={brandColor}
+              computedProps={computed}
+              conditional={selectedEl.appearance?.conditional}
+              onConditionalChange={c => {
+                const cur = selectedEl.appearance ?? {};
+                onUpdateEl(selectedRowId!, selectedElId!, { appearance: { ...cur, conditional: c } });
+              }}
+              showLayoutControls={false}
+            />
+          ) : selectedRow ? (
+            <AppearancePanel
+              style={selectedRow.appearance?.[appearPlatform] ?? {}}
+              onChange={patch => {
+                const cur = selectedRow.appearance ?? {};
+                onUpdateRow(selectedRowId!, {
+                  appearance: { ...cur, [appearPlatform]: { ...(cur[appearPlatform] ?? {}), ...patch } },
+                });
+              }}
+              platform={appearPlatform}
+              onPlatformChange={setAppearPlatform}
+              brandColor={brandColor}
+              showLayoutControls
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-10 text-center px-4">
+              <PaintBrush size={24} className="text-text-tertiary/30" />
+              <p className="text-xs text-text-tertiary">Select a row or element to style it.</p>
             </div>
           )}
         </div>

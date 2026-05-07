@@ -11,6 +11,7 @@ import type { ComputedProperty } from '@/types/module-creator';
 import type { SchemaField, ModuleEntry } from '@/services/modules.service';
 import { createModuleEntry, deleteModuleEntry } from '@/services/modules.service';
 import { computeStat, formatStat, getThresholdStatus, THRESHOLD_COLORS } from '@/lib/moduleCompute';
+import { resolveBlockAppearance } from '@/lib/styleResolver';
 import { WidgetRenderer } from './WidgetRenderer';
 import { DynamicUIRenderer } from './DynamicUIRenderer';
 
@@ -715,28 +716,29 @@ function Section(props: SectionProps) {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 interface HubViewRendererProps {
-  definition:    HubViewDefinition;
-  widgetDef:     WidgetDefinition | null;
-  entryFormDef:  UIDefinition | null;
+  definition:     HubViewDefinition;
+  widgetDef:      WidgetDefinition | null;
+  entryFormDef:   UIDefinition | null;
   detailViewDef?: UIDefinition | null;
-  schema:        SchemaField[];
-  computedProps: ComputedProperty[];
-  entries:       ModuleEntry[];
-  accentColor:   string;
-  moduleDefId:   string;
-  hubId:         string;
-  userId:        string;
-  widgetColSpan: number;
-  onEntrySaved:  (e: ModuleEntry) => void;
-  onEditEntry?:  (e: ModuleEntry) => void;
-  onAddEntry?:   () => void;
+  schema:         SchemaField[];
+  computedProps:  ComputedProperty[];
+  entries:        ModuleEntry[];
+  accentColor:    string;
+  moduleDefId:    string;
+  hubId:          string;
+  userId:         string;
+  widgetColSpan:  number;
+  computedValues?: Record<string, unknown>;
+  onEntrySaved:   (e: ModuleEntry) => void;
+  onEditEntry?:   (e: ModuleEntry) => void;
+  onAddEntry?:    () => void;
   onDeleteEntry?: (id: string) => void;
 }
 
 export function HubViewRenderer({
   definition, widgetDef, entryFormDef, detailViewDef, schema, computedProps,
   entries, accentColor, moduleDefId, hubId, userId, widgetColSpan,
-  onEntrySaved, onEditEntry, onAddEntry, onDeleteEntry,
+  computedValues = {}, onEntrySaved, onEditEntry, onAddEntry, onDeleteEntry,
 }: HubViewRendererProps) {
   const [activeDate,   setActiveDate]   = useState(todayISO);
   const [detailEntry,  setDetailEntry]  = useState<ModuleEntry | null>(null);
@@ -778,9 +780,15 @@ export function HubViewRenderer({
   return (
     <>
       <div className="flex flex-col gap-4 px-5 py-4">
-        {definition.sections.map(section => (
-          <Section
+        {definition.sections.map(section => {
+          const sectionAppear = resolveBlockAppearance(section.appearance, 'web', accentColor, computedValues);
+          return (
+          <div
             key={section.id}
+            className={sectionAppear.className || undefined}
+            style={Object.keys(sectionAppear.style).length ? sectionAppear.style : undefined}
+          >
+          <Section
             section={section}
             entries={filteredEntries}
             computedProps={computedProps}
@@ -800,7 +808,9 @@ export function HubViewRenderer({
             onViewEntry={handleView}
             onAddEntry={onAddEntry}
           />
-        ))}
+          </div>
+          );
+        })}
       </div>
 
       {detailEntry && (

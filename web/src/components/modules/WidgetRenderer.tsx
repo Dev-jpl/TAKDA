@@ -5,6 +5,7 @@ import type {
   WidgetDefinition, WidgetElement, WidgetElementConfig,
   WidgetRowJustify, WidgetRowAlign, WidgetSpan,
 } from '@/types/ui-builder';
+import { resolveBlockAppearance } from '@/lib/styleResolver';
 import type { ComputedProperty } from '@/types/module-creator';
 import type { SchemaField, ModuleEntry } from '@/services/modules.service';
 import {
@@ -288,17 +289,19 @@ function renderElement(props: ElemProps): React.ReactNode {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 interface WidgetRendererProps {
-  definition:    WidgetDefinition;
-  schema:        SchemaField[];
-  computedProps: ComputedProperty[];
-  entries:       ModuleEntry[];
-  accentColor:   string;
-  colSpan?:      number;
-  onAddEntry?:   () => void;
+  definition:      WidgetDefinition;
+  schema:          SchemaField[];
+  computedProps:   ComputedProperty[];
+  entries:         ModuleEntry[];
+  accentColor:     string;
+  colSpan?:        number;
+  computedValues?: Record<string, unknown>;
+  onAddEntry?:     () => void;
 }
 
 export function WidgetRenderer({
-  definition, schema, computedProps, entries, accentColor, colSpan = 2, onAddEntry,
+  definition, schema, computedProps, entries, accentColor,
+  colSpan = 2, computedValues = {}, onAddEntry,
 }: WidgetRendererProps) {
   const maxW = MAX_WIDTH[colSpan] ?? 'max-w-[440px]';
 
@@ -308,21 +311,29 @@ export function WidgetRenderer({
 
   return (
     <div className={`${maxW} flex flex-col gap-2`}>
-      {definition.rows.map(row => (
-        <div
-          key={row.id}
-          className={`grid grid-cols-3 gap-2 ${JUSTIFY_CLASS[row.justify]} ${ALIGN_CLASS[row.align]}`}
-        >
-          {row.elements.map((el: WidgetElement) => (
-            <div
-              key={el.id}
-              className={`${SPAN_CLASS[el.span]} bg-background-secondary border border-border-primary rounded-xl overflow-hidden`}
-            >
-              {renderElement({ config: el.config, entries, computedProps, schema, accentColor, onAddEntry })}
-            </div>
-          ))}
-        </div>
-      ))}
+      {definition.rows.map(row => {
+        const rowAppear = resolveBlockAppearance(row.appearance, 'web', accentColor, computedValues);
+        return (
+          <div
+            key={row.id}
+            className={`grid grid-cols-3 gap-2 ${JUSTIFY_CLASS[row.justify]} ${ALIGN_CLASS[row.align]} ${rowAppear.className}`}
+            style={rowAppear.style}
+          >
+            {row.elements.map((el: WidgetElement) => {
+              const elAppear = resolveBlockAppearance(el.appearance, 'web', accentColor, computedValues);
+              return (
+                <div
+                  key={el.id}
+                  className={`${SPAN_CLASS[el.span]} bg-background-secondary border border-border-primary rounded-xl overflow-hidden ${elAppear.className}`}
+                  style={elAppear.style}
+                >
+                  {renderElement({ config: el.config, entries, computedProps, schema, accentColor, onAddEntry })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }

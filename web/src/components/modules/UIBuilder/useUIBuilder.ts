@@ -8,7 +8,7 @@ import { callUIBuilderAgent } from './agentChat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ConfigTab = 'configure' | 'chat';
+export type ConfigTab = 'configure' | 'appearance' | 'chat';
 
 export interface ChatMessage {
   id:          string;

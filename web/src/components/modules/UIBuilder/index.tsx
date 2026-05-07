@@ -14,13 +14,16 @@ import { ConfigPanel } from './ConfigPanel';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
+import type { ComputedProperty } from '@/types/module-creator';
+
 interface UIBuilderProps {
-  schema:             SchemaField[];
-  initialDefinition?: UIDefinition | null;
-  brandColor?:        string;
-  assistantName?:     string;
-  moduleName?:        string;
-  onChange:           (definition: UIDefinition) => void;
+  schema:              SchemaField[];
+  initialDefinition?:  UIDefinition | null;
+  brandColor?:         string;
+  assistantName?:      string;
+  moduleName?:         string;
+  computedProperties?: ComputedProperty[];
+  onChange:            (definition: UIDefinition) => void;
 }
 
 // ── Panel toggle button ───────────────────────────────────────────────────────
@@ -58,6 +61,7 @@ export function UIBuilder({
   brandColor,
   assistantName,
   moduleName = 'Module',
+  computedProperties,
   onChange,
 }: UIBuilderProps) {
   const accent = brandColor || 'var(--modules-aly)';
@@ -207,6 +211,7 @@ export function UIBuilder({
               schema={schema}
               brandColor={accent}
               assistantName={aName}
+              computedProps={computedProperties}
               onSetConfigTab={setConfigTab}
               onUpdateBlock={updateBlock}
               onUpdateSpan={updateSpan}

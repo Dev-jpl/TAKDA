@@ -9,7 +9,8 @@ import {
   getModuleEntries,
   deleteModuleEntry,
 } from '@/services/modules.service';
-import { computeStat, formatStat, getThresholdStatus, THRESHOLD_COLORS } from '@/lib/moduleCompute';
+import { formatStat, getThresholdStatus, THRESHOLD_COLORS } from '@/lib/moduleCompute';
+import { useComputedProperties } from '@/lib/computedProperties';
 import { ModuleEntryRow } from './ModuleEntryRow';
 import { ModuleEntrySheet } from './ModuleEntrySheet';
 import { WidgetRenderer } from './WidgetRenderer';
@@ -156,10 +157,14 @@ export function CustomModuleView({
     setSheetOpen(true);
   };
 
-  // ── Computed stats (for fallback view) ────────────────────────────────────
+  // ── Computed values map (used by all renderers + fallback stat cards) ────────
+  const computedValues = useComputedProperties(definition, entries);
   const stats = useMemo(
-    () => computedProps.map(p => ({ prop: p, value: computeStat(p, entries) })),
-    [computedProps, entries],
+    () => computedProps.map(p => ({
+      prop: p,
+      value: typeof computedValues[p.key] === 'number' ? computedValues[p.key] as number : null,
+    })),
+    [computedProps, computedValues],
   );
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
@@ -218,6 +223,7 @@ export function CustomModuleView({
             hubId={hubId}
             userId={userId ?? ''}
             widgetColSpan={widgetColSpan}
+            computedValues={computedValues}
             onEntrySaved={handleEntrySaved}
             onEditEntry={openEdit}
             onAddEntry={openAdd}
@@ -237,6 +243,7 @@ export function CustomModuleView({
                 entries={entries}
                 accentColor={accentColor}
                 colSpan={widgetColSpan}
+                computedValues={computedValues}
                 onAddEntry={openAdd}
               />
             </div>

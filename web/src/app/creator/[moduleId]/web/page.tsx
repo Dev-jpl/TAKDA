@@ -106,6 +106,7 @@ export default function WebInterfacePage() {
           brandColor={definition.brand_color ?? undefined}
           assistantName="Aly"
           moduleName={definition.name || 'Module'}
+          computedProperties={definition.computed_properties ?? []}
           onChange={handleChange}
         />
       )}
@@ -117,6 +118,7 @@ export default function WebInterfacePage() {
           brandColor={definition.brand_color ?? undefined}
           assistantName="Aly"
           moduleName={definition.name || 'Module'}
+          computedProperties={definition.computed_properties ?? []}
           onChange={handleChange}
         />
       )}

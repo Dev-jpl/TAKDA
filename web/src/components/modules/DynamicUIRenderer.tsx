@@ -4,18 +4,21 @@ import React, { useState } from 'react';
 import { SparkleIcon, PlusIcon, MinusIcon, CheckIcon } from '@phosphor-icons/react';
 import { UIDefinition, UIBlock, UIColumn, BlockSpan } from '@/types/ui-builder';
 import { SchemaField } from '@/services/modules.service';
+import { resolveBlockAppearance } from '@/lib/styleResolver';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface DynamicUIRendererProps {
-  uiDefinition:   UIDefinition;
-  schema:         SchemaField[];
-  mode:           'preview' | 'entry' | 'detail';
+  uiDefinition:    UIDefinition;
+  schema:          SchemaField[];
+  mode:            'preview' | 'entry' | 'detail';
   existingValues?: Record<string, unknown>;
-  onSubmit?:      (data: Record<string, unknown>) => Promise<void>;
-  onCancel?:      () => void;
-  brandColor?:    string;
-  assistantName?: string;
+  onSubmit?:       (data: Record<string, unknown>) => Promise<void>;
+  onCancel?:       () => void;
+  brandColor?:     string;
+  assistantName?:  string;
+  platform?:       'web' | 'mobile';
+  computedValues?: Record<string, unknown>;
 }
 
 // ── Tailwind col-span map (must be literal strings for Tailwind JIT) ──────────
@@ -461,6 +464,8 @@ export function DynamicUIRenderer({
   onCancel,
   brandColor,
   assistantName,
+  platform = 'web',
+  computedValues = {},
 }: DynamicUIRendererProps) {
   const [values,     setValues]     = useState<Record<string, unknown>>(existingValues ?? {});
   const [errors,     setErrors]     = useState<Record<string, string>>({});
@@ -522,30 +527,41 @@ export function DynamicUIRenderer({
 
   return (
     <div className="flex flex-col gap-4 px-4 py-5">
-      {uiDefinition.rows.map(row => (
-        <div key={row.id} className="grid grid-cols-12 gap-3">
-          {row.columns.map(col => (
-            <div
-              key={col.id}
-              className={`col-span-12 ${SPAN_CLASS[col.span]}`}
-            >
-              <BlockRouter
-                block={col.block}
-                schema={schema}
-                values={values}
-                errors={errors}
-                setValues={setValues}
-                mode={mode}
-                brandColor={brandColor}
-                assistantName={assistantName}
-                submitting={submitting}
-                handleSubmit={handleSubmit}
-                onCancel={onCancel}
-              />
-            </div>
-          ))}
-        </div>
-      ))}
+      {uiDefinition.rows.map(row => {
+        const rowAppear = resolveBlockAppearance(row.appearance, platform, brandColor, computedValues);
+        return (
+          <div
+            key={row.id}
+            className={`grid grid-cols-12 gap-3 ${rowAppear.className}`}
+            style={rowAppear.style}
+          >
+            {row.columns.map(col => {
+              const blockAppear = resolveBlockAppearance(col.block.appearance, platform, brandColor, computedValues);
+              return (
+                <div
+                  key={col.id}
+                  className={`col-span-12 ${SPAN_CLASS[col.span]} ${blockAppear.className}`}
+                  style={blockAppear.style}
+                >
+                  <BlockRouter
+                    block={col.block}
+                    schema={schema}
+                    values={values}
+                    errors={errors}
+                    setValues={setValues}
+                    mode={mode}
+                    brandColor={brandColor}
+                    assistantName={assistantName}
+                    submitting={submitting}
+                    handleSubmit={handleSubmit}
+                    onCancel={onCancel}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
 
       {/* Global submit error */}
       {errors._submit && (

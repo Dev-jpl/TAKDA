@@ -1,3 +1,41 @@
+// ── Appearance system ──────────────────────────────────────────────────────────
+
+export interface BlockStyle {
+  padding?:      'none' | 'tight' | 'normal' | 'relaxed' | 'loose'
+  padding_x?:    'none' | 'tight' | 'normal' | 'relaxed' | 'loose'
+  padding_y?:    'none' | 'tight' | 'normal' | 'relaxed' | 'loose'
+  gap?:          'none' | 'tight' | 'normal' | 'relaxed'
+  font_size?:    'xs' | 'sm' | 'base' | 'lg' | 'xl' | '2xl'
+  font_weight?:  'normal' | 'medium'
+  text_color?:   'primary' | 'secondary' | 'muted' | 'brand' | 'success' | 'warning' | 'danger'
+  text_align?:   'left' | 'center' | 'right'
+  bg?:           'none' | 'subtle' | 'card' | 'elevated' | 'brand'
+  border?:       'none' | 'default' | 'accent' | 'brand'
+  radius?:       'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full'
+  direction?:    'row' | 'column'
+  align?:        'start' | 'center' | 'end'
+  justify?:      'start' | 'center' | 'end' | 'between'
+  wrap?:         boolean
+  width?:        'auto' | 'full' | 'half' | 'third' | 'quarter'
+  opacity?:      'full' | '75' | '50' | '25'
+  hidden?:       boolean
+}
+
+export interface ConditionalStyle {
+  computed_key: string
+  operator:     'gt' | 'lt' | 'eq' | 'gte' | 'lte'
+  value:        number
+  then_style:   Partial<BlockStyle>
+}
+
+export interface PlatformStyle {
+  web?:         BlockStyle
+  mobile?:      BlockStyle
+  conditional?: ConditionalStyle
+}
+
+// ── Entry form types ───────────────────────────────────────────────────────────
+
 export type BlockSpan = 3 | 4 | 6 | 8 | 9 | 12
 
 export type ComponentType =
@@ -14,25 +52,27 @@ export type ComponentType =
 
 export type UIBlock =
   | {
-      type: 'field_input'
-      field_key: string
-      component: ComponentType
-      label: string
+      type:        'field_input'
+      field_key:   string
+      component:   ComponentType
+      label:       string
       placeholder?: string
-      show_label: boolean
+      show_label:  boolean
+      appearance?: PlatformStyle
     }
-  | { type: 'section_header'; title: string; subtitle?: string }
-  | { type: 'divider' }
-  | { type: 'spacer'; size: 'sm' | 'md' | 'lg' }
-  | { type: 'assistant_nudge'; hint?: string }
-  | { type: 'save_button'; label: string }
-  | { type: 'cancel_button'; label: string }
+  | { type: 'section_header'; title: string; subtitle?: string; appearance?: PlatformStyle }
+  | { type: 'divider'; appearance?: PlatformStyle }
+  | { type: 'spacer'; size: 'sm' | 'md' | 'lg'; appearance?: PlatformStyle }
+  | { type: 'assistant_nudge'; hint?: string; appearance?: PlatformStyle }
+  | { type: 'save_button'; label: string; appearance?: PlatformStyle }
+  | { type: 'cancel_button'; label: string; appearance?: PlatformStyle }
   | {
-      type:       'container'
-      label?:     string        // optional caption above children
-      bordered:   boolean       // border border-border-primary
-      background: boolean       // bg-background-secondary
-      children:   ContainerChild[]
+      type:        'container'
+      label?:      string
+      bordered:    boolean
+      background:  boolean
+      children:    ContainerChild[]
+      appearance?: PlatformStyle
     }
 
 /** A UIBlock that is not itself a container — enforces max 1 level of nesting. */
@@ -47,19 +87,20 @@ export interface ContainerChild {
 }
 
 export interface UIColumn {
-  id: string
+  id:   string
   span: BlockSpan
   block: UIBlock
 }
 
 export interface UIRow {
-  id: string
-  columns: UIColumn[]
+  id:          string
+  columns:     UIColumn[]
+  appearance?: PlatformStyle
 }
 
 export interface UIDefinition {
   version: '1.0'
-  rows: UIRow[]
+  rows:    UIRow[]
 }
 
 // ── Widget Studio types ────────────────────────────────────────────────────────
@@ -87,16 +128,18 @@ export type WidgetElementConfig =
   | { type: 'action_button'; label: string; action_id?: string; style: 'primary' | 'outline' }
 
 export interface WidgetElement {
-  id:     string
-  span:   WidgetSpan
-  config: WidgetElementConfig
+  id:          string
+  span:        WidgetSpan
+  config:      WidgetElementConfig
+  appearance?: PlatformStyle
 }
 
 export interface WidgetRow {
-  id:       string
-  justify:  WidgetRowJustify
-  align:    WidgetRowAlign
-  elements: WidgetElement[]
+  id:          string
+  justify:     WidgetRowJustify
+  align:       WidgetRowAlign
+  elements:    WidgetElement[]
+  appearance?: PlatformStyle
 }
 
 export interface WidgetDefinition {
@@ -137,8 +180,9 @@ export type HubSectionConfig =
     }
 
 export interface HubSection {
-  id:     string
-  config: HubSectionConfig
+  id:          string
+  config:      HubSectionConfig
+  appearance?: PlatformStyle
 }
 
 export interface HubViewDefinition {

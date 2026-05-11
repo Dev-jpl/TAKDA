@@ -11,6 +11,7 @@ import {
 } from '@/services/modules.service';
 import { formatStat, getThresholdStatus, THRESHOLD_COLORS } from '@/lib/moduleCompute';
 import { useComputedProperties } from '@/lib/computedProperties';
+import { fireActionsByTrigger, runActionById, type ActionRunContext } from '@/lib/actionRunner';
 import { ModuleEntryRow } from './ModuleEntryRow';
 import { ModuleEntrySheet } from './ModuleEntrySheet';
 import { WidgetRenderer } from './WidgetRenderer';
@@ -73,10 +74,12 @@ export function CustomModuleView({
   const [loading,      setLoading]      = useState(true);
   const [sheetOpen,    setSheetOpen]    = useState(false);
   const [editingEntry, setEditingEntry] = useState<ModuleEntry | undefined>();
+  const [toast,        setToast]        = useState<{ msg: string; style: 'success' | 'warning' | 'error' | 'info' } | null>(null);
 
   const computedProps = definition.computed_properties ?? [];
   const accentColor   = definition.brand_color || 'var(--modules-aly)';
   const widgetColSpan = definition.web_config?.widget_col_span ?? 2;
+  const webActions    = definition.behaviors?.web_actions ?? [];
 
   // ── Schema (primary collection → flat field list) ─────────────────────────
   const flatSchema = useMemo(() => {
@@ -128,7 +131,11 @@ export function CustomModuleView({
     return () => window.removeEventListener('takda:data_updated', handler);
   }, [load]);
 
-  const handleEntrySaved = (saved: ModuleEntry) => {
+  // Refs so on_entry_saved callback always uses latest values without ordering constraints
+  const computedValuesRef = React.useRef<Record<string, unknown>>({});
+  const showFeedbackRef   = React.useRef<(msg: string, style?: 'success'|'warning'|'error'|'info') => void>(() => {});
+
+  const handleEntrySaved = useCallback((saved: ModuleEntry) => {
     setEntries(prev => {
       const idx = prev.findIndex(e => e.id === saved.id);
       if (idx >= 0) {
@@ -137,7 +144,19 @@ export function CustomModuleView({
       return [saved, ...prev];
     });
     window.dispatchEvent(new Event('takda:data_updated'));
-  };
+    if (webActions.some(a => a.trigger === 'on_entry_saved')) {
+      fireActionsByTrigger('on_entry_saved', webActions, {
+        moduleDefId:    definition.id,
+        hubId,
+        userId:         userId ?? '',
+        entry:          saved,
+        computedValues: computedValuesRef.current,
+        onFeedback:     showFeedbackRef.current,
+        onEntryCreated: handleEntrySaved,
+        onEntryDeleted: handleDelete,
+      }).catch(console.error);
+    }
+  }, [webActions, definition.id, hubId, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = async (entryId: string) => {
     setEntries(prev => prev.filter(e => e.id !== entryId));
@@ -167,6 +186,32 @@ export function CustomModuleView({
     [computedProps, computedValues],
   );
 
+  // Keep refs in sync so on_entry_saved closure uses latest values
+  computedValuesRef.current = computedValues;
+
+  // ── Action runner helpers ────────────────────────────────────────────────
+  const showFeedback = useCallback((msg: string, style: 'success' | 'warning' | 'error' | 'info' = 'info') => {
+    setToast({ msg, style });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+  showFeedbackRef.current = showFeedback;
+
+  const buildRunCtx = useCallback((entry?: ModuleEntry): ActionRunContext => ({
+    moduleDefId:     definition.id,
+    hubId,
+    userId:          userId ?? '',
+    entry,
+    computedValues,
+    onFeedback:      showFeedback,
+    onEntryCreated:  handleEntrySaved,
+    onEntryUpdated:  handleEntrySaved,
+    onEntryDeleted:  handleDelete,
+  }), [definition.id, hubId, userId, computedValues, showFeedback]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRunActionById = useCallback((actionId: string, entry?: ModuleEntry) => {
+    runActionById(actionId, webActions, buildRunCtx(entry)).catch(console.error);
+  }, [webActions, buildRunCtx]);
+
   // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -187,8 +232,22 @@ export function CustomModuleView({
   // ── Determine whether the hub_view has an inline entry form panel ─────────
   const hasEntryPanel = hubViewDef?.sections.some(s => s.config.type === 'entry_form_panel');
 
+  const TOAST_COLORS = {
+    success: 'text-green-400 bg-green-400/10 border-green-400/20',
+    warning: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+    error:   'text-red-400 bg-red-400/10 border-red-400/20',
+    info:    'text-text-secondary bg-background-tertiary border-border-primary',
+  };
+
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col relative">
+
+      {/* ── Action feedback toast ───────────────────────────────────────── */}
+      {toast && (
+        <div className={`mx-5 mt-3 px-4 py-2.5 rounded-xl border text-[12px] font-medium transition-all ${TOAST_COLORS[toast.style]}`}>
+          {toast.msg}
+        </div>
+      )}
 
       {/* ── Hub View: designed layout ──────────────────────────────────── */}
       {hubViewDef ? (
@@ -228,6 +287,7 @@ export function CustomModuleView({
             onEditEntry={openEdit}
             onAddEntry={openAdd}
             onDeleteEntry={handleDelete}
+            onRunAction={handleRunActionById}
           />
         </>
       ) : (
@@ -245,6 +305,7 @@ export function CustomModuleView({
                 colSpan={widgetColSpan}
                 computedValues={computedValues}
                 onAddEntry={openAdd}
+                onRunAction={handleRunActionById}
               />
             </div>
           ) : stats.length > 0 ? (

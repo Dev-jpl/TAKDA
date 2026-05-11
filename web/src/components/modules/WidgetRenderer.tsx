@@ -39,6 +39,7 @@ interface ElemProps {
   schema:          SchemaField[];
   accentColor:     string;
   onAddEntry?:     () => void;
+  onRunAction?:    (actionId: string) => void;
 }
 
 // ── Individual element renderers ──────────────────────────────────────────────
@@ -251,13 +252,20 @@ function EntryListEl({ config, entries, schema }: ElemProps) {
   );
 }
 
-function ActionButtonEl({ config, accentColor, onAddEntry }: ElemProps) {
+function ActionButtonEl({ config, accentColor, onAddEntry, onRunAction }: ElemProps) {
   if (config.type !== 'action_button') return null;
+  const handleClick = () => {
+    if (config.action_id && onRunAction) {
+      onRunAction(config.action_id);
+    } else {
+      onAddEntry?.();
+    }
+  };
   return (
     <div className="px-3 py-2">
       <button
         type="button"
-        onClick={onAddEntry}
+        onClick={handleClick}
         className={`w-full text-xs font-semibold py-2 px-4 rounded-xl transition-all ${
           config.style === 'primary'
             ? 'text-white hover:opacity-90'
@@ -301,11 +309,12 @@ interface WidgetRendererProps {
   colSpan?:        number;
   computedValues?: Record<string, unknown>;
   onAddEntry?:     () => void;
+  onRunAction?:    (actionId: string) => void;
 }
 
 export function WidgetRenderer({
   definition, schema, computedProps, entries, accentColor,
-  colSpan = 2, computedValues = {}, onAddEntry,
+  colSpan = 2, computedValues = {}, onAddEntry, onRunAction,
 }: WidgetRendererProps) {
   const maxW = MAX_WIDTH[colSpan] ?? 'max-w-[440px]';
 
@@ -331,7 +340,7 @@ export function WidgetRenderer({
                   className={`${SPAN_CLASS[el.span]} bg-background-secondary border border-border-primary rounded-xl overflow-hidden ${elAppear.className}`}
                   style={elAppear.style}
                 >
-                  {renderElement({ config: el.config, entries, computedProps, computedValues, schema, accentColor, onAddEntry })}
+                  {renderElement({ config: el.config, entries, computedProps, computedValues, schema, accentColor, onAddEntry, onRunAction })}
                 </div>
               );
             })}

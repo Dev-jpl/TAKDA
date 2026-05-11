@@ -168,6 +168,7 @@ Tool guidance:
 - Match the user's words against each module's keywords to pick the right slug.
 - Use the module's example phrase as a guide for how to parse field values from natural language.
 - When a user lists multiple items (e.g. "chicken 79, rice 15"), call the tool once per item.
+- If a module shows "⚡ Proactive" messages, weave the most relevant one naturally into your reply — don't just paste it verbatim.
 
 Today is {now_str}."""
 
@@ -208,6 +209,158 @@ def get_fast_model():
         streaming=False,
         temperature=0.1,
     )
+
+
+# ── Module data helpers ───────────────────────────────────────────────────────
+
+def _window_filter(entries: list, window: str | None) -> list:
+    """Filter module entries by the computed property's time window."""
+    from datetime import datetime, timezone, timedelta
+    if not window or window == "all":
+        return entries
+    now = datetime.now(timezone.utc)
+
+    def ts(e):
+        try:
+            return datetime.fromisoformat(e.get("created_at", "").replace("Z", "+00:00"))
+        except Exception:
+            return now
+
+    if window == "today":
+        today = now.date()
+        return [e for e in entries if ts(e).date() == today]
+    if window in ("week", "last_7d"):
+        cutoff = now - timedelta(days=7)
+        return [e for e in entries if ts(e) >= cutoff]
+    if window == "month":
+        return [e for e in entries if ts(e).month == now.month and ts(e).year == now.year]
+    if window == "last_30d":
+        cutoff = now - timedelta(days=30)
+        return [e for e in entries if ts(e) >= cutoff]
+    return entries
+
+
+def _eval_computed_prop(prop: dict, entries: list):
+    """Evaluate a single computed property against a list of entries."""
+    ptype = prop.get("type", "")
+    field = prop.get("source_field", "")
+    windowed = _window_filter(entries, prop.get("window"))
+
+    try:
+        if ptype == "count":
+            return len(windowed)
+
+        if not field:
+            return None
+
+        values = []
+        for e in windowed:
+            raw = e.get("data", {}).get(field)
+            try:
+                n = float(raw)
+                if n == n:          # filter NaN
+                    values.append(n)
+            except (TypeError, ValueError):
+                pass
+
+        if ptype == "sum":   return sum(values)
+        if ptype == "avg":   return sum(values) / len(values) if values else None
+        if ptype == "min":   return min(values) if values else None
+        if ptype == "max":   return max(values) if values else None
+    except Exception:
+        pass
+    return None
+
+
+def _fmt_cv(value, prop: dict) -> str | None:
+    """Format a computed value for Aly's context."""
+    if value is None:
+        return None
+    unit      = prop.get("unit", "")
+    fmt       = prop.get("format", "")
+    precision = prop.get("precision", 0)
+    suffix    = f" {unit}" if unit else ""
+    try:
+        n = float(value)
+        if fmt == "percent":  return f"{round(n)}%"
+        if fmt == "decimal":  return f"{n:.{precision}f}{suffix}"
+        rounded = int(n) if n == int(n) else round(n, 1)
+        return f"{rounded}{suffix}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _fmt_entry(data: dict) -> str:
+    """Format an entry data dict as a compact readable string."""
+    parts = [f"{k}: {v}" for k, v in data.items()
+             if v not in (None, "", False) and not str(k).startswith("_")]
+    return "{" + ", ".join(parts) + "}"
+
+
+# Maps natural-language operator words to Python comparisons
+_OP_MAP = {
+    "exceeds": ">", "above": ">", "over": ">", "greater than": ">", ">": ">",
+    "below": "<",  "under": "<",  "less than": "<",                  "<": "<",
+    "at least": ">=", ">=": ">=",
+    "at most": "<=",  "<=": "<=",
+    "equals": "==", "is": "==", "=": "==", "==": "==",
+}
+
+def _check_insight_condition(condition: str, computed_values: dict) -> bool:
+    """
+    Evaluate a proactive insight condition string against live computed values.
+
+    Supports two formats:
+      Structured:  "computed_key > 2000"  or  "computed_key exceeds 2000"
+      Free-text:   "when total calories exceeds goal"  → always include (can't parse)
+
+    Returns True if the condition is met OR cannot be evaluated (fail-open so the
+    creator's messages are never silently suppressed).
+    """
+    if not condition or not computed_values:
+        return True  # no condition or no data → include as a standing hint
+
+    cond = condition.strip().lower()
+    # Strip common prefixes
+    for prefix in ("when ", "if "):
+        if cond.startswith(prefix):
+            cond = cond[len(prefix):]
+
+    # Try to match: <label_or_key> <operator> <number>
+    import re
+    for op_word, op_sym in sorted(_OP_MAP.items(), key=lambda x: -len(x[0])):
+        pattern = rf"^(.+?)\s+{re.escape(op_word)}\s+([\d.]+)$"
+        m = re.match(pattern, cond)
+        if not m:
+            continue
+        key_phrase = m.group(1).strip()
+        try:
+            threshold = float(m.group(2))
+        except ValueError:
+            continue
+
+        # Look up the computed value — match by label (case-insensitive) or key
+        actual = None
+        for cv_label, cv_display in computed_values.items():
+            if key_phrase in cv_label.lower() or cv_label.lower() in key_phrase:
+                # Strip unit suffix and parse as number
+                try:
+                    actual = float(str(cv_display).split()[0].replace(",", ""))
+                except (ValueError, IndexError):
+                    pass
+                if actual is not None:
+                    break
+
+        if actual is None:
+            return True  # key not found → fail-open
+
+        try:
+            return eval(f"{actual} {op_sym} {threshold}")  # safe: only numbers + operator
+        except Exception:
+            return True
+
+    # Condition couldn't be parsed → include as a standing hint
+    return True
 
 
 # ── Node 1: Load context ──────────────────────────────────────────────────────
@@ -381,12 +534,49 @@ async def node_load_context(state: AgentState) -> AgentState:
 
         if installed_slugs:
             def_res = supabase.table("module_definitions") \
-                .select("slug,name,description,schema,aly_config") \
+                .select("id,slug,name,description,schema,schemas,aly_config,computed_properties") \
                 .in_("slug", list(installed_slugs)) \
                 .execute()
             module_definitions = def_res.data or []
     except Exception as e:
         print(f"[node_load_context] module_definitions error: {e}")
+
+    # For each installed module: load recent entries and evaluate computed properties.
+    # This lets Aly answer questions like "how many calories have I had today?"
+    for module in module_definitions:
+        try:
+            aly              = module.get("aly_config") or {}
+            n_entries        = int(aly.get("load_last_n_entries", 10))
+            include_computed = aly.get("include_computed_in_context", True)
+            def_id           = module.get("id")
+            if not def_id:
+                continue
+
+            # Load recent entries
+            q = supabase.table("module_entries") \
+                .select("data,created_at") \
+                .eq("module_def_id", def_id) \
+                .eq("user_id", user_id) \
+                .order("created_at", desc=True) \
+                .limit(n_entries)
+            if hub_ids:
+                q = q.in_("hub_id", hub_ids)
+            entries = q.execute().data or []
+            module["_entries"] = entries
+
+            # Evaluate computed properties
+            if include_computed:
+                computed_values = {}
+                for prop in (module.get("computed_properties") or []):
+                    val = _eval_computed_prop(prop, entries)
+                    display = _fmt_cv(val, prop)
+                    if display:
+                        label = prop.get("label") or prop.get("key", "")
+                        computed_values[label] = display
+                module["_computed_values"] = computed_values
+
+        except Exception as e:
+            print(f"[node_load_context] module data error ({module.get('slug')}): {e}")
 
     return {
         **state,
@@ -591,22 +781,75 @@ User: {state['user_message']}"""
 
     # Module definitions for the system prompt — include aly_config so Aly
     # knows the intent keywords and expected log format for each module.
+    def _resolve_fields(m: dict) -> list:
+        """Return the primary schema fields, supporting both V1 (flat schema[]) and V2 (schemas{})."""
+        # V1 flat array
+        flat = m.get("schema") or []
+        if flat:
+            return [f for f in flat if isinstance(f, dict)]
+        # V2 collection system — prefer primary role, fall back to first collection
+        schemas_obj = m.get("schemas") or {}
+        primary, first = None, None
+        for coll in schemas_obj.values():
+            if not isinstance(coll, dict):
+                continue
+            if first is None:
+                first = coll
+            if coll.get("role") == "primary":
+                primary = coll
+                break
+        chosen = primary or first
+        return [f for f in (chosen or {}).get("fields", []) if isinstance(f, dict)]
+
     def _fmt_module(m: dict) -> str:
-        aly       = m.get("aly_config") or {}
-        keywords  = aly.get("intent_keywords") or []
-        ctx       = aly.get("context_hint", "").strip()
-        example   = aly.get("log_prompt", "").strip()
-        lines     = [f"- {m['slug']}: {m['name']}"]
+        aly      = m.get("aly_config") or {}
+        keywords = aly.get("intent_keywords") or []
+        ctx      = aly.get("context_hint", "").strip()
+        example  = aly.get("log_prompt", "").strip()
+        lines    = [f"- {m['slug']}: {m['name']}"]
         if ctx:
             lines.append(f"  About: {ctx}")
         if keywords:
             lines.append(f"  Keywords: {', '.join(keywords)}")
         if example:
             lines.append(f"  Example: \"{example}\"")
-        schema = m.get("schema") or []
-        if schema:
-            field_names = [f"{f.get('key')} ({f.get('type')})" for f in schema if isinstance(f, dict)]
+
+        fields = _resolve_fields(m)
+        if fields:
+            field_names = [f"{f.get('key')} ({f.get('type')})" for f in fields]
             lines.append(f"  Fields: {', '.join(field_names)}")
+
+        # Live computed stats — lets Aly answer "how much have I logged today?"
+        computed = m.get("_computed_values") or {}
+        if computed:
+            stats = ", ".join(f"{k}: {v}" for k, v in computed.items())
+            lines.append(f"  Current stats: {stats}")
+
+        # Last 3 entries for recency context
+        entries = m.get("_entries") or []
+        if entries:
+            previews = [_fmt_entry(e.get("data", {})) for e in entries[:3]]
+            lines.append(f"  Recent entries: {' | '.join(previews)}")
+
+        # Proactive insights — conditions the creator wants Aly to watch for
+        insights = aly.get("proactive_insights") or []
+        active_insights = []
+        for insight in insights[:5]:
+            msg  = (insight.get("message") or "").strip()
+            cond = (insight.get("condition") or "").strip()
+            if not msg:
+                continue
+            # Try to evaluate structured conditions against live computed values
+            # Falls back to always-include if condition can't be parsed
+            triggered = _check_insight_condition(cond, computed)
+            if triggered:
+                active_insights.append(msg)
+
+        if active_insights:
+            lines.append("  ⚡ Proactive (say this now):")
+            for msg in active_insights:
+                lines.append(f"    \"{msg}\"")
+
         return "\n".join(lines)
 
     modules_text = "\n\n".join([_fmt_module(m) for m in state.get("module_definitions", [])])

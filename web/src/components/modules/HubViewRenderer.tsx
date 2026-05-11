@@ -607,6 +607,7 @@ interface SectionProps {
   onDeleteEntry:  (id: string) => void;
   onViewEntry?:   (e: ModuleEntry) => void;
   onAddEntry?:    () => void;
+  onRunAction?:   (actionId: string, entry?: ModuleEntry) => void;
   setActiveDate:  (d: string) => void;
 }
 
@@ -615,7 +616,7 @@ function Section(props: SectionProps) {
     section, entries, computedProps, computedValues, schema, accentColor,
     widgetDef, entryFormDef, moduleDefId, hubId, userId,
     widgetColSpan, activeDate, dateField,
-    onEntrySaved, onDeleteEntry, onViewEntry, onAddEntry, setActiveDate,
+    onEntrySaved, onDeleteEntry, onViewEntry, onAddEntry, onRunAction, setActiveDate,
   } = props;
   const { config } = section;
 
@@ -679,6 +680,7 @@ function Section(props: SectionProps) {
           accentColor={accentColor}
           colSpan={widgetColSpan}
           onAddEntry={onAddEntry}
+          onRunAction={onRunAction}
         />
       );
 
@@ -737,12 +739,13 @@ interface HubViewRendererProps {
   onEditEntry?:   (e: ModuleEntry) => void;
   onAddEntry?:    () => void;
   onDeleteEntry?: (id: string) => void;
+  onRunAction?:   (actionId: string, entry?: ModuleEntry) => void;
 }
 
 export function HubViewRenderer({
   definition, widgetDef, entryFormDef, detailViewDef, schema, computedProps,
   entries, accentColor, moduleDefId, hubId, userId, widgetColSpan,
-  computedValues = {}, onEntrySaved, onEditEntry, onAddEntry, onDeleteEntry,
+  computedValues = {}, onEntrySaved, onEditEntry, onAddEntry, onDeleteEntry, onRunAction,
 }: HubViewRendererProps) {
   const [activeDate,   setActiveDate]   = useState(todayISO);
   const [detailEntry,  setDetailEntry]  = useState<ModuleEntry | null>(null);
@@ -797,6 +800,7 @@ export function HubViewRenderer({
             entries={filteredEntries}
             computedProps={computedProps}
             computedValues={computedValues}
+            onRunAction={onRunAction}
             schema={schema}
             accentColor={accentColor}
             widgetDef={widgetDef}

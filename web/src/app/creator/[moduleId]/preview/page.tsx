@@ -1,89 +1,106 @@
 "use client";
 
-import React, { useMemo } from 'react';
-import Link from 'next/link';
-import { Plus, ArrowRight } from '@phosphor-icons/react';
+import React, { useMemo, useState } from 'react';
 import { useModuleEditor } from '@/contexts/ModuleEditorContext';
-import { CustomModuleView } from '@/components/modules/CustomModuleView';
-import type { ModuleDefinitionV2 } from '@/types/module-creator';
+import { PreviewModuleView } from '@/components/modules/PreviewModuleView';
+import { evaluateComputedProperties, formatComputedValue } from '@/lib/computedProperties';
+import type { ModuleDefinitionV2, SchemaField } from '@/types/module-creator';
+import type { ModuleEntry } from '@/services/modules.service';
 
-// ── Field type display ────────────────────────────────────────────────────────
+// ── Sample data generator ─────────────────────────────────────────────────────
 
-function fieldTypeBadge(type: string): string {
-  const map: Record<string, string> = {
-    text: 'Text', string: 'Text', number: 'Number', boolean: 'Toggle',
-    date: 'Date', datetime: 'DateTime', select: 'Select',
-    multi_select: 'Multi', counter: 'Counter', list: 'List',
-    relation: 'Relation', rich_text: 'Rich', media: 'Media',
-  };
-  return map[type] ?? type;
+const TEXT_SAMPLES = ['Grilled chicken', 'Salad', 'Coffee', 'Protein shake', 'Pasta', 'Apple'];
+
+function fieldSample(field: SchemaField, index: number): unknown {
+  const k = field.key.toLowerCase();
+  switch (field.type) {
+    case 'text':
+    case 'string':
+      return TEXT_SAMPLES[index % TEXT_SAMPLES.length];
+    case 'number':
+    case 'counter': {
+      if (k.includes('calorie') || k.includes('kcal')) return 200 + Math.round(Math.random() * 600);
+      if (k.includes('protein'))                        return 10  + Math.round(Math.random() * 40);
+      if (k.includes('carb'))                           return 20  + Math.round(Math.random() * 80);
+      if (k.includes('fat'))                            return 5   + Math.round(Math.random() * 30);
+      if (k.includes('weight'))                         return 60  + Math.round(Math.random() * 40);
+      if (k.includes('hour') || k.includes('sleep'))   return 5   + Math.round(Math.random() * 4);
+      if (k.includes('step'))                           return 3000 + Math.round(Math.random() * 9000);
+      return 10 + Math.round(Math.random() * 90);
+    }
+    case 'boolean':
+      return index % 2 === 0;
+    case 'date':
+      return new Date(Date.now() - index * 86_400_000).toLocaleDateString('en-CA');
+    case 'datetime':
+      return new Date(Date.now() - index * 86_400_000).toISOString();
+    case 'select': {
+      const opts = field.config?.options ?? ['Option A'];
+      return opts[index % opts.length];
+    }
+    default:
+      return '';
+  }
 }
 
-// ── Phone frame ───────────────────────────────────────────────────────────────
+function generateSampleEntries(definition: ModuleDefinitionV2, count: number): ModuleEntry[] {
+  const schemas     = definition.schemas ?? {};
+  const collections = Object.values(schemas);
+  const fields: SchemaField[] = collections.length > 0
+    ? ((collections.find(c => c.role === 'primary') ?? collections[0]).fields as SchemaField[])
+    : ((definition.schema ?? []) as SchemaField[]);
 
-function PhoneFrame({
-  fields,
-  brandColor,
-  width = 280,
+  if (fields.length === 0) return [];
+
+  return Array.from({ length: count }, (_, i) => {
+    const data: Record<string, unknown> = {};
+    for (const f of fields) data[f.key] = fieldSample(f, i);
+    return {
+      id:            `preview-${i}`,
+      module_def_id: definition.id,
+      hub_id:        'preview',
+      user_id:       'preview',
+      schema_key:    'default',
+      data,
+      created_at:    new Date(Date.now() - i * 3_600_000 * 4).toISOString(),
+    } as ModuleEntry;
+  });
+}
+
+// ── Computed values preview strip ─────────────────────────────────────────────
+
+function ComputedPreview({
+  definition,
+  entries,
 }: {
-  fields: { key: string; label: string; type: string }[];
-  brandColor: string;
-  width?: number;
+  definition: ModuleDefinitionV2;
+  entries:    ModuleEntry[];
 }) {
-  const height = Math.round(width * (19.5 / 9));
-  const r      = 44 * (width / 390);
+  const props = definition.computed_properties ?? [];
+  if (props.length === 0) return null;
+
+  const values = useMemo(
+    () => evaluateComputedProperties(props, entries),
+    [props, entries],
+  );
 
   return (
-    <div className="relative mx-auto" style={{ width, height }}>
-      {/* Frame */}
-      <div
-        className="absolute inset-0 overflow-hidden"
-        style={{
-          borderRadius:    r,
-          backgroundColor: '#1A1A1A',
-          border:          '1.5px solid rgba(255,255,255,0.12)',
-        }}
-      >
-        {/* Status bar */}
-        <div className="flex items-center justify-between px-5 pt-3 pb-1" style={{ paddingTop: r * 0.5 }}>
-          <span className="text-[9px] text-white/60 font-medium">9:41</span>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-1.5 rounded-sm bg-white/40" />
-            <div className="w-1 h-1.5 rounded-sm bg-white/40" />
-          </div>
-        </div>
-
-        {/* Module header */}
-        <div className="px-4 py-2 flex items-center gap-2 border-b border-white/5">
-          <div className="w-5 h-5 rounded-lg shrink-0" style={{ backgroundColor: `${brandColor}30` }} />
-          <span className="text-[11px] font-medium text-white/80 flex-1 truncate">Module Preview</span>
-        </div>
-
-        {/* Field rows */}
-        <div className="flex-1 overflow-hidden px-3 py-2 flex flex-col gap-1">
-          {fields.slice(0, 6).map(f => (
-            <div key={f.key} className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
-              <span className="text-[10px] text-white/60 flex-1 truncate">{f.label}</span>
-              <span
-                className="text-[9px] font-medium px-1.5 py-0.5 rounded-md ml-2 shrink-0"
-                style={{ backgroundColor: `${brandColor}20`, color: brandColor }}
-              >
-                {fieldTypeBadge(f.type)}
-              </span>
+    <div className="flex flex-col gap-2">
+      <p className="text-[10px] font-medium text-text-tertiary uppercase tracking-widest">
+        Computed values — with sample data
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {props.map(p => {
+          const val     = values[p.key] ?? null;
+          const display = formatComputedValue(val, p);
+          return (
+            <div key={p.key} className="bg-background-secondary border border-border-primary rounded-xl px-3 py-2.5 flex flex-col gap-0.5">
+              <p className="text-[9px] text-text-tertiary uppercase tracking-widest truncate">{p.label}</p>
+              <p className="text-base font-medium text-text-primary">{display}</p>
+              <p className="text-[9px] text-text-tertiary/50">{p.type}</p>
             </div>
-          ))}
-          {fields.length === 0 && (
-            <p className="text-[10px] text-white/30 text-center py-4">No fields yet</p>
-          )}
-        </div>
-
-        {/* FAB */}
-        <div
-          className="absolute bottom-5 right-4 w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
-          style={{ backgroundColor: brandColor }}
-        >
-          <Plus size={16} weight="bold" className="text-white" />
-        </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -93,19 +110,7 @@ function PhoneFrame({
 
 export default function PreviewPage() {
   const { definition } = useModuleEditor();
-
-  const primaryCollection = useMemo(() => {
-    if (!definition) return null;
-    const schemas     = definition.schemas ?? {};
-    const collections = Object.values(schemas);
-    if (collections.length === 0) return null;
-    return collections.find(c => c.role === 'primary') ?? collections[0];
-  }, [definition?.schemas]);
-
-  const primaryFields = useMemo(() => {
-    if (primaryCollection) return primaryCollection.fields;
-    return definition?.schema ?? [];
-  }, [primaryCollection, definition?.schema]);
+  const [mode, setMode] = useState<'empty' | 'sample'>('sample');
 
   if (!definition) return (
     <div className="flex items-center justify-center h-full">
@@ -113,73 +118,64 @@ export default function PreviewPage() {
     </div>
   );
 
-  const brandColor = definition.brand_color || 'var(--modules-aly)';
+  const brandColor   = definition.brand_color || 'var(--modules-aly)';
+  const sampleCount  = mode === 'empty' ? 0 : 10;
+
+  // Stable sample entries — regenerate only when definition changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sampleEntries = useMemo(() => generateSampleEntries(definition as ModuleDefinitionV2, sampleCount), [definition.id, sampleCount]);
 
   return (
     <div className="overflow-y-auto h-full">
-      <div className="max-w-5xl mx-auto px-5 py-8 flex flex-col gap-8">
+      <div className="max-w-3xl mx-auto px-5 py-8 flex flex-col gap-6">
 
-        {/* Header */}
-        <div>
-          <h2 className="text-sm font-medium text-text-primary">Preview</h2>
-          <p className="text-[11px] text-text-tertiary mt-0.5">
-            See how your module will look when installed on a hub.
-          </p>
+        {/* Mode toggle */}
+        <div className="flex items-center gap-2">
+          {(['empty', 'sample'] as const).map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`px-4 py-1.5 rounded-xl text-[11px] font-medium border transition-all ${
+                mode === m
+                  ? 'border-transparent text-white'
+                  : 'border-border-primary text-text-tertiary hover:text-text-secondary'
+              }`}
+              style={mode === m ? { backgroundColor: brandColor } : undefined}
+            >
+              {m === 'empty' ? 'Empty state' : 'With sample data'}
+            </button>
+          ))}
         </div>
 
-        {/* Two-column preview */}
-        <div className="flex flex-col lg:flex-row gap-8 items-start">
+        {/* Computed values strip */}
+        {mode === 'sample' && (
+          <ComputedPreview definition={definition as ModuleDefinitionV2} entries={sampleEntries} />
+        )}
 
-          {/* Web preview */}
-          <div className="flex-1 flex flex-col gap-3 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-[10px] font-medium text-text-tertiary uppercase tracking-widest">Web (Hub)</p>
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-background-tertiary text-text-tertiary">Sample data</span>
+        {/* Web preview */}
+        <div className="flex flex-col gap-3">
+          <p className="text-[10px] font-medium text-text-tertiary uppercase tracking-widest">Web — Hub Card</p>
+          <div className="border border-border-primary rounded-2xl overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border-primary bg-background-secondary">
+              <div className="w-5 h-5 rounded-lg shrink-0"
+                style={{ backgroundColor: `${brandColor}20`, border: `1px solid ${brandColor}30` }} />
+              <span className="text-[12px] font-medium text-text-primary">{definition.name || 'Module'}</span>
+              <span className="ml-auto text-[9px] font-medium px-1.5 py-0.5 rounded"
+                style={{ backgroundColor: `${brandColor}15`, color: brandColor }}>
+                Preview
+              </span>
             </div>
-            <div className="border border-border-primary rounded-xl overflow-hidden max-w-170">
-              {/* Module header bar */}
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border-primary bg-background-secondary">
-                <div className="w-5 h-5 rounded-lg shrink-0" style={{ backgroundColor: `${brandColor}20`, border: `1px solid ${brandColor}30` }} />
-                <span className="text-[12px] font-medium text-text-primary">{definition.name || 'Module'}</span>
-                <span
-                  className="ml-auto text-[9px] font-medium px-1.5 py-0.5 rounded"
-                  style={{ backgroundColor: `${brandColor}15`, color: brandColor }}
-                >
-                  Preview
-                </span>
-              </div>
-              <CustomModuleView
-                definition={definition as ModuleDefinitionV2}
-                hubId="preview"
-                userId="preview"
-                assistantName="Aly"
-              />
-            </div>
-          </div>
-
-          {/* Mobile preview */}
-          <div className="flex flex-col gap-3 shrink-0">
-            <p className="text-[10px] font-medium text-text-tertiary uppercase tracking-widest">Mobile</p>
-            <PhoneFrame
-              fields={primaryFields as any[]}
-              brandColor={brandColor}
-              width={280}
+            <PreviewModuleView
+              definition={definition as ModuleDefinitionV2}
+              mockEntries={sampleEntries}
             />
           </div>
         </div>
 
-        {/* Install banner */}
-        <div className="flex items-center justify-between bg-background-secondary border border-border-primary rounded-xl px-5 py-4">
-          <p className="text-[12px] text-text-secondary">
-            Install this module on a hub to see it with real data.
-          </p>
-          <Link
-            href="/spaces"
-            className="flex items-center gap-1.5 text-[11px] text-modules-aly hover:opacity-80 transition-opacity shrink-0 ml-4"
-          >
-            Go to Spaces <ArrowRight size={12} />
-          </Link>
-        </div>
+        <p className="text-xs text-text-tertiary text-center">
+          This is a preview with sample data. Install this module on a hub to use it with real data.
+        </p>
       </div>
     </div>
   );

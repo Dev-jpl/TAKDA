@@ -8,9 +8,8 @@ import type {
 import { resolveBlockAppearance } from '@/lib/styleResolver';
 import type { ComputedProperty } from '@/types/module-creator';
 import type { SchemaField, ModuleEntry } from '@/services/modules.service';
-import {
-  computeStat, formatStat, getDailyBuckets, groupByField,
-} from '@/lib/moduleCompute';
+import { getDailyBuckets, groupByField } from '@/lib/moduleCompute';
+import { formatComputedValue } from '@/lib/computedProperties';
 
 // ── Layout maps ───────────────────────────────────────────────────────────────
 
@@ -33,22 +32,24 @@ const DONUT_COLORS = ['var(--brand)', '#6366f1', '#f59e0b', '#22c55e', '#ef4444'
 // ── Shared element props ──────────────────────────────────────────────────────
 
 interface ElemProps {
-  config:        WidgetElementConfig;
-  entries:       ModuleEntry[];
-  computedProps: ComputedProperty[];
-  schema:        SchemaField[];
-  accentColor:   string;
-  onAddEntry?:   () => void;
+  config:          WidgetElementConfig;
+  entries:         ModuleEntry[];
+  computedProps:   ComputedProperty[];
+  computedValues:  Record<string, unknown>;
+  schema:          SchemaField[];
+  accentColor:     string;
+  onAddEntry?:     () => void;
 }
 
 // ── Individual element renderers ──────────────────────────────────────────────
 
-function StatCardEl({ config, entries, computedProps, accentColor }: ElemProps) {
+function StatCardEl({ config, computedProps, computedValues, accentColor }: ElemProps) {
   if (config.type !== 'stat_card') return null;
   const prop    = computedProps.find(p => p.key === config.computed_key);
-  const value   = prop ? computeStat(prop, entries) : null;
-  const display = prop ? formatStat(value, prop) : '—';
+  const raw     = computedValues[config.computed_key] ?? null;
+  const display = prop ? formatComputedValue(raw, prop) : '—';
   const unit    = config.unit ?? prop?.unit;
+  const hasValue = raw !== null && raw !== 0;
   return (
     <div className="flex flex-col gap-0.5 p-3">
       <p className="text-[9px] text-text-tertiary uppercase tracking-widest truncate">
@@ -57,7 +58,7 @@ function StatCardEl({ config, entries, computedProps, accentColor }: ElemProps) 
       <div className="flex items-baseline gap-1">
         <span
           className="text-2xl font-medium"
-          style={{ color: value !== null && value !== 0 ? accentColor : 'var(--text-primary)' }}
+          style={{ color: hasValue ? accentColor : 'var(--text-primary)' }}
         >
           {display}
         </span>
@@ -158,12 +159,14 @@ function DonutChartEl({ config, entries, accentColor }: ElemProps) {
   );
 }
 
-function ProgressRingEl({ config, entries, computedProps, accentColor }: ElemProps) {
+function ProgressRingEl({ config, computedProps, computedValues, accentColor }: ElemProps) {
   if (config.type !== 'progress_ring') return null;
   const prop  = computedProps.find(p => p.key === config.computed_key);
-  const value = prop ? (computeStat(prop, entries) ?? 0) : 0;
-  const goal  = config.goal ?? prop?.goal_value ?? 100;
-  const pct   = Math.min(100, goal > 0 ? (value / goal) * 100 : 0);
+  const raw   = Number(computedValues[config.computed_key] ?? 0);
+  // If the prop is a 'progress' type the value is already a 0-1 ratio
+  const pct   = prop?.type === 'progress'
+    ? Math.min(100, raw * 100)
+    : (() => { const goal = config.goal ?? prop?.goal_value ?? 100; return Math.min(100, goal > 0 ? (raw / goal) * 100 : 0); })();
   const r = 14; const cx = 20; const cy = 20;
   const circ = 2 * Math.PI * r;
   return (
@@ -187,13 +190,14 @@ function ProgressRingEl({ config, entries, computedProps, accentColor }: ElemPro
   );
 }
 
-function ProgressBarEl({ config, entries, computedProps, accentColor }: ElemProps) {
+function ProgressBarEl({ config, computedProps, computedValues, accentColor }: ElemProps) {
   if (config.type !== 'progress_bar') return null;
   const prop    = computedProps.find(p => p.key === config.computed_key);
-  const value   = prop ? (computeStat(prop, entries) ?? 0) : 0;
-  const goal    = config.goal ?? prop?.goal_value ?? 100;
-  const pct     = Math.min(100, goal > 0 ? (value / goal) * 100 : 0);
-  const display = prop ? formatStat(value, prop) : String(Math.round(value));
+  const raw     = Number(computedValues[config.computed_key] ?? 0);
+  const pct     = prop?.type === 'progress'
+    ? Math.min(100, raw * 100)
+    : (() => { const goal = config.goal ?? prop?.goal_value ?? 100; return Math.min(100, goal > 0 ? (raw / goal) * 100 : 0); })();
+  const display = prop ? formatComputedValue(computedValues[config.computed_key] ?? null, prop) : String(Math.round(raw));
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2">
       <div className="flex justify-between">
@@ -327,7 +331,7 @@ export function WidgetRenderer({
                   className={`${SPAN_CLASS[el.span]} bg-background-secondary border border-border-primary rounded-xl overflow-hidden ${elAppear.className}`}
                   style={elAppear.style}
                 >
-                  {renderElement({ config: el.config, entries, computedProps, schema, accentColor, onAddEntry })}
+                  {renderElement({ config: el.config, entries, computedProps, computedValues, schema, accentColor, onAddEntry })}
                 </div>
               );
             })}

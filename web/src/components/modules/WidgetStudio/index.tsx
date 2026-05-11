@@ -2,10 +2,10 @@
 
 import React, { useState } from 'react';
 import { SquaresFour, Sliders, Eye, EyeSlash } from '@phosphor-icons/react';
-import type { WidgetDefinition, WidgetElementConfig, WidgetRow, WidgetRowAlign, WidgetRowJustify, WidgetSpan } from '@/types/ui-builder';
+import type { WidgetDefinition, WidgetElementConfig, WidgetRowAlign, WidgetRowJustify, WidgetSpan } from '@/types/ui-builder';
 import type { ComputedProperty, ModuleAction } from '@/types/module-creator';
 import type { SchemaField } from '@/services/modules.service';
-import { useWidgetStudio } from './useWidgetStudio';
+import { useWidgetStudio, type ElementPatch, type RowLayoutPatch } from './useWidgetStudio';
 import { WidgetPalettePanel } from './WidgetPalettePanel';
 import { WidgetCanvasPanel } from './WidgetCanvasPanel';
 import { WidgetConfigPanel } from './WidgetConfigPanel';
@@ -95,8 +95,8 @@ export function WidgetStudio({
             actions={actions}
             brandColor={brandColor}
             assistantName={assistantName}
-            onUpdateEl={(rowId: string, elId: string, patch: Partial<WidgetElementConfig>) => updateElement(rowId, elId, patch)}
-            onUpdateRow={(rowId: string, patch: { justify?: WidgetRowJustify; align?: WidgetRowAlign }) => updateRowLayout(rowId, patch)}
+            onUpdateEl={(rowId: string, elId: string, patch: ElementPatch) => updateElement(rowId, elId, patch)}
+            onUpdateRow={(rowId: string, patch: RowLayoutPatch) => updateRowLayout(rowId, patch)}
           />
         )}
       </div>

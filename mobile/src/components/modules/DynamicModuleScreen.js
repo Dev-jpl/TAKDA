@@ -31,6 +31,7 @@ import { getEntries, addEntry, deleteEntry } from '../../services/moduleData'
 import { colors } from '../../constants/colors'
 import Shimmer from '../common/Shimmer'
 import { Plus, X, Check, Trash, CalendarBlank } from 'phosphor-react-native'
+import { UIDefinitionFormSheet } from './UIDefinitionFormSheet'
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const CAT_HEX = {
@@ -439,6 +440,97 @@ function TrendChartView({ layout, entries }) {
   )
 }
 
+// ── V2 schema resolver ────────────────────────────────────────────────────────
+// V2 modules store fields in definition.schemas (keyed collections).
+// V1 modules store fields in definition.schema (flat array).
+
+function getPrimaryFields(definition) {
+  const schemas     = definition?.schemas ?? {}
+  const collections = Object.values(schemas)
+  if (collections.length > 0) {
+    const primary = collections.find(c => c.role === 'primary') ?? collections[0]
+    return primary?.fields ?? []
+  }
+  return definition?.schema ?? []
+}
+
+// ── Simple computed property evaluator (mobile, JS) ───────────────────────────
+
+function evalComputedProp(prop, entries) {
+  const field = prop.source_field
+  const now   = new Date()
+
+  let filtered = entries
+  if (prop.window === 'today') {
+    filtered = entries.filter(e => new Date(e.created_at).toDateString() === now.toDateString())
+  } else if (prop.window === 'week' || prop.window === 'last_7d') {
+    const cutoff = new Date(now.getTime() - 7 * 86400000)
+    filtered = entries.filter(e => new Date(e.created_at) >= cutoff)
+  } else if (prop.window === 'month') {
+    filtered = entries.filter(e => {
+      const d = new Date(e.created_at)
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    })
+  } else if (prop.window === 'last_30d') {
+    const cutoff = new Date(now.getTime() - 30 * 86400000)
+    filtered = entries.filter(e => new Date(e.created_at) >= cutoff)
+  }
+
+  const values = field
+    ? filtered.map(e => Number(e.data?.[field])).filter(v => !isNaN(v))
+    : []
+
+  switch (prop.type) {
+    case 'sum':   return values.reduce((a, b) => a + b, 0)
+    case 'avg':   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null
+    case 'count': return filtered.length
+    case 'min':   return values.length ? Math.min(...values) : null
+    case 'max':   return values.length ? Math.max(...values) : null
+    default:      return null
+  }
+}
+
+function formatPropValue(value, prop) {
+  if (value === null || value === undefined) return '—'
+  const n      = Number(value)
+  const suffix = prop.unit ? ` ${prop.unit}` : ''
+  if (prop.format === 'percent')  return `${Math.round(n)}%`
+  if (prop.format === 'decimal')  return n.toFixed(prop.precision ?? 1) + suffix
+  return `${Number.isInteger(n) ? n : n.toFixed(1)}${suffix}`
+}
+
+// ── V2 stat cards strip ───────────────────────────────────────────────────────
+
+function V2StatsStrip({ computedProperties, entries, brandColor }) {
+  if (!computedProperties?.length) return null
+  const stats = computedProperties.slice(0, 4).map(p => ({
+    prop: p, value: evalComputedProp(p, entries),
+  }))
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+      {stats.map(({ prop, value }) => (
+        <View key={prop.key} style={{
+          flex: 1, minWidth: 100, backgroundColor: colors.background.secondary,
+          borderRadius: 12, borderWidth: 1, borderColor: colors.border.primary,
+          paddingHorizontal: 14, paddingVertical: 10,
+        }}>
+          <Text style={{ fontSize: 9, color: colors.text.tertiary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>
+            {prop.label}
+          </Text>
+          <Text style={{ fontSize: 20, fontWeight: '500', color: value ? brandColor : colors.text.primary }}>
+            {formatPropValue(value, prop)}
+          </Text>
+          {prop.window && prop.window !== 'all' && (
+            <Text style={{ fontSize: 9, color: colors.text.tertiary, opacity: 0.5, marginTop: 1 }}>
+              {prop.window.replace(/_/g, ' ')}
+            </Text>
+          )}
+        </View>
+      ))}
+    </View>
+  )
+}
+
 // ── Generic list view (fallback for unknown layout.type) ──────────────────────
 
 function GenericListView({ layout, entries, schema, onDelete }) {
@@ -800,7 +892,7 @@ function DateField({ field, labelEl, value, onChange }) {
 // ── Generic Form Sheet (fallback for unknown module types) ────────────────────
 
 function GenericFormSheet({ visible, onClose, onSave, definition }) {
-  const schema = definition?.schema ?? []
+  const schema = getPrimaryFields(definition)
   const layout = definition?.layout ?? {}
 
   const initValues = () => schema.reduce((acc, f) => {
@@ -988,12 +1080,27 @@ function GenericFormSheet({ visible, onClose, onSave, definition }) {
 
 function DynamicFormSheet({ visible, onClose, onSave, definition }) {
   const slug = definition?.slug ?? ''
+
+  // Legacy hard-coded sheets
   if (slug === 'calorie_counter') {
     return <CalorieFormSheet visible={visible} onClose={onClose} onSave={onSave} />
   }
   if (slug === 'expense_tracker') {
     return <ExpenseFormSheet visible={visible} onClose={onClose} onSave={onSave} layout={definition?.layout} />
   }
+
+  // V2 modules: use UIDefinition entry form if the creator designed one
+  const hasUiDef = (() => {
+    const raw = definition?.ui_definition
+    if (!raw) return false
+    if (Array.isArray(raw?.rows)) return raw.rows.length > 0
+    return !!(raw?.entry_form?.rows?.length)
+  })()
+
+  if (hasUiDef) {
+    return <UIDefinitionFormSheet visible={visible} onClose={onClose} onSave={onSave} definition={definition} />
+  }
+
   return <GenericFormSheet visible={visible} onClose={onClose} onSave={onSave} definition={definition} />
 }
 
@@ -1060,6 +1167,11 @@ export default function DynamicModuleScreen({ definition, hub, userId: propUserI
   const hex       = layout.hex ?? layout.brand_color ?? definition?.brand_color ?? colors.modules.aly
   const defName   = definition?.name ?? 'Module'
 
+  // V2: resolve primary fields from schemas collection
+  const primaryFields  = getPrimaryFields(definition)
+  const isV2Module     = Object.keys(definition?.schemas ?? {}).length > 0
+  const computedProps  = definition?.computed_properties ?? []
+
   const logBtnColor = layoutType === 'goal_progress' ? '#22c55e'
     : layoutType === 'trend_chart'   ? hex
     : colors.modules.aly
@@ -1076,11 +1188,16 @@ export default function DynamicModuleScreen({ definition, hub, userId: propUserI
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.text.tertiary} />
         }
       >
+        {/* ── V2: computed stats strip ── */}
+        {isV2Module && computedProps.length > 0 && (
+          <V2StatsStrip computedProperties={computedProps} entries={entries} brandColor={hex} />
+        )}
+
         {/* ── Layout-driven body ── */}
         {layoutType === 'goal_progress' && <GoalProgressView layout={layout} entries={entries} />}
         {layoutType === 'trend_chart'   && <TrendChartView   layout={layout} entries={entries} />}
         {(!layoutType || (layoutType !== 'goal_progress' && layoutType !== 'trend_chart')) && (
-          <GenericListView layout={layout} entries={entries} schema={definition?.schema} onDelete={handleDeleteEntry} />
+          <GenericListView layout={layout} entries={entries} schema={primaryFields} onDelete={handleDeleteEntry} />
         )}
       </ScrollView>
 

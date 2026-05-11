@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { CheckCircle, Circle, Warning } from '@phosphor-icons/react';
+import { CheckCircle, Circle, Warning, XCircle } from '@phosphor-icons/react';
 import { useModuleEditor } from '@/contexts/ModuleEditorContext';
 import { publishModuleDefinition } from '@/services/modules.service';
 
@@ -36,41 +36,47 @@ export default function PublishPage() {
   const status = definition.status;
 
   // ── Completion checks ────────────────────────────────────────────────────────
+  // required: must be done to publish. optional: nice to have, no blocker.
 
-  const checks = [
+  const hasSchema = Object.values(definition.schemas ?? {}).some(c => c.fields?.length > 0)
+    || (definition.schema?.length ?? 0) > 0;
+
+  const hasEntryForm = (() => {
+    const raw = definition.ui_definition as any;
+    if (!raw) return false;
+    if (Array.isArray(raw?.rows)) return raw.rows.length > 0;
+    return !!(raw.entry_form?.rows?.length > 0 || raw.hub_view || raw.widget);
+  })();
+
+  const checks: { label: string; status: 'green' | 'orange' | 'red'; hint: string; required: boolean }[] = [
     {
-      label: 'Schema',
-      done:  Object.keys(definition.schemas ?? {}).length > 0 || (definition.schema?.length ?? 0) > 0,
-      hint:  'Add at least one collection with at least one field.',
+      label:    'Schema',
+      status:   hasSchema ? 'green' : 'red',
+      hint:     'Add at least one field before publishing.',
+      required: true,
     },
     {
-      label: 'Web Interface',
-      done:  !!(definition.ui_definition && Object.keys(definition.ui_definition as object).length > 0),
-      hint:  'Design your entry form or hub view in the Web Interface tab.',
+      label:    'Intelligence',
+      status:   definition.aly_config?.context_hint ? 'green' : 'orange',
+      hint:     'Add a context hint in the Intelligence tab for better AI integration.',
+      required: false,
     },
     {
-      label: 'Mobile Interface',
-      done:  (definition.mobile_config as any)?._configured === true,
-      hint:  'Configure at least one mobile behavior setting.',
+      label:    'Computed Properties',
+      status:   (definition.computed_properties?.length ?? 0) > 0 ? 'green' : 'orange',
+      hint:     'Optional: add computed properties in the Schema tab to show stats.',
+      required: false,
     },
     {
-      label: 'Web Logic',
-      done:  (definition.behaviors?.web_actions?.length ?? 0) > 0,
-      hint:  'Define at least one web action in the Web Logic tab.',
-    },
-    {
-      label: 'Mobile Logic',
-      done:  (definition.behaviors?.mobile_actions?.length ?? 0) > 0,
-      hint:  'Define at least one mobile action in the Mobile Logic tab.',
-    },
-    {
-      label: 'Intelligence',
-      done:  !!definition.aly_config?.context_hint,
-      hint:  'Add a context hint in the Intelligence tab.',
+      label:    'Entry Form',
+      status:   hasEntryForm ? 'green' : 'orange',
+      hint:     'Optional: design the entry form in the Web Interface tab.',
+      required: false,
     },
   ];
 
-  const completedCount = checks.filter(c => c.done).length;
+  const canPublish    = hasSchema;
+  const completedCount = checks.filter(c => c.status === 'green').length;
 
   const handlePublish = async () => {
     if (!window.confirm('Publish this module? This will increment the version number.')) return;
@@ -105,11 +111,16 @@ export default function PublishPage() {
 
         <div className="flex gap-2 flex-wrap">
           {status === 'draft' && (
-            <button type="button" onClick={handlePublish} disabled={publishing || isSaving}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-medium bg-modules-aly/10 text-modules-aly border border-modules-aly/20 hover:bg-modules-aly hover:text-white transition-all disabled:opacity-50">
-              {publishing ? <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" /> : null}
-              Publish Module
-            </button>
+            <>
+              <button type="button" onClick={handlePublish} disabled={publishing || isSaving || !canPublish}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-medium bg-modules-aly/10 text-modules-aly border border-modules-aly/20 hover:bg-modules-aly hover:text-white transition-all disabled:opacity-50">
+                {publishing ? <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" /> : null}
+                Publish Module
+              </button>
+              {!canPublish && (
+                <p className="text-[11px] text-red-400">Add at least one field to publish.</p>
+              )}
+            </>
           )}
           {status === 'published' && (
             <>
@@ -186,25 +197,25 @@ export default function PublishPage() {
 
         {checks.map(check => (
           <div key={check.label} className="flex items-start gap-3 py-2.5 border-b border-border-primary/30 last:border-0">
-            {check.done
+            {check.status === 'green'
               ? <CheckCircle size={16} className="text-green-500 shrink-0 mt-0.5" weight="fill" />
-              : <Circle      size={16} className="text-text-tertiary/40 shrink-0 mt-0.5" />
+              : check.status === 'red'
+                ? <XCircle   size={16} className="text-red-400 shrink-0 mt-0.5" weight="fill" />
+                : <Circle    size={16} className="text-orange-400/60 shrink-0 mt-0.5" />
             }
             <div className="flex-1">
-              <p className="text-[12px] font-medium text-text-primary">{check.label}</p>
-              {!check.done && (
+              <div className="flex items-center gap-2">
+                <p className="text-[12px] font-medium text-text-primary">{check.label}</p>
+                {!check.required && check.status !== 'green' && (
+                  <span className="text-[9px] text-text-tertiary uppercase tracking-widest bg-background-tertiary px-1.5 py-0.5 rounded">Optional</span>
+                )}
+              </div>
+              {check.status !== 'green' && (
                 <p className="text-[10px] text-text-tertiary mt-0.5">{check.hint}</p>
               )}
             </div>
           </div>
         ))}
-
-        {completedCount < checks.length && (
-          <div className="flex items-center gap-2 mt-3 px-3 py-2.5 bg-orange-400/5 border border-orange-400/20 rounded-xl">
-            <Warning size={13} className="text-orange-400 shrink-0" />
-            <p className="text-[11px] text-orange-400">Complete all tabs before publishing for the best experience.</p>
-          </div>
-        )}
       </section>
     </div>
   );

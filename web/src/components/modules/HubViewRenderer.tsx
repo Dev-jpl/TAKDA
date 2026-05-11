@@ -10,7 +10,8 @@ import type { UIDefinition } from '@/types/ui-builder';
 import type { ComputedProperty } from '@/types/module-creator';
 import type { SchemaField, ModuleEntry } from '@/services/modules.service';
 import { createModuleEntry, deleteModuleEntry } from '@/services/modules.service';
-import { computeStat, formatStat, getThresholdStatus, THRESHOLD_COLORS } from '@/lib/moduleCompute';
+import { getThresholdStatus, THRESHOLD_COLORS } from '@/lib/moduleCompute';
+import { formatComputedValue, evaluateComputedProperties } from '@/lib/computedProperties';
 import { resolveBlockAppearance } from '@/lib/styleResolver';
 import { WidgetRenderer } from './WidgetRenderer';
 import { DynamicUIRenderer } from './DynamicUIRenderer';
@@ -32,12 +33,12 @@ function formatNavDate(iso: string): string {
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
 function SectionStatCard({
-  prop, entries, accentColor,
-}: { prop: ComputedProperty; entries: ModuleEntry[]; accentColor: string }) {
-  const value       = computeStat(prop, entries);
-  const display     = formatStat(value, prop);
-  const threshStatus = prop.type === 'threshold' && value !== null
-    ? getThresholdStatus(value, prop) : null;
+  prop, rawValue, accentColor,
+}: { prop: ComputedProperty; rawValue: unknown; accentColor: string }) {
+  const display      = formatComputedValue(rawValue, prop);
+  const numVal       = typeof rawValue === 'number' ? rawValue : null;
+  const threshStatus = prop.type === 'threshold' && rawValue !== null
+    ? getThresholdStatus((rawValue as any)?.value ?? 0, prop) : null;
   return (
     <div className="bg-background-primary border border-border-primary rounded-xl px-4 py-3 flex flex-col gap-0.5 min-w-0">
       <p className="text-[9px] font-medium text-text-tertiary uppercase tracking-widest truncate">{prop.label}</p>
@@ -49,10 +50,10 @@ function SectionStatCard({
         <span className="text-xl font-medium"
           style={threshStatus
             ? { color: THRESHOLD_COLORS[threshStatus] }
-            : value !== null && value !== 0 ? { color: accentColor } : { color: 'var(--text-primary)' }}>
+            : numVal !== null && numVal !== 0 ? { color: accentColor } : { color: 'var(--text-primary)' }}>
           {display}
         </span>
-        {prop.unit && <span className="text-[10px] text-text-tertiary">{prop.unit}</span>}
+        {prop.unit && prop.type !== 'trend' && <span className="text-[10px] text-text-tertiary">{prop.unit}</span>}
       </div>
       {prop.window && prop.window !== 'all' && (
         <p className="text-[9px] text-text-tertiary/50">{prop.window.replace(/_/g, ' ')}</p>
@@ -108,15 +109,15 @@ function DateNavSection({
 // ── Summary Bar ───────────────────────────────────────────────────────────────
 
 function SummaryBarSection({
-  config, entries, computedProps, accentColor,
+  config, computedProps, computedValues, accentColor,
 }: {
   config: Extract<import('@/types/ui-builder').HubSectionConfig, { type: 'summary_bar' }>;
-  entries: ModuleEntry[];
   computedProps: ComputedProperty[];
+  computedValues: Record<string, unknown>;
   accentColor: string;
 }) {
   const primaryProp = computedProps.find(p => p.key === config.primary_key);
-  const consumed    = primaryProp ? (computeStat(primaryProp, entries) ?? 0) : 0;
+  const consumed    = Number(computedValues[config.primary_key] ?? 0);
   const goal        = config.goal_value;
   const remaining   = goal - consumed;
   const pct         = Math.min(100, goal > 0 ? (consumed / goal) * 100 : 0);
@@ -172,7 +173,7 @@ function SummaryBarSection({
       {macroPropList.length > 0 && (
         <div className="border-t border-border-primary/50 px-5 py-3 grid grid-cols-3 gap-4">
           {macroPropList.map(p => {
-            const val  = computeStat(p, entries) ?? 0;
+            const val  = Number(computedValues[p.key] ?? 0);
             const goal = p.goal_value ?? 100;
             const pct  = Math.min(100, goal > 0 ? (val / goal) * 100 : 0);
             return (
@@ -230,7 +231,9 @@ function GroupedEntriesSection({
         const groupEntries = entries
           .filter(e => String(e.data[config.group_by_field] ?? '') === group.key)
           .slice(0, limit);
-        const groupStat = statProp ? computeStat(statProp, groupEntries) : null;
+        const groupStatVal = statProp
+          ? evaluateComputedProperties([statProp], groupEntries)[statProp.key] ?? null
+          : null;
         const isOpen    = openGroup === group.key;
 
         return (
@@ -246,9 +249,9 @@ function GroupedEntriesSection({
                 )}
               </div>
               <div className="flex items-center gap-3">
-                {groupStat !== null && groupStat !== undefined && statProp && (
+                {groupStatVal !== null && groupStatVal !== undefined && statProp && (
                   <span className="text-sm font-semibold tabular-nums" style={{ color: accentColor }}>
-                    {formatStat(groupStat, statProp)}{statProp.unit ? ` ${statProp.unit}` : ''}
+                    {formatComputedValue(groupStatVal, statProp)}
                   </span>
                 )}
                 {config.inline_form && userId && (
@@ -586,30 +589,30 @@ function DetailSheet({
 // ── Section dispatcher ────────────────────────────────────────────────────────
 
 interface SectionProps {
-  section:       HubSection;
-  entries:       ModuleEntry[];   // already date-filtered when date_nav is active
-  computedProps: ComputedProperty[];
-  schema:        SchemaField[];
-  accentColor:   string;
-  widgetDef:     WidgetDefinition | null;
-  entryFormDef:  UIDefinition | null;
-  moduleDefId:   string;
-  hubId:         string;
-  userId:        string;
-  widgetColSpan: number;
-  activeDate:    string;
-  dateField?:    string;
-  onEntrySaved:  (e: ModuleEntry) => void;
-  onDeleteEntry: (id: string) => void;
-  onViewEntry?:  (e: ModuleEntry) => void;
-  onAddEntry?:   () => void;
-  // date_nav is handled at parent level — this prop is unused in child
-  setActiveDate: (d: string) => void;
+  section:        HubSection;
+  entries:        ModuleEntry[];   // already date-filtered when date_nav is active
+  computedProps:  ComputedProperty[];
+  computedValues: Record<string, unknown>;
+  schema:         SchemaField[];
+  accentColor:    string;
+  widgetDef:      WidgetDefinition | null;
+  entryFormDef:   UIDefinition | null;
+  moduleDefId:    string;
+  hubId:          string;
+  userId:         string;
+  widgetColSpan:  number;
+  activeDate:     string;
+  dateField?:     string;
+  onEntrySaved:   (e: ModuleEntry) => void;
+  onDeleteEntry:  (id: string) => void;
+  onViewEntry?:   (e: ModuleEntry) => void;
+  onAddEntry?:    () => void;
+  setActiveDate:  (d: string) => void;
 }
 
 function Section(props: SectionProps) {
   const {
-    section, entries, computedProps, schema, accentColor,
+    section, entries, computedProps, computedValues, schema, accentColor,
     widgetDef, entryFormDef, moduleDefId, hubId, userId,
     widgetColSpan, activeDate, dateField,
     onEntrySaved, onDeleteEntry, onViewEntry, onAddEntry, setActiveDate,
@@ -625,8 +628,8 @@ function Section(props: SectionProps) {
       return (
         <SummaryBarSection
           config={config}
-          entries={entries}
           computedProps={computedProps}
+          computedValues={computedValues}
           accentColor={accentColor}
         />
       );
@@ -658,7 +661,7 @@ function Section(props: SectionProps) {
       return (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {propList.map(p => (
-            <SectionStatCard key={p.key} prop={p} entries={entries} accentColor={accentColor} />
+            <SectionStatCard key={p.key} prop={p} rawValue={computedValues[p.key] ?? null} accentColor={accentColor} />
           ))}
         </div>
       );
@@ -671,6 +674,7 @@ function Section(props: SectionProps) {
           definition={widgetDef}
           schema={schema}
           computedProps={computedProps}
+          computedValues={computedValues}
           entries={entries}
           accentColor={accentColor}
           colSpan={widgetColSpan}
@@ -792,6 +796,7 @@ export function HubViewRenderer({
             section={section}
             entries={filteredEntries}
             computedProps={computedProps}
+            computedValues={computedValues}
             schema={schema}
             accentColor={accentColor}
             widgetDef={widgetDef}

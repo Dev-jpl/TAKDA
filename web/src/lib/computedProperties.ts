@@ -1,146 +1,202 @@
-import { useEffect, useMemo } from 'react';
-import type {
-  ComputedProperty, ComputedOperation, ComputedWindow, ModuleDefinitionV2,
-} from '@/types/module-creator';
+"use client";
+
+import { useMemo } from 'react';
+import { evaluate } from 'mathjs';
+import type { ComputedProperty } from '@/types/module-creator';
 import type { ModuleEntry } from '@/services/modules.service';
 
-// ── Window filter ─────────────────────────────────────────────────────────────
+// ── Window helpers ────────────────────────────────────────────────────────────
 
-function isInWindow(createdAt: string, window: ComputedWindow): boolean {
-  const d = new Date(createdAt);
+function filterByWindow(entries: ModuleEntry[], window?: string): ModuleEntry[] {
   const now = new Date();
-  const startOf = (unit: 'day' | 'week' | 'month') => {
-    const s = new Date(now);
-    if (unit === 'day')   { s.setHours(0, 0, 0, 0); }
-    if (unit === 'week')  { s.setDate(s.getDate() - s.getDay()); s.setHours(0, 0, 0, 0); }
-    if (unit === 'month') { s.setDate(1); s.setHours(0, 0, 0, 0); }
-    return s;
-  };
   switch (window) {
-    case 'today':   return d >= startOf('day');
-    case 'week':    return d >= startOf('week');
-    case 'month':   return d >= startOf('month');
-    case 'last_7d': return d >= new Date(now.getTime() - 7  * 86400000);
-    case 'last_30d':return d >= new Date(now.getTime() - 30 * 86400000);
-    case 'all':     return true;
-    default:        return true;
+    case 'today':
+      return entries.filter(e => new Date(e.created_at).toDateString() === now.toDateString());
+    case 'week':
+    case 'last_7d':
+      return entries.filter(e => new Date(e.created_at) >= new Date(now.getTime() - 7 * 86_400_000));
+    case 'month':
+      return entries.filter(e => {
+        const d = new Date(e.created_at);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+    case 'last_30d':
+      return entries.filter(e => new Date(e.created_at) >= new Date(now.getTime() - 30 * 86_400_000));
+    default:
+      return entries;
   }
 }
 
-// ── Safe formula evaluator (no eval) ─────────────────────────────────────────
-
-function safeEval(
-  expr: string,
-  vars: Record<string, number>,
-): number {
-  // Replace variable references (entry.field, computed.key)
-  let e = expr.replace(/entry\.(\w+)/g, (_, k) => String(vars[`entry.${k}`] ?? 0));
-  e = e.replace(/computed\.(\w+)/g, (_, k) => String(vars[`computed.${k}`] ?? 0));
-  e = e.replace(/\b(\w+)\b/g, (m) => (m in vars ? String(vars[m]) : m));
-
-  // Only allow numbers, operators, parentheses, spaces, and a small set of functions
-  const safe = /^[\d\s+\-*/.(),]+$/.test(e.replace(/Math\.\w+/g, ''));
-  if (!safe) return 0;
-
-  try {
-    // eslint-disable-next-line no-new-func
-    return Number(new Function(`return (${e})`)());
-  } catch {
-    return 0;
+function getPreviousWindowEntries(entries: ModuleEntry[], window?: string): ModuleEntry[] {
+  const now = new Date();
+  switch (window) {
+    case 'today': {
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return entries.filter(e => new Date(e.created_at).toDateString() === yesterday.toDateString());
+    }
+    case 'week':
+    case 'last_7d': {
+      const end   = now.getTime() - 7  * 86_400_000;
+      const start = now.getTime() - 14 * 86_400_000;
+      return entries.filter(e => { const t = new Date(e.created_at).getTime(); return t >= start && t < end; });
+    }
+    case 'month': {
+      const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+      const prevYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      return entries.filter(e => {
+        const d = new Date(e.created_at);
+        return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+      });
+    }
+    case 'last_30d': {
+      const end   = now.getTime() - 30 * 86_400_000;
+      const start = now.getTime() - 60 * 86_400_000;
+      return entries.filter(e => { const t = new Date(e.created_at).getTime(); return t >= start && t < end; });
+    }
+    default:
+      return [];
   }
 }
 
-// ── Core evaluation ───────────────────────────────────────────────────────────
+function numericValues(entries: ModuleEntry[], field: string): number[] {
+  return entries
+    .map(e => Number(e.data[field]))
+    .filter(v => !isNaN(v));
+}
+
+// ── Main evaluator ────────────────────────────────────────────────────────────
 
 export type ComputedResults = Record<string, unknown>;
 
 export function evaluateComputedProperties(
-  computedProperties: ComputedProperty[],
+  props: ComputedProperty[],
   entries: ModuleEntry[],
-  schemaKey = 'default',
 ): ComputedResults {
   const results: ComputedResults = {};
 
-  for (const prop of computedProperties) {
-    const relevant = prop.source_schema_key
-      ? entries.filter(e => e.schema_key === prop.source_schema_key)
-      : entries.filter(e => (e.schema_key ?? 'default') === schemaKey);
+  // Sort entries newest-first once
+  const sorted = [...entries].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
 
-    const windowed = prop.window
-      ? relevant.filter(e => isInWindow(e.created_at, prop.window!))
-      : relevant;
+  const PASS1 = new Set(['sum', 'avg', 'min', 'max', 'count', 'streak']);
 
-    const values = windowed
-      .map(e => Number(e.data[prop.source_field ?? '']))
-      .filter(n => !isNaN(n));
+  for (const pass of [1, 2] as const) {
+    for (const prop of props) {
+      const isPass1Type = PASS1.has(prop.type);
+      if (pass === 1 && !isPass1Type) continue;
+      if (pass === 2 && isPass1Type)  continue;
 
-    switch (prop.type as ComputedOperation) {
-      case 'sum':   results[prop.key] = values.reduce((a, b) => a + b, 0); break;
-      case 'avg':   results[prop.key] = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; break;
-      case 'min':   results[prop.key] = values.length ? Math.min(...values) : 0; break;
-      case 'max':   results[prop.key] = values.length ? Math.max(...values) : 0; break;
-      case 'count': results[prop.key] = windowed.length; break;
+      const windowed = filterByWindow(sorted, prop.window);
+      const field    = prop.source_field ?? '';
 
-      case 'streak': {
-        const days = new Set(
-          relevant.map(e => new Date(e.created_at).toDateString()),
-        );
-        let streak = 0;
-        const cursor = new Date();
-        while (days.has(cursor.toDateString())) {
-          streak++;
-          cursor.setDate(cursor.getDate() - 1);
+      try {
+        switch (prop.type) {
+
+          case 'sum': {
+            const vals = numericValues(windowed, field);
+            results[prop.key] = vals.reduce((a, b) => a + b, 0);
+            break;
+          }
+
+          case 'avg': {
+            const vals = numericValues(windowed, field);
+            results[prop.key] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+            break;
+          }
+
+          case 'min': {
+            const vals = numericValues(windowed, field);
+            results[prop.key] = vals.length ? Math.min(...vals) : null;
+            break;
+          }
+
+          case 'max': {
+            const vals = numericValues(windowed, field);
+            results[prop.key] = vals.length ? Math.max(...vals) : null;
+            break;
+          }
+
+          case 'count':
+            results[prop.key] = windowed.length;
+            break;
+
+          case 'streak': {
+            const dateSet = new Set(sorted.map(e => new Date(e.created_at).toDateString()));
+            let streak = 0;
+            const cursor = new Date();
+            while (dateSet.has(cursor.toDateString())) {
+              streak++;
+              cursor.setDate(cursor.getDate() - 1);
+            }
+            results[prop.key] = streak;
+            break;
+          }
+
+          case 'formula': {
+            if (!prop.expression) { results[prop.key] = null; break; }
+            const latest = sorted[0];
+            if (!latest) { results[prop.key] = null; break; }
+            // Scope: latest entry's raw data + already-evaluated computed values
+            const scope = { ...latest.data, ...results };
+            try {
+              results[prop.key] = evaluate(prop.expression, scope);
+            } catch {
+              results[prop.key] = null;
+            }
+            break;
+          }
+
+          case 'progress': {
+            // Source: sum of source_field over all entries, or a named computed key via expression
+            let sourceVal: number;
+            if (prop.source_field) {
+              sourceVal = numericValues(sorted, prop.source_field).reduce((a, b) => a + b, 0);
+            } else if (prop.expression) {
+              sourceVal = Number(results[prop.expression] ?? 0);
+            } else {
+              results[prop.key] = null;
+              break;
+            }
+            const goal = prop.goal_value ?? 0;
+            if (!goal) { results[prop.key] = null; break; }
+            results[prop.key] = Math.max(0, Math.min(1, sourceVal / goal));
+            break;
+          }
+
+          case 'trend': {
+            const currEntries = filterByWindow(sorted, prop.window);
+            const prevEntries = getPreviousWindowEntries(sorted, prop.window);
+            const f           = prop.source_field ?? '';
+            const current     = numericValues(currEntries, f).reduce((a, b) => a + b, 0);
+            const previous    = numericValues(prevEntries, f).reduce((a, b) => a + b, 0);
+            const delta       = current - previous;
+            results[prop.key] = {
+              current, previous, delta,
+              direction:      delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat',
+              percent_change: previous !== 0 ? (delta / previous) * 100 : 0,
+            };
+            break;
+          }
+
+          case 'threshold': {
+            const sourceVal = Number(results[field] ?? 0);
+            let status: 'green' | 'yellow' | 'red' = 'green';
+            const sorted_thresholds = [...(prop.thresholds ?? [])].sort((a, b) => a.value - b.value);
+            for (const t of sorted_thresholds) {
+              if (sourceVal <= t.value) { status = t.status; break; }
+            }
+            results[prop.key] = { value: sourceVal, status };
+            break;
+          }
+
+          default:
+            results[prop.key] = null;
         }
-        results[prop.key] = streak;
-        break;
-      }
-
-      case 'formula': {
-        if (!prop.expression) { results[prop.key] = 0; break; }
-        const latest = relevant[0]?.data ?? {};
-        const vars: Record<string, number> = {};
-        for (const [k, v] of Object.entries(latest)) vars[`entry.${k}`] = Number(v);
-        for (const [k, v] of Object.entries(results)) vars[`computed.${k}`] = Number(v);
-        results[prop.key] = safeEval(prop.expression, vars);
-        break;
-      }
-
-      case 'progress': {
-        const sourceVal = Number(results[prop.source_field ?? ''] ?? 0);
-        const goal = prop.goal_value ?? 1;
-        results[prop.key] = Math.min(1, Math.max(0, sourceVal / goal));
-        break;
-      }
-
-      case 'trend': {
-        const curr = Number(results[prop.source_field ?? ''] ?? 0);
-        // Simple: compare last two windows (approximate)
-        const prevWindow = windowed.slice(Math.floor(windowed.length / 2));
-        const prevVals = prevWindow.map(e => Number(e.data[prop.source_field ?? ''])).filter(n => !isNaN(n));
-        const prev = prevVals.reduce((a, b) => a + b, 0);
-        const delta = curr - prev;
-        results[prop.key] = {
-          current: curr,
-          previous: prev,
-          delta,
-          direction: delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat',
-          percent_change: prev !== 0 ? (delta / prev) * 100 : 0,
-        };
-        break;
-      }
-
-      case 'threshold': {
-        const val = Number(results[prop.source_field ?? ''] ?? 0);
-        let status: 'green' | 'yellow' | 'red' = 'green';
-        for (const t of prop.thresholds ?? []) {
-          if (val <= t.value) { status = t.status; break; }
-        }
-        results[prop.key] = { value: val, status };
-        break;
-      }
-
-      default:
+      } catch {
         results[prop.key] = null;
+      }
     }
   }
 
@@ -150,43 +206,39 @@ export function evaluateComputedProperties(
 // ── React hook ────────────────────────────────────────────────────────────────
 
 export function useComputedProperties(
-  definition: ModuleDefinitionV2 | null,
+  props: ComputedProperty[],
   entries: ModuleEntry[],
-  schemaKey = 'default',
 ): ComputedResults {
   return useMemo(
-    () =>
-      definition?.computed_properties?.length
-        ? evaluateComputedProperties(definition.computed_properties, entries, schemaKey)
-        : {},
+    () => evaluateComputedProperties(props, entries),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [definition?.computed_properties, entries, schemaKey],
+    [props, entries],
   );
 }
 
 // ── Display formatter ─────────────────────────────────────────────────────────
 
-export function formatComputedValue(
-  value: unknown,
-  prop: ComputedProperty,
-): string {
+export function formatComputedValue(value: unknown, prop: ComputedProperty): string {
   if (value === null || value === undefined) return '—';
+  if (prop.type === 'trend') {
+    const v = value as { direction: string; delta: number };
+    const arrow = v.direction === 'up' ? '↑' : v.direction === 'down' ? '↓' : '→';
+    return `${arrow} ${Math.abs(Math.round(v.delta))}${prop.unit ? ` ${prop.unit}` : ''}`;
+  }
+  if (prop.type === 'threshold') {
+    const v = value as { value: number; status: string };
+    const n = v.value;
+    return `${Number.isInteger(n) ? n : n.toFixed(prop.precision ?? 1)}${prop.unit ? ` ${prop.unit}` : ''}`;
+  }
+  if (prop.type === 'progress') {
+    return `${Math.round(Number(value) * 100)}%`;
+  }
   const n = Number(value);
-  const precision = prop.precision ?? 0;
+  if (isNaN(n)) return String(value);
   const suffix = prop.unit ? ` ${prop.unit}` : '';
-
   switch (prop.format) {
-    case 'percent':  return `${(n * 100).toFixed(precision)}%`;
-    case 'decimal':  return n.toFixed(precision) + suffix;
-    case 'duration': {
-      const h = Math.floor(n / 60);
-      const m = Math.round(n % 60);
-      return h > 0 ? `${h}h ${m}m` : `${m}m`;
-    }
-    case 'status': {
-      const s = (value as { status?: string })?.status ?? '—';
-      return s;
-    }
-    default: return `${Number.isInteger(n) ? n : n.toFixed(precision)}${suffix}`;
+    case 'percent':  return `${Math.round(n)}%`;
+    case 'decimal':  return n.toFixed(prop.precision ?? 1) + suffix;
+    default:         return `${Number.isInteger(n) ? n : n.toFixed(prop.precision ?? 0)}${suffix}`;
   }
 }

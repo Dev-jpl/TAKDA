@@ -158,7 +158,7 @@ export function CustomModuleView({
   };
 
   // ── Computed values map (used by all renderers + fallback stat cards) ────────
-  const computedValues = useComputedProperties(definition, entries);
+  const computedValues = useComputedProperties(computedProps, entries);
   const stats = useMemo(
     () => computedProps.map(p => ({
       prop: p,

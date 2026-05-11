@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { CursorText, Sparkle, PaintBrush } from '@phosphor-icons/react';
-import type { WidgetElementConfig, WidgetRow, WidgetRowAlign, WidgetRowJustify, PlatformStyle } from '@/types/ui-builder';
+import type { WidgetElementConfig, WidgetRow, WidgetRowAlign, WidgetRowJustify } from '@/types/ui-builder';
+import type { ElementPatch, RowLayoutPatch } from './useWidgetStudio';
 import type { ComputedProperty } from '@/types/module-creator';
 import type { SchemaField } from '@/services/modules.service';
 import type { ModuleAction } from '@/types/module-creator';
@@ -303,8 +304,8 @@ interface Props {
   actions:       ModuleAction[];
   brandColor:    string;
   assistantName: string;
-  onUpdateEl:    (rowId: string, elId: string, patch: Partial<WidgetElementConfig> & { appearance?: PlatformStyle }) => void;
-  onUpdateRow:   (rowId: string, patch: { justify?: WidgetRowJustify; align?: WidgetRowAlign; appearance?: PlatformStyle }) => void;
+  onUpdateEl:    (rowId: string, elId: string, patch: ElementPatch) => void;
+  onUpdateRow:   (rowId: string, patch: RowLayoutPatch) => void;
 }
 
 type WTab = 'configure' | 'appearance' | 'chat';

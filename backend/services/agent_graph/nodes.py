@@ -160,14 +160,14 @@ Speak like a trusted friend who gets things done — concise, real, never corpor
 Reference specific data from context when relevant. If something isn't in context, say so briefly.
 Always respond in the same language the user writes in.
 
-CUSTOM MODULES:
+INSTALLED MODULES:
 {modules_text}
 
 Tool guidance:
-- Use log_module_entry to record data into any of the CUSTOM MODULES listed above.
-- If the user mentions prices/spending, use log_module_entry with 'expense_tracker'.
-- If the user mentions food/calories, use log_module_entry with 'calorie_counter'.
-- When a user lists multiple items with amounts (e.g. "chicken 79, rice 15"), call the tool once per item.
+- Use log_module_entry when the user wants to log data that matches any INSTALLED MODULE above.
+- Match the user's words against each module's keywords to pick the right slug.
+- Use the module's example phrase as a guide for how to parse field values from natural language.
+- When a user lists multiple items (e.g. "chicken 79, rice 15"), call the tool once per item.
 
 Today is {now_str}."""
 
@@ -355,9 +355,38 @@ async def node_load_context(state: AgentState) -> AgentState:
     except Exception as e:
         print(f"[node_load_context] integrations error: {e}")
 
-    # Load Module Definitions (to teach Aly about custom trackers)
-    def_res = supabase.table("module_definitions").select("slug,name,description,schema").execute()
-    module_definitions = def_res.data or []
+    # Load Module Definitions — only modules installed on the user's active hubs,
+    # plus any global modules. Include aly_config so Aly knows intent keywords and
+    # how users typically phrase log commands for each module.
+    module_definitions = []
+    try:
+        installed_slugs = set()
+
+        # Global / system modules are always available
+        global_res = supabase.table("module_definitions") \
+            .select("slug") \
+            .eq("is_global", True) \
+            .execute()
+        for row in (global_res.data or []):
+            installed_slugs.add(row["slug"])
+
+        # Custom modules installed on the active hub(s) via hub_addons
+        if hub_ids:
+            addons_res = supabase.table("hub_addons") \
+                .select("type") \
+                .in_("hub_id", hub_ids) \
+                .execute()
+            for row in (addons_res.data or []):
+                installed_slugs.add(row["type"])
+
+        if installed_slugs:
+            def_res = supabase.table("module_definitions") \
+                .select("slug,name,description,schema,aly_config") \
+                .in_("slug", list(installed_slugs)) \
+                .execute()
+            module_definitions = def_res.data or []
+    except Exception as e:
+        print(f"[node_load_context] module_definitions error: {e}")
 
     return {
         **state,
@@ -560,11 +589,27 @@ What you know about this user:
 
 User: {state['user_message']}"""
 
-    # Module definitions for the system prompt
-    modules_text = "\n".join([
-        f"- {m['slug']}: {m['name']} - {m['description']}\n  Schema: {m['schema']}"
-        for m in state.get("module_definitions", [])
-    ])
+    # Module definitions for the system prompt — include aly_config so Aly
+    # knows the intent keywords and expected log format for each module.
+    def _fmt_module(m: dict) -> str:
+        aly       = m.get("aly_config") or {}
+        keywords  = aly.get("intent_keywords") or []
+        ctx       = aly.get("context_hint", "").strip()
+        example   = aly.get("log_prompt", "").strip()
+        lines     = [f"- {m['slug']}: {m['name']}"]
+        if ctx:
+            lines.append(f"  About: {ctx}")
+        if keywords:
+            lines.append(f"  Keywords: {', '.join(keywords)}")
+        if example:
+            lines.append(f"  Example: \"{example}\"")
+        schema = m.get("schema") or []
+        if schema:
+            field_names = [f"{f.get('key')} ({f.get('type')})" for f in schema if isinstance(f, dict)]
+            lines.append(f"  Fields: {', '.join(field_names)}")
+        return "\n".join(lines)
+
+    modules_text = "\n\n".join([_fmt_module(m) for m in state.get("module_definitions", [])])
 
     messages = [SystemMessage(content=_get_system_prompt(
         state.get("context_bio", ""),
@@ -592,11 +637,7 @@ User: {state['user_message']}"""
                 proposals_summary = "\n".join([
                     f"- {p['impact']}" for p in proposals
                 ])
-                # Custom Modules
-                modules_text = "\n".join([
-                    f"- {m['slug']}: {m['name']} - {m['description']}\n  Schema: {m['schema']}"
-                    for m in state.get("module_definitions", [])
-                ])
+                # Custom Modules (reuse the already-formatted text from above)
 
                 proposal_prompt = f"""You are {state.get("assistant_name") or ASSISTANT_NAME}, a proactive life operating system assistant.
                 

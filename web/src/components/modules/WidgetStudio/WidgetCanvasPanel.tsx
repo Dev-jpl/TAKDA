@@ -51,7 +51,7 @@ interface Props {
   onClear:       () => void;
   onRemoveEl:    (rowId: string, elId: string) => void;
   onSpan:        (rowId: string, elId: string, span: WidgetSpan) => void;
-  onUpdateRow:   (rowId: string, patch: { justify?: WidgetRowJustify; align?: WidgetRowAlign }) => void;
+  onUpdateRow:   (rowId: string, patch: { justify?: WidgetRowJustify; align?: WidgetRowAlign; [k: string]: unknown }) => void;
   onMoveRow:     (from: number, to: number) => void;
   onRemoveRow:   (rowId: string) => void;
   onAddRow:      () => void;

@@ -291,6 +291,16 @@ export const AlyAssistant: React.FC<AlyAssistantProps> = ({ isOpen, onClose }) =
     if (!text.trim() || isTyping || !userId) return;
     setIsTyping(true);
 
+    // Drain any pending notify_aly context from module actions
+    let messageToSend = text;
+    try {
+      const pending = JSON.parse(sessionStorage.getItem('aly:action_context') ?? '[]') as string[];
+      if (pending.length > 0) {
+        messageToSend = `[Action context: ${pending.join(' | ')}]\n\n${text}`;
+        sessionStorage.removeItem('aly:action_context');
+      }
+    } catch { /* ignore parse errors */ }
+
     const tempUserId = Date.now().toString();
     const tempAlyId = (Date.now() + 1).toString();
 
@@ -308,7 +318,7 @@ export const AlyAssistant: React.FC<AlyAssistantProps> = ({ isOpen, onClose }) =
       await coordinatorService.chat({
         userId,
         sessionId: activeSession?.id || '',
-        message: text,
+        message: messageToSend,
         spaceIds: [],
         hubIds: [],
         onChunk: (chunk) => {

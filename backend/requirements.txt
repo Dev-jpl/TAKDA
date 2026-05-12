@@ -19,3 +19,9 @@ langgraph>=0.2.0
 langchain-core>=0.3.0
 langchain-openai>=0.2.0
 langchain-google-genai>=2.0.0
+stripe>=7.0.0   # optional — only needed when STRIPE_SECRET_KEY is set
+# Testing
+pytest==8.3.5
+pytest-asyncio==0.24.0
+pytest-mock==3.14.0
+httpx==0.28.0

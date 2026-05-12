@@ -416,14 +416,16 @@ async def node_load_context(state: AgentState) -> AgentState:
     except Exception as e:
         print(f"[node_load_context] spaces error: {e}")
 
-    # Memories (Tier 2)
+    # Memories (Tier 2) — semantic search when query available, recency fallback
     if "memories" in INTENT_CONTEXT_MAP.get(intent, []):
         try:
-            memories = supabase.table(MEMORY_TABLE) \
-                .select("content,memory_type") \
-                .eq("user_id", user_id) \
-                .order("last_reinforced", desc=True) \
-                .limit(8).execute().data or []
+            from services.aly_memory import get_memory_context
+            user_message = state.get("user_message", "")
+            memory_ctx = get_memory_context(user_id, query=user_message)
+            if memory_ctx:
+                # Parse back into list format to match existing state shape
+                lines = memory_ctx.split("\n")[1:]  # skip header line
+                memories = [{"content": l.lstrip("- "), "memory_type": "fact"} for l in lines if l.strip()]
         except Exception as e:
             print(f"[node_load_context] memories error: {e}")
 

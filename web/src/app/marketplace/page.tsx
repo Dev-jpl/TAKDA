@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MagnifyingGlass, Plus, Sparkle, X, Check, ArrowRight,
   ForkKnife, CurrencyDollar, CheckSquare, Target, ChartBar,
-  Storefront,
+  Storefront, StarIcon,
 } from '@phosphor-icons/react';
 import { supabase } from '@/services/supabase';
 import { hubsService, Hub } from '@/services/hubs.service';
@@ -186,16 +187,17 @@ function HubPickerModal({ module, hubs, onInstall, onCheckout, onClose }: HubPic
 function ModuleCard({
   module,
   installedCount,
-  onClick,
+  onInstallClick,
 }: {
   module: ModuleDefinition;
   installedCount: number;
-  onClick: () => void;
+  onInstallClick: () => void;
 }) {
-  const Icon = getModuleIcon(module);
+  const Icon  = getModuleIcon(module);
   const color = getModuleColor(module);
-  const cat = getModuleCategory(module);
+  const cat   = getModuleCategory(module);
   const isPaid = !!(module.price && Number(module.price) > 0);
+  const avgRating = (module as any).avg_rating as number | undefined;
 
   return (
     <motion.div
@@ -203,18 +205,25 @@ function ModuleCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      onClick={onClick}
-      className="group relative bg-background-secondary border border-border-primary rounded-xl p-4 flex flex-col gap-3 cursor-pointer hover:bg-background-tertiary/30 hover:border-border-primary/80 transition-all"
+      className="group relative bg-background-secondary border border-border-primary rounded-xl p-4 flex flex-col gap-3 hover:bg-background-tertiary/30 hover:border-border-primary/80 transition-all"
     >
       <div className="flex items-start justify-between gap-2">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-          style={{ backgroundColor: `${color}15`, border: `1px solid ${color}25` }}
-        >
-          <Icon size={20} style={{ color }} weight="duotone" />
-        </div>
+        <Link href={`/marketplace/${module.slug}`} className="flex-1">
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: `${color}15`, border: `1px solid ${color}25` }}
+            >
+              <Icon size={20} style={{ color }} weight="duotone" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-text-primary mb-0.5">{module.name}</p>
+              <p className="text-xs text-text-tertiary leading-relaxed line-clamp-2">{module.description || 'No description.'}</p>
+            </div>
+          </div>
+        </Link>
 
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+        <div className="flex flex-col items-end gap-1 shrink-0">
           {installedCount > 0 && (
             <span className="text-[9px] font-bold text-green-400 bg-green-400/10 border border-green-400/20 px-1.5 py-0.5 rounded-md uppercase tracking-wide">
               Installed
@@ -225,7 +234,7 @@ function ModuleCard({
               PHP {module.price}
             </span>
           )}
-          {!isPaid && (
+          {!isPaid && !installedCount && (
             <span className="text-[9px] font-bold text-text-tertiary bg-background-tertiary border border-border-primary px-1.5 py-0.5 rounded-md uppercase">
               Free
             </span>
@@ -233,16 +242,23 @@ function ModuleCard({
         </div>
       </div>
 
-      <div className="flex-1">
-        <p className="text-sm font-semibold text-text-primary mb-1">{module.name}</p>
-        <p className="text-xs text-text-tertiary leading-relaxed line-clamp-2">{module.description || 'No description.'}</p>
-      </div>
-
       <div className="flex items-center justify-between pt-2 border-t border-border-primary/40">
-        <span className="text-[10px] text-text-tertiary capitalize">{cat === 'community' ? 'Community' : module.is_global ? 'Official' : 'Custom'}</span>
-        <span className="text-[10px] font-semibold text-modules-aly opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-text-tertiary capitalize">{cat === 'community' ? 'Community' : module.is_global ? 'Official' : 'Custom'}</span>
+          {avgRating && (
+            <div className="flex items-center gap-0.5">
+              <StarIcon size={10} className="text-yellow-400" weight="fill" />
+              <span className="text-[10px] text-text-secondary font-semibold">{avgRating.toFixed(1)}</span>
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onInstallClick}
+          className="text-[10px] font-semibold text-modules-aly flex items-center gap-1 hover:opacity-80 transition-opacity"
+        >
           Add to hub <ArrowRight size={10} weight="bold" />
-        </span>
+        </button>
       </div>
     </motion.div>
   );
@@ -392,7 +408,7 @@ export default function MarketplacePage() {
               key={module.id}
               module={module}
               installedCount={installedAddons.filter(a => a.type === module.slug).length}
-              onClick={() => setSelectedModule(module)}
+              onInstallClick={() => setSelectedModule(module)}
             />
           ))}
         </AnimatePresence>

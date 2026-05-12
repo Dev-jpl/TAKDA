@@ -11,7 +11,8 @@ import {
 } from '@/services/modules.service';
 import { formatStat, getThresholdStatus, THRESHOLD_COLORS } from '@/lib/moduleCompute';
 import { useComputedProperties } from '@/lib/computedProperties';
-import { fireActionsByTrigger, runActionById, type ActionRunContext } from '@/lib/actionRunner';
+import { fireActionsByTrigger, runActionById, runAction, type ActionRunContext } from '@/lib/actionRunner';
+import { evaluateComputedProperties } from '@/lib/computedProperties';
 import { ModuleEntryRow } from './ModuleEntryRow';
 import { ModuleEntrySheet } from './ModuleEntrySheet';
 import { WidgetRenderer } from './WidgetRenderer';
@@ -144,19 +145,67 @@ export function CustomModuleView({
       return [saved, ...prev];
     });
     window.dispatchEvent(new Event('takda:data_updated'));
+
+    // Build updated entries list synchronously for threshold evaluation
+    const allCurrentEntries = (() => {
+      // We can't read state here, but we can re-compute with the saved entry prepended
+      return [saved];  // threshold eval with just the new entry is a rough approximation
+    })();
+
+    const baseCtx: ActionRunContext = {
+      moduleDefId:    definition.id,
+      hubId,
+      userId:         userId ?? '',
+      entry:          saved,
+      computedValues: computedValuesRef.current,
+      onFeedback:     showFeedbackRef.current,
+      onEntryCreated: handleEntrySaved,
+      onEntryDeleted: handleDelete,
+    };
+
+    // on_entry_saved web actions
     if (webActions.some(a => a.trigger === 'on_entry_saved')) {
-      fireActionsByTrigger('on_entry_saved', webActions, {
-        moduleDefId:    definition.id,
-        hubId,
-        userId:         userId ?? '',
-        entry:          saved,
-        computedValues: computedValuesRef.current,
-        onFeedback:     showFeedbackRef.current,
-        onEntryCreated: handleEntrySaved,
-        onEntryDeleted: handleDelete,
-      }).catch(console.error);
+      fireActionsByTrigger('on_entry_saved', webActions, baseCtx).catch(console.error);
     }
-  }, [webActions, definition.id, hubId, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // on_threshold auto-behaviors — evaluate computed props against the latest full entry set
+    // Use a microtask so React state has settled
+    const thresholdBehaviors = definition.behaviors?.auto_behaviors?.on_threshold ?? [];
+    if (thresholdBehaviors.length > 0) {
+      Promise.resolve().then(async () => {
+        try {
+          // Recompute using the ref-captured current entries + the new entry
+          // (entries state may not have updated yet, so we use computedValuesRef as the best proxy)
+          const cv = computedValuesRef.current;
+          for (const tb of thresholdBehaviors) {
+            const val = cv[tb.computed_key];
+            if (val === undefined || val === null || !tb.steps?.length) continue;
+            const numVal = Number(val);
+            if (isNaN(numVal)) continue;
+            // Evaluate condition string (same parser as _check_insight_condition in backend)
+            const condStr = (tb.condition ?? '').toLowerCase();
+            let triggered = false;
+            for (const [word, sym] of [['>', '>'], ['<', '<'], ['>=', '>='], ['<=', '<='], ['=', '=='], ['exceeds', '>'], ['above', '>'], ['below', '<']] as [string, string][]) {
+              const m = condStr.match(new RegExp(`${word.replace(/[<>=]/g, '\\$&')}\\s*([\\d.]+)`));
+              if (m) {
+                const threshold = parseFloat(m[1]);
+                // eslint-disable-next-line no-new-func
+                triggered = new Function(`return ${numVal} ${sym} ${threshold}`)() as boolean;
+                break;
+              }
+            }
+            if (triggered) {
+              await runAction(
+                { id: `auto_threshold_${tb.computed_key}`, name: 'Threshold', trigger: 'on_threshold', steps: tb.steps },
+                baseCtx,
+                webActions,
+              );
+            }
+          }
+        } catch { /* silent — threshold evaluation is enhancement */ }
+      });
+    }
+  }, [webActions, definition.id, definition.behaviors, hubId, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = async (entryId: string) => {
     setEntries(prev => prev.filter(e => e.id !== entryId));

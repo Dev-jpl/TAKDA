@@ -32,6 +32,7 @@ import { colors } from '../../constants/colors'
 import Shimmer from '../common/Shimmer'
 import { Plus, X, Check, Trash, CalendarBlank } from 'phosphor-react-native'
 import { UIDefinitionFormSheet } from './UIDefinitionFormSheet'
+import { fireActionsByTrigger, runActionById } from '../../lib/actionRunner'
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const CAT_HEX = {
@@ -1155,6 +1156,20 @@ export default function DynamicModuleScreen({ definition, hub, userId: propUserI
     if (!userId || !definition?.id) throw new Error('Not ready')
     const newEntry = await addEntry(definition.id, hub?.id, userId, data)
     setEntries(prev => [newEntry, ...prev])
+
+    // Fire on_entry_saved mobile actions
+    const mobileActions = definition.behaviors?.mobile_actions ?? []
+    if (mobileActions.some(a => a.trigger === 'on_entry_saved')) {
+      fireActionsByTrigger('on_entry_saved', mobileActions, {
+        moduleDefId: definition.id,
+        hubId:       hub?.id,
+        userId,
+        entry:       newEntry,
+        onFeedback:  (msg) => Alert.alert('', msg),
+        onEntryCreated: (e) => setEntries(prev => [e, ...prev]),
+        onEntryDeleted: (id) => setEntries(prev => prev.filter(e => e.id !== id)),
+      }).catch(console.warn)
+    }
   }
 
   async function handleDeleteEntry(entryId) {

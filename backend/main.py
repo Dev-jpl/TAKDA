@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from routers import knowledge, spaces, track, hubs, annotate, deliver, automate, coordinator, events, integrations, aly, vault, space_tools, screens, addons, modules, payments
+from routers import knowledge, spaces, track, hubs, annotate, deliver, automate, coordinator, events, integrations, aly, vault, space_tools, screens, addons, modules, payments, marketplace
 from routers import strava, fitness, habits
 
 load_dotenv()
@@ -20,6 +20,7 @@ app.include_router(spaces.router)
 app.include_router(space_tools.router)
 app.include_router(automate.router)
 app.include_router(modules.router)
+app.include_router(marketplace.router)
 app.include_router(payments.router)
 app.include_router(hubs.router)
 app.include_router(knowledge.router)

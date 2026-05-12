@@ -1,4 +1,5 @@
 import json
+import re
 from services.ai import get_ai_response_async
 from database import supabase
 from services.embeddings import embed_text
@@ -14,6 +15,7 @@ Return [] if nothing worth remembering.
 Return valid JSON only, no explanation.
 """
 
+
 async def extract_and_store_memories(user_id: str, conversation: list):
     try:
         history = "\n".join([
@@ -21,8 +23,6 @@ async def extract_and_store_memories(user_id: str, conversation: list):
             for m in conversation[-6:]
         ])
         response = await get_ai_response_async(MEMORY_EXTRACT_PROMPT, history)
-        # Extract JSON array from response
-        import re
         match = re.search(r'\[.*\]', response, re.DOTALL)
         if not match:
             return
@@ -31,25 +31,48 @@ async def extract_and_store_memories(user_id: str, conversation: list):
             content = mem.get("content", "").strip()
             if not content:
                 continue
-                
             try:
                 embedding = embed_text(content)
             except Exception:
                 embedding = None
-                
             supabase.table("aly_memories").upsert({
-                "user_id": user_id,
-                "memory_type": mem.get("type", "fact"),
-                "content": content,
-                "confidence": float(mem.get("confidence", 0.7)),
+                "user_id":         user_id,
+                "memory_type":     mem.get("type", "fact"),
+                "content":         content,
+                "confidence":      float(mem.get("confidence", 0.7)),
                 "last_reinforced": "now()",
-                "embedding": embedding,
+                "embedding":       embedding,
             }, on_conflict="user_id,content").execute()
     except Exception:
-        pass  # Silent fail — memory is enhancement not core
+        pass  # Silent — memory is enhancement, not core
 
 
-def get_memory_context(user_id: str) -> str:
+def get_memory_context(user_id: str, query: str = "") -> str:
+    """
+    Retrieve relevant memories for a user.
+    When a query string is provided, uses semantic similarity (match_memories RPC).
+    Falls back to recency ordering if the RPC fails or no query is given.
+    """
+    if query:
+        try:
+            q_embedding = embed_text(query)
+            res = supabase.rpc("match_memories", {
+                "query_embedding":  q_embedding,
+                "match_count":      8,
+                "target_user_id":   user_id,
+            }).execute()
+            memories = res.data or []
+            if memories:
+                lines = [f"- {m['content']}" for m in memories]
+                return "What you know about this user:\n" + "\n".join(lines)
+        except Exception:
+            pass  # Fall through to recency retrieval
+
+    # Recency fallback
+    return _recency_memories(user_id)
+
+
+def _recency_memories(user_id: str) -> str:
     try:
         res = supabase.table("aly_memories") \
             .select("content, memory_type") \

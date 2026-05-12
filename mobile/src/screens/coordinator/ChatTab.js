@@ -14,6 +14,7 @@ import {
   Info, Target
 } from 'phosphor-react-native';
 import { coordinatorService } from '../../services/coordinator';
+import { drainAlyContext } from '../../lib/actionRunner';
 import { ASSISTANT_NAME } from '../../constants/brand';
 import { useNavigation } from '@react-navigation/native';
 import { ICON_MAP } from '../../components/common/IconPicker';
@@ -368,7 +369,12 @@ export default function ChatTab({ userId, sessionId, spaceIds, hubIds, onSession
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
-    const msg = input.trim();
+    // Drain any pending notify_aly context from mobile action steps
+    const pending = drainAlyContext();
+    const rawMsg = input.trim();
+    const msg = pending.length > 0
+      ? `[Action context: ${pending.join(' | ')}]\n\n${rawMsg}`
+      : rawMsg;
     setInput('');
     setLoading(true);
 

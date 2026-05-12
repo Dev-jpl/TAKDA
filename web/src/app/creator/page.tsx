@@ -142,13 +142,27 @@ export default function CreatorPage() {
             Build and manage your custom module definitions.
           </p>
         </div>
-        <Link
-          href="/creator/new"
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-modules-aly/10 text-modules-aly border border-modules-aly/20 hover:bg-modules-aly hover:text-white transition-all shrink-0"
-        >
-          <Plus size={15} />
-          New Module
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/creator/analytics"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-border-primary text-text-tertiary hover:text-text-primary hover:bg-background-secondary transition-all"
+          >
+            Analytics
+          </Link>
+          <Link
+            href="/creator/settings"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-border-primary text-text-tertiary hover:text-text-primary hover:bg-background-secondary transition-all"
+          >
+            Settings
+          </Link>
+          <Link
+            href="/creator/new"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-modules-aly/10 text-modules-aly border border-modules-aly/20 hover:bg-modules-aly hover:text-white transition-all"
+          >
+            <Plus size={15} />
+            New Module
+          </Link>
+        </div>
       </div>
 
       {/* ── Stats ──────────────────────────────────────────────────────────── */}

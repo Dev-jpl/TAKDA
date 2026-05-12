@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --paper: #faf8f3;
+  --paper-dot: #d9d6cf;
+  --ink: #1f1f1f;
+  --ink-muted: #6b6b6b;
+  --ink-faint: #b5b1a8;
+  --rule: #e5e2da;
+  --mark: #f5e6a8;
+}
+
+.dark {
+  --paper: #141413;
+  --paper-dot: #2a2a28;
+  --ink: #edeae3;
+  --ink-muted: #8a8a85;
+  --ink-faint: #4a4a47;
+  --rule: #2a2a28;
+  --mark: #3a3520;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-dot: var(--paper-dot);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-mark: var(--mark);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-hand: var(--font-caveat);
+}
+
+html,
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  background-image: radial-gradient(
+    circle at center,
+    var(--paper-dot) 1px,
+    transparent 1.2px
+  );
+  background-size: 24px 24px;
+  background-position: 0 0;
+}
+
+::selection {
+  background: var(--mark);
+  color: var(--ink);
+}
+
+.handwritten {
+  font-family: var(--font-hand), ui-serif, serif;
+}
+
+.sketch-underline {
+  background-image: linear-gradient(
+    to right,
+    var(--ink) 0,
+    var(--ink) 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 1.5px;
+  background-position: 0 100%;
+  padding-bottom: 2px;
+}

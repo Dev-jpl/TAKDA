@@ -1149,13 +1149,14 @@ function GenerateFromCollectionModal({
   collections: Collection[];
   onPick: (
     collectionId: Id,
-    opts: { heading?: boolean; saveButton?: boolean },
+    opts: { heading?: boolean; saveButton?: boolean; list?: boolean },
   ) => void;
   onClose: () => void;
 }) {
   const [collId, setCollId] = useState<Id>(collections[0]?.id ?? "");
   const [heading, setHeading] = useState(true);
   const [saveButton, setSaveButton] = useState(true);
+  const [listView, setListView] = useState(true);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1213,6 +1214,11 @@ function GenerateFromCollectionModal({
             checked={saveButton}
             onChange={setSaveButton}
           />
+          <Switch
+            label="Add list of existing entries"
+            checked={listView}
+            onChange={setListView}
+          />
 
           {selected && selected.fields.length === 0 && (
             <p className="text-xs text-ink-faint italic">
@@ -1230,7 +1236,9 @@ function GenerateFromCollectionModal({
           </button>
           <button
             disabled={!selected || selected.fields.length === 0}
-            onClick={() => onPick(collId, { heading, saveButton })}
+            onClick={() =>
+              onPick(collId, { heading, saveButton, list: listView })
+            }
             className="rounded-md border border-ink bg-ink text-paper px-4 py-1.5 text-sm hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Generate
@@ -1785,8 +1793,101 @@ function ElementInspector({
         {isInput && (
           <BindingControl module={module} element={element} onPatch={onPatch} />
         )}
+
+        {/* List config */}
+        {element.type === "list" && (
+          <ListConfig module={module} element={element} onPatch={onPatch} />
+        )}
       </div>
     </>
+  );
+}
+
+function ListConfig({
+  module,
+  element,
+  onPatch,
+}: {
+  module: Module;
+  element: Element;
+  onPatch: (patch: Partial<Element>) => void;
+}) {
+  const collectionId =
+    element.binding?.kind === "collection" ? element.binding.collectionId : "";
+  const collection = collectionId
+    ? module.collections.find((c) => c.id === collectionId) ?? null
+    : null;
+  const groupBy = (element.config?.groupBy as string | undefined) ?? "";
+  const title = (element.config?.title as string | undefined) ?? "";
+
+  const setConfig = (patch: Record<string, unknown>) =>
+    onPatch({ config: { ...(element.config ?? {}), ...patch } });
+
+  return (
+    <div className="pt-4 border-t border-rule space-y-3">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+        Bind to collection
+      </div>
+
+      <Row label="Collection">
+        <select
+          value={collectionId}
+          onChange={(e) => {
+            const cid = e.target.value;
+            if (!cid) {
+              onPatch({ binding: undefined });
+            } else {
+              onPatch({
+                binding: { kind: "collection", collectionId: cid },
+              });
+            }
+          }}
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        >
+          <option value="">— none —</option>
+          {module.collections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Row>
+
+      <Row label="Title">
+        <input
+          value={title}
+          onChange={(e) => setConfig({ title: e.target.value || undefined })}
+          placeholder={collection?.name ?? ""}
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        />
+      </Row>
+
+      {collection && (
+        <Row label="Group by">
+          <select
+            value={groupBy}
+            onChange={(e) => setConfig({ groupBy: e.target.value || undefined })}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          >
+            <option value="">— none —</option>
+            {collection.fields
+              .filter(
+                (f) =>
+                  f.type === "select" ||
+                  f.type === "multi_select" ||
+                  f.type === "date" ||
+                  f.type === "datetime" ||
+                  f.type === "text",
+              )
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+          </select>
+        </Row>
+      )}
+    </div>
   );
 }
 

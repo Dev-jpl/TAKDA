@@ -160,6 +160,8 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
                   formState={formState}
                   setFormState={setFormState}
                   onAction={onAction}
+                  entriesVersion={entriesVersion}
+                  onEntriesChange={() => setEntriesVersion((v) => v + 1)}
                 />
               )}
             </div>

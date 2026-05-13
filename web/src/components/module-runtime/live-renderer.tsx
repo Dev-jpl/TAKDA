@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type {
   Container,
   Element,
@@ -8,6 +9,7 @@ import type {
   LayoutNode,
   Module,
 } from "@/lib/module/types";
+import { deleteEntry, listEntries, type Entry } from "@/lib/module/entries";
 
 export type FormState = Record<string, unknown>; // keyed by `${collectionId}::${fieldId}`
 
@@ -21,12 +23,16 @@ export function LiveContainer({
   formState,
   setFormState,
   onAction,
+  entriesVersion,
+  onEntriesChange,
 }: {
   container: Container;
   module: Module;
   formState: FormState;
   setFormState: (next: FormState) => void;
   onAction: (kind: string) => void;
+  entriesVersion: number;
+  onEntriesChange: () => void;
 }) {
   return (
     <div
@@ -48,6 +54,8 @@ export function LiveContainer({
           formState={formState}
           setFormState={setFormState}
           onAction={onAction}
+          entriesVersion={entriesVersion}
+          onEntriesChange={onEntriesChange}
         />
       ))}
     </div>
@@ -60,12 +68,16 @@ function LiveNode({
   formState,
   setFormState,
   onAction,
+  entriesVersion,
+  onEntriesChange,
 }: {
   node: LayoutNode;
   module: Module;
   formState: FormState;
   setFormState: (next: FormState) => void;
   onAction: (kind: string) => void;
+  entriesVersion: number;
+  onEntriesChange: () => void;
 }) {
   if (node.kind === "container") {
     return (
@@ -76,6 +88,8 @@ function LiveNode({
           formState={formState}
           setFormState={setFormState}
           onAction={onAction}
+          entriesVersion={entriesVersion}
+          onEntriesChange={onEntriesChange}
         />
       </div>
     );
@@ -88,6 +102,8 @@ function LiveNode({
         formState={formState}
         setFormState={setFormState}
         onAction={onAction}
+        entriesVersion={entriesVersion}
+        onEntriesChange={onEntriesChange}
       />
     </div>
   );
@@ -99,12 +115,16 @@ function LiveElement({
   formState,
   setFormState,
   onAction,
+  entriesVersion,
+  onEntriesChange,
 }: {
   element: Element;
   module: Module;
   formState: FormState;
   setFormState: (next: FormState) => void;
   onAction: (kind: string) => void;
+  entriesVersion: number;
+  onEntriesChange: () => void;
 }) {
   const cfg = element.config ?? {};
   const boundField = resolveBoundField(element, module);
@@ -377,6 +397,15 @@ function LiveElement({
           </div>
         </FieldWrap>
       );
+    case "list":
+      return (
+        <LiveList
+          element={element}
+          module={module}
+          version={entriesVersion}
+          onChange={onEntriesChange}
+        />
+      );
     default:
       return (
         <div className="text-xs text-ink-faint italic px-2 py-1 border border-dashed border-rule rounded">
@@ -429,4 +458,146 @@ function justifyToFlex(j?: string): string | undefined {
   if (!j) return undefined;
   if (j === "between") return "space-between";
   return `flex-${j}`;
+}
+
+function LiveList({
+  element,
+  module,
+  version,
+  onChange,
+}: {
+  element: Element;
+  module: Module;
+  version: number;
+  onChange: () => void;
+}) {
+  const collectionId =
+    element.binding?.kind === "collection" ? element.binding.collectionId : null;
+  const collection = collectionId
+    ? module.collections.find((c) => c.id === collectionId)
+    : null;
+  const cfg = element.config ?? {};
+  const title = (cfg.title as string) || collection?.name || "List";
+
+  const [entries, setEntries] = useState<Entry[]>([]);
+  useEffect(() => {
+    if (!collection) return;
+    setEntries(listEntries(module.id, collection.id));
+  }, [module.id, collection?.id, collection, version]);
+
+  if (!collection) {
+    return (
+      <div className="border border-dashed border-rule rounded-md px-4 py-6 text-xs text-ink-faint text-center italic">
+        List not bound to a collection.
+      </div>
+    );
+  }
+
+  const groupByFieldId = (cfg.groupBy as Id | undefined) || null;
+  const groupByField = groupByFieldId
+    ? collection.fields.find((f) => f.id === groupByFieldId)
+    : null;
+
+  const grouped: Record<string, Entry[]> = {};
+  if (groupByField) {
+    for (const e of entries) {
+      const raw = e.values[groupByField.id];
+      const key = raw == null ? "—" : String(raw);
+      grouped[key] = grouped[key] ?? [];
+      grouped[key].push(e);
+    }
+  }
+
+  const renderRow = (e: Entry) => {
+    const fields = collection.fields.slice(0, 3);
+    return (
+      <li
+        key={e.id}
+        className="group px-4 py-3 border-b last:border-b-0 border-rule hover:bg-rule/10 transition-colors"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+            {fields.map((f, i) => {
+              const v = e.values[f.id];
+              if (v == null || v === "") return null;
+              const formatted =
+                f.type === "select" || f.type === "multi_select"
+                  ? formatSelect(f, v)
+                  : Array.isArray(v)
+                    ? v.join(", ")
+                    : String(v);
+              return (
+                <span
+                  key={f.id}
+                  className={
+                    i === 0
+                      ? "text-sm text-ink"
+                      : "text-xs text-ink-muted"
+                  }
+                >
+                  {i === 0 ? formatted : `${f.label}: ${formatted}`}
+                </span>
+              );
+            })}
+            <span className="text-[10px] text-ink-faint">
+              {new Date(e.createdAt).toLocaleString()}
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              deleteEntry(module.id, collection.id, e.id);
+              onChange();
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-ink-faint hover:text-ink"
+            aria-label="Delete entry"
+          >
+            ✕
+          </button>
+        </div>
+      </li>
+    );
+  };
+
+  return (
+    <div className="border border-rule rounded-md overflow-hidden bg-paper">
+      <div className="px-4 py-2 border-b border-rule flex items-center justify-between">
+        <span className="text-sm font-medium">{title}</span>
+        <span className="text-[10px] text-ink-faint uppercase tracking-[0.18em]">
+          {entries.length} {entries.length === 1 ? "entry" : "entries"}
+        </span>
+      </div>
+      {entries.length === 0 ? (
+        <div className="px-4 py-8 text-center text-xs text-ink-faint italic">
+          No entries yet.
+        </div>
+      ) : groupByField ? (
+        <div>
+          {Object.entries(grouped).map(([key, items]) => (
+            <div key={key}>
+              <div className="px-4 py-1.5 text-[10px] uppercase tracking-[0.18em] text-ink-faint bg-rule/20 border-b border-rule">
+                {groupByField.type === "select" ||
+                groupByField.type === "multi_select"
+                  ? formatSelect(groupByField, key)
+                  : key}
+                <span className="ml-2 normal-case tracking-normal text-ink-faint/70">
+                  · {items.length}
+                </span>
+              </div>
+              <ul>{items.map(renderRow)}</ul>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <ul>{entries.map(renderRow)}</ul>
+      )}
+    </div>
+  );
+}
+
+function formatSelect(field: Field, value: unknown): string {
+  if (field.type !== "select" && field.type !== "multi_select") return String(value);
+  const vals = Array.isArray(value) ? value : [value];
+  return vals
+    .map((v) => field.options.find((o) => o.value === v)?.label ?? String(v))
+    .join(", ");
 }

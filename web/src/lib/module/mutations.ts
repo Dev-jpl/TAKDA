@@ -405,12 +405,16 @@ export function generateFormFromCollection(
   module: Module,
   screenId: Id,
   collectionId: Id,
-  options: { heading?: boolean; saveButton?: boolean } = {},
+  options: {
+    heading?: boolean;
+    saveButton?: boolean;
+    list?: boolean;
+  } = {},
 ): Module {
   const collection = module.collections.find((c) => c.id === collectionId);
   if (!collection) return module;
 
-  const additions: Element[] = [];
+  const additions: LayoutNode[] = [];
 
   if (options.heading) {
     additions.push({
@@ -437,6 +441,24 @@ export function generateFormFromCollection(
       id: uid(),
       type: "button",
       config: { text: "Save", variant: "primary" },
+    });
+  }
+
+  if (options.list) {
+    if (additions.length > 0) {
+      additions.push({
+        kind: "element",
+        id: uid(),
+        type: "divider",
+        config: {},
+      });
+    }
+    additions.push({
+      kind: "element",
+      id: uid(),
+      type: "list",
+      binding: { kind: "collection", collectionId },
+      config: { title: collection.name },
     });
   }
 

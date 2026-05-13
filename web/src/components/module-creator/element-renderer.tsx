@@ -112,7 +112,12 @@ function ElementRenderer({
       }`}
       style={{ flexGrow: element.grow, width: element.width }}
     >
-      <ElementBody element={element} boundField={boundField} label={label} />
+      <ElementBody
+        element={element}
+        module={module}
+        boundField={boundField}
+        label={label}
+      />
     </div>
   );
 }
@@ -127,15 +132,24 @@ export function RenderedElement({
   const boundField = resolveBoundField(element, module);
   const label =
     boundField?.label ?? (element.config?.text as string | undefined);
-  return <ElementBody element={element} boundField={boundField} label={label} />;
+  return (
+    <ElementBody
+      element={element}
+      module={module}
+      boundField={boundField}
+      label={label}
+    />
+  );
 }
 
 export function ElementBody({
   element,
+  module,
   boundField,
   label,
 }: {
   element: Element;
+  module: Module;
   boundField: Field | null;
   label?: string;
 }) {
@@ -363,6 +377,59 @@ export function ElementBody({
           </div>
         </FieldWrap>
       );
+    case "list": {
+      const collectionId =
+        element.binding?.kind === "collection"
+          ? element.binding.collectionId
+          : null;
+      const collection = collectionId
+        ? module.collections.find((c) => c.id === collectionId)
+        : null;
+      const headerFields = collection ? collection.fields.slice(0, 3) : [];
+      const title = (cfg.title as string) || collection?.name || "List";
+      // Sample rows so the designer sees real layout dimensions.
+      const sampleCount = 2;
+      return (
+        <div className="border border-rule rounded-md overflow-hidden bg-paper">
+          <div className="px-4 py-2 border-b border-rule flex items-center justify-between">
+            <span className="text-sm font-medium">{title}</span>
+            <span className="text-[10px] text-ink-faint uppercase tracking-[0.18em]">
+              {collection ? `${sampleCount} preview` : "no collection"}
+            </span>
+          </div>
+          {!collection ? (
+            <div className="px-4 py-6 text-center text-xs text-ink-faint italic">
+              Bind this list to a collection to preview rows.
+            </div>
+          ) : (
+            <ul>
+              {Array.from({ length: sampleCount }).map((_, i) => (
+                <li
+                  key={i}
+                  className="px-4 py-3 border-b last:border-b-0 border-rule flex items-baseline gap-3"
+                >
+                  {headerFields.map((f) => (
+                    <span
+                      key={f.id}
+                      className={`${
+                        f === headerFields[0]
+                          ? "text-sm text-ink"
+                          : "text-xs text-ink-muted"
+                      } truncate`}
+                    >
+                      {f.label} {i + 1}
+                    </span>
+                  ))}
+                  <span className="ml-auto text-[10px] text-ink-faint">
+                    sample
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
     default:
       return (
         <div className="text-xs text-ink-faint italic px-2 py-1 border border-dashed border-rule rounded">

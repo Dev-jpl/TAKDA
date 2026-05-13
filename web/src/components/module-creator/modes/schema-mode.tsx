@@ -1,6 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type {
   Collection,
   Field,
@@ -20,6 +36,7 @@ import {
   deleteCollection,
   deleteField,
   moveField,
+  reorderFields,
   updateCollection,
   updateField,
 } from "@/lib/module/mutations";
@@ -124,6 +141,9 @@ export function SchemaMode({
             onSelectField={setSelectedFieldId}
             onAddField={onAddField}
             onDeleteField={onDeleteField}
+            onReorderFields={(from, to) =>
+              setModule((m) => reorderFields(m, selectedCollection.id, from, to))
+            }
           />
         ) : (
           <div className="p-10 text-center text-ink-muted">
@@ -255,14 +275,32 @@ function FieldTable({
   onSelectField,
   onAddField,
   onDeleteField,
+  onReorderFields,
 }: {
   collection: Collection;
   selectedFieldId: Id | null;
   onSelectField: (id: Id) => void;
   onAddField: (type: FieldType) => void;
   onDeleteField: (id: Id) => void;
+  onReorderFields: (from: number, to: number) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = collection.fields.findIndex((f) => f.id === active.id);
+    const to = collection.fields.findIndex((f) => f.id === over.id);
+    if (from < 0 || to < 0) return;
+    onReorderFields(from, to);
+  };
 
   return (
     <div className="p-8">
@@ -274,7 +312,8 @@ function FieldTable({
       </div>
 
       <div className="rounded-md border border-rule bg-paper overflow-hidden">
-        <div className="grid grid-cols-[1fr_140px_120px_80px] gap-0 border-b border-rule bg-rule/20 text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+        <div className="grid grid-cols-[24px_1fr_140px_120px_60px] gap-0 border-b border-rule bg-rule/20 text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+          <div className="px-2 py-2"></div>
           <div className="px-4 py-2">Label</div>
           <div className="px-4 py-2">Type</div>
           <div className="px-4 py-2 font-mono normal-case tracking-normal text-[11px]">
@@ -288,50 +327,28 @@ function FieldTable({
             No fields yet.
           </div>
         ) : (
-          <ul>
-            {collection.fields.map((f) => {
-              const active = f.id === selectedFieldId;
-              return (
-                <li
-                  key={f.id}
-                  className={`group grid grid-cols-[1fr_140px_120px_80px] gap-0 border-b last:border-b-0 border-rule cursor-pointer ${
-                    active
-                      ? "bg-rule/40"
-                      : "hover:bg-rule/20"
-                  }`}
-                  onClick={() => onSelectField(f.id)}
-                >
-                  <div className="px-4 py-3 text-sm text-ink flex items-center gap-2">
-                    {f.label}
-                    {f.required && (
-                      <span className="text-[10px] text-ink-faint">·req</span>
-                    )}
-                  </div>
-                  <div className="px-4 py-3 text-sm text-ink-muted flex items-center gap-2">
-                    <span className="text-ink-faint">
-                      {FIELD_TYPES.find((t) => t.type === f.type)?.glyph}
-                    </span>
-                    {FIELD_TYPES.find((t) => t.type === f.type)?.label ?? f.type}
-                  </div>
-                  <div className="px-4 py-3 text-xs text-ink-faint font-mono truncate">
-                    {f.key}
-                  </div>
-                  <div className="px-4 py-3 text-right">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteField(f.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-ink-faint hover:text-ink"
-                      aria-label="Delete field"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+          >
+            <SortableContext
+              items={collection.fields.map((f) => f.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul>
+                {collection.fields.map((f) => (
+                  <SortableFieldRow
+                    key={f.id}
+                    field={f}
+                    active={f.id === selectedFieldId}
+                    onSelect={() => onSelectField(f.id)}
+                    onDelete={() => onDeleteField(f.id)}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
         )}
 
       </div>
@@ -366,6 +383,83 @@ function FieldTable({
         )}
       </div>
     </div>
+  );
+}
+
+function SortableFieldRow({
+  field,
+  active,
+  onSelect,
+  onDelete,
+}: {
+  field: Field;
+  active: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: field.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  const spec = FIELD_TYPES.find((t) => t.type === field.type);
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`group grid grid-cols-[24px_1fr_140px_120px_60px] gap-0 border-b last:border-b-0 border-rule cursor-pointer ${
+        active ? "bg-rule/40" : "hover:bg-rule/20"
+      } ${isDragging ? "relative z-10 shadow-md bg-paper" : ""}`}
+      onClick={onSelect}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="flex items-center justify-center cursor-grab active:cursor-grabbing text-ink-faint hover:text-ink"
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
+      >
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+          <circle cx="2" cy="2" r="1.2" />
+          <circle cx="2" cy="7" r="1.2" />
+          <circle cx="2" cy="12" r="1.2" />
+          <circle cx="8" cy="2" r="1.2" />
+          <circle cx="8" cy="7" r="1.2" />
+          <circle cx="8" cy="12" r="1.2" />
+        </svg>
+      </div>
+      <div className="px-4 py-3 text-sm text-ink flex items-center gap-2">
+        {field.label}
+        {field.required && (
+          <span className="text-[10px] text-ink-faint">·req</span>
+        )}
+      </div>
+      <div className="px-4 py-3 text-sm text-ink-muted flex items-center gap-2">
+        <span className="text-ink-faint">{spec?.glyph}</span>
+        {spec?.label ?? field.type}
+      </div>
+      <div className="px-4 py-3 text-xs text-ink-faint font-mono truncate">
+        {field.key}
+      </div>
+      <div className="px-4 py-3 text-right">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-ink-faint hover:text-ink"
+          aria-label="Delete field"
+        >
+          ✕
+        </button>
+      </div>
+    </li>
   );
 }
 

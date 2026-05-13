@@ -190,6 +190,27 @@ export function moveField(
   };
 }
 
+export function reorderFields(
+  module: Module,
+  collectionId: Id,
+  fromIdx: number,
+  toIdx: number,
+): Module {
+  return {
+    ...module,
+    collections: module.collections.map((c) => {
+      if (c.id !== collectionId) return c;
+      if (fromIdx === toIdx) return c;
+      if (fromIdx < 0 || fromIdx >= c.fields.length) return c;
+      if (toIdx < 0 || toIdx >= c.fields.length) return c;
+      const next = [...c.fields];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return { ...c, fields: next };
+    }),
+  };
+}
+
 export function changeFieldType(
   module: Module,
   collectionId: Id,

@@ -332,63 +332,128 @@ function Canvas({
         />
       </div>
 
-      <div className="mt-4 relative">
+      <div className="mt-4">
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setPickerOpen((v) => !v);
+            setPickerOpen(true);
           }}
           className="rounded-md border border-ink bg-ink text-paper px-4 py-2 text-sm hover:opacity-90 transition-opacity"
         >
           + Add element
         </button>
-        {pickerOpen && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-10 bg-paper border border-rule rounded-md shadow-md p-2 w-80"
-          >
-            <ElementPicker
-              onPick={(k) => {
-                onAddElement(k);
-                setPickerOpen(false);
-              }}
-            />
-          </div>
-        )}
       </div>
+
+      {pickerOpen && (
+        <ElementPickerModal
+          onPick={(k) => {
+            onAddElement(k);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
-function ElementPicker({
+function ElementPickerModal({
   onPick,
+  onClose,
 }: {
   onPick: (kind: Element["type"]) => void;
+  onClose: () => void;
 }) {
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const cats: ElementCategory[] = ["input", "display", "action", "layout"];
+  const filtered = (cat: ElementCategory) =>
+    ELEMENT_CATALOG.filter(
+      (e) =>
+        e.category === cat &&
+        (!query ||
+          e.label.toLowerCase().includes(query.toLowerCase()) ||
+          e.kind.toLowerCase().includes(query.toLowerCase())),
+    );
+  const allFiltered = ELEMENT_CATALOG.filter(
+    (e) =>
+      !query ||
+      e.label.toLowerCase().includes(query.toLowerCase()) ||
+      e.kind.toLowerCase().includes(query.toLowerCase()),
+  );
+
   return (
-    <div className="space-y-2">
-      {cats.map((cat) => (
-        <div key={cat}>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint px-2 py-1">
-            {cat}
-          </div>
-          <div className="grid grid-cols-2 gap-1">
-            {ELEMENT_CATALOG.filter((e) => e.category === cat).map((e) => (
-              <button
-                key={e.kind}
-                onClick={() => onPick(e.kind)}
-                className="flex items-center gap-2 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-2 py-1.5"
-              >
-                <span className="w-5 text-center text-ink-faint">
-                  {e.glyph}
-                </span>
-                {e.label}
-              </button>
-            ))}
-          </div>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-ink/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-md border border-rule bg-paper shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-rule">
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search elements..."
+            className="w-full bg-transparent text-sm outline-none placeholder:text-ink-faint"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && allFiltered.length > 0) {
+                onPick(allFiltered[0].kind);
+              }
+            }}
+          />
         </div>
-      ))}
+
+        <div className="max-h-[60vh] overflow-y-auto p-3 space-y-4">
+          {cats.map((cat) => {
+            const items = filtered(cat);
+            if (items.length === 0) return null;
+            return (
+              <div key={cat}>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint px-2 py-1">
+                  {cat}
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {items.map((e) => (
+                    <button
+                      key={e.kind}
+                      onClick={() => onPick(e.kind)}
+                      className="flex items-center gap-3 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-3 py-2 transition-colors"
+                    >
+                      <span className="w-6 h-6 rounded border border-rule flex items-center justify-center text-xs text-ink-faint shrink-0">
+                        {e.glyph}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate">{e.label}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {allFiltered.length === 0 && (
+            <div className="text-center py-6 text-sm text-ink-faint">
+              No elements match &ldquo;{query}&rdquo;
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 py-2 border-t border-rule text-[10px] text-ink-faint flex items-center justify-between">
+          <span>↵ to add first match</span>
+          <span>esc to close</span>
+        </div>
+      </div>
     </div>
   );
 }

@@ -16,8 +16,10 @@ import {
   FIELD_TYPES,
   addCollection,
   addField,
+  changeFieldType,
   deleteCollection,
   deleteField,
+  moveField,
   updateCollection,
   updateField,
 } from "@/lib/module/mutations";
@@ -139,6 +141,22 @@ export function SchemaMode({
             collection={selectedCollection}
             field={selectedField}
             onChange={onUpdateField}
+            onChangeType={(t) => {
+              setModule((m) =>
+                changeFieldType(m, selectedCollection.id, selectedField.id, t),
+              );
+            }}
+            onMove={(d) => {
+              setModule((m) =>
+                moveField(m, selectedCollection.id, selectedField.id, d),
+              );
+            }}
+            onDelete={() => {
+              setModule((m) =>
+                deleteField(m, selectedCollection.id, selectedField.id),
+              );
+              setSelectedFieldId(null);
+            }}
           />
         ) : (
           <>
@@ -316,35 +334,36 @@ function FieldTable({
           </ul>
         )}
 
-        <div className="px-3 py-2 border-t border-rule relative">
-          <button
-            onClick={() => setPickerOpen((v) => !v)}
-            className="w-full text-left text-sm text-ink-muted hover:text-ink rounded px-2 py-1 transition-colors"
-          >
-            + Add field
-          </button>
-          {pickerOpen && (
-            <div className="absolute left-3 right-3 bottom-full mb-2 z-10 bg-paper border border-rule rounded-md shadow-md p-1">
-              <div className="grid grid-cols-2 gap-1">
-                {FIELD_TYPES.map((t) => (
-                  <button
-                    key={t.type}
-                    onClick={() => {
-                      onAddField(t.type);
-                      setPickerOpen(false);
-                    }}
-                    className="flex items-center gap-2 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-2 py-1.5"
-                  >
-                    <span className="w-5 text-center text-ink-faint">
-                      {t.glyph}
-                    </span>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
+      </div>
+
+      <div className="mt-2 relative">
+        <button
+          onClick={() => setPickerOpen((v) => !v)}
+          className="w-full text-left text-sm text-ink-muted hover:text-ink border border-dashed border-rule hover:border-ink rounded px-3 py-2 transition-colors bg-paper"
+        >
+          + Add field
+        </button>
+        {pickerOpen && (
+          <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-paper border border-rule rounded-md shadow-md p-1">
+            <div className="grid grid-cols-2 gap-1">
+              {FIELD_TYPES.map((t) => (
+                <button
+                  key={t.type}
+                  onClick={() => {
+                    onAddField(t.type);
+                    setPickerOpen(false);
+                  }}
+                  className="flex items-center gap-2 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-2 py-1.5"
+                >
+                  <span className="w-5 text-center text-ink-faint">
+                    {t.glyph}
+                  </span>
+                  {t.label}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -357,16 +376,77 @@ function FieldInspector({
   collection,
   field,
   onChange,
+  onChangeType,
+  onMove,
+  onDelete,
 }: {
   module: Module;
   collection: Collection;
   field: Field;
   onChange: (patch: Partial<Field>) => void;
+  onChangeType: (t: FieldType) => void;
+  onMove: (delta: -1 | 1) => void;
+  onDelete: () => void;
 }) {
+  const idx = collection.fields.findIndex((f) => f.id === field.id);
+  const canUp = idx > 0;
+  const canDown = idx >= 0 && idx < collection.fields.length - 1;
+
   return (
     <>
-      <PanelHeading>Field · {field.type}</PanelHeading>
+      <PanelHeading>Field</PanelHeading>
       <div className="p-4 space-y-4">
+        <div className="flex items-center gap-1">
+          <button
+            disabled={!canUp}
+            onClick={() => onMove(-1)}
+            aria-label="Move up"
+            className="px-2 py-1 text-sm border border-rule rounded disabled:opacity-30 hover:border-ink"
+          >
+            ↑
+          </button>
+          <button
+            disabled={!canDown}
+            onClick={() => onMove(1)}
+            aria-label="Move down"
+            className="px-2 py-1 text-sm border border-rule rounded disabled:opacity-30 hover:border-ink"
+          >
+            ↓
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm(`Delete field "${field.label}"?`)) onDelete();
+            }}
+            className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-ink"
+          >
+            Delete
+          </button>
+        </div>
+
+        <Row label="Type">
+          <select
+            value={field.type}
+            onChange={(e) => {
+              const next = e.target.value as FieldType;
+              if (next === field.type) return;
+              if (
+                window.confirm(
+                  "Changing type will reset this field's type-specific config (options, min/max, target). Continue?",
+                )
+              ) {
+                onChangeType(next);
+              }
+            }}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          >
+            {FIELD_TYPES.map((t) => (
+              <option key={t.type} value={t.type}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </Row>
+
         <Row label="Label">
           <input
             value={field.label}

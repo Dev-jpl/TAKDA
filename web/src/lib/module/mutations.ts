@@ -169,6 +169,61 @@ export function updateField(
   };
 }
 
+export function moveField(
+  module: Module,
+  collectionId: Id,
+  fieldId: Id,
+  delta: -1 | 1,
+): Module {
+  return {
+    ...module,
+    collections: module.collections.map((c) => {
+      if (c.id !== collectionId) return c;
+      const idx = c.fields.findIndex((f) => f.id === fieldId);
+      if (idx < 0) return c;
+      const target = idx + delta;
+      if (target < 0 || target >= c.fields.length) return c;
+      const next = [...c.fields];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return { ...c, fields: next };
+    }),
+  };
+}
+
+export function changeFieldType(
+  module: Module,
+  collectionId: Id,
+  fieldId: Id,
+  newType: FieldType,
+): Module {
+  return {
+    ...module,
+    collections: module.collections.map((c) => {
+      if (c.id !== collectionId) return c;
+      return {
+        ...c,
+        fields: c.fields.map((f) => {
+          if (f.id !== fieldId) return f;
+          if (f.type === newType) return f;
+          // Build a fresh field of the new type, preserving common props.
+          const fresh = defaultField(
+            newType,
+            c.fields.filter((x) => x.id !== fieldId).map((x) => x.key),
+          );
+          return {
+            ...fresh,
+            id: f.id,
+            key: f.key,
+            label: f.label,
+            required: f.required,
+            description: f.description,
+          } as Field;
+        }),
+      };
+    }),
+  };
+}
+
 export function deleteField(
   module: Module,
   collectionId: Id,

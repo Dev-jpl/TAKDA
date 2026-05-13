@@ -171,11 +171,15 @@ export function ElementBody({
       return <hr className="border-rule" />;
     case "spacer":
       return <div style={{ height: (cfg.size as number) ?? 16 }} />;
-    case "button":
-      return (
+    case "button": {
+      const fullWidth = !!cfg.fullWidth;
+      const align = (cfg.align as string) ?? "left";
+      const btn = (
         <button
           disabled
           className={`text-sm px-4 py-1.5 rounded cursor-not-allowed ${
+            fullWidth ? "w-full" : ""
+          } ${
             cfg.variant === "primary"
               ? "bg-ink text-paper"
               : "border border-rule text-ink"
@@ -184,6 +188,17 @@ export function ElementBody({
           {(cfg.text as string) || "Button"}
         </button>
       );
+      if (fullWidth) return btn;
+      const justify =
+        align === "center"
+          ? "center"
+          : align === "right"
+            ? "flex-end"
+            : "flex-start";
+      return (
+        <div style={{ display: "flex", justifyContent: justify }}>{btn}</div>
+      );
+    }
     case "text_input":
     case "long_text_input": {
       const Tag = element.type === "long_text_input" ? "textarea" : "input";
@@ -214,12 +229,41 @@ export function ElementBody({
           </div>
         </FieldWrap>
       );
-    case "boolean_toggle":
+    case "boolean_toggle": {
+      const displayAs = (cfg.displayAs as string) ?? "switch";
+      const on = !!cfg.defaultValue;
+      if (displayAs === "checkbox") {
+        return (
+          <FieldWrap label={label} inline>
+            <input
+              type="checkbox"
+              disabled
+              checked={on}
+              readOnly
+              className="cursor-not-allowed"
+            />
+          </FieldWrap>
+        );
+      }
+      // Switch UI (default)
       return (
         <FieldWrap label={label} inline>
-          <input type="checkbox" disabled className="cursor-not-allowed" />
+          <span
+            role="switch"
+            aria-checked={on}
+            className={`relative inline-block h-6 w-11 rounded-full transition-colors ${
+              on ? "bg-ink" : "bg-rule"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-paper shadow-sm transition-transform ${
+                on ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </span>
         </FieldWrap>
       );
+    }
     case "date_input":
       return (
         <FieldWrap label={label}>

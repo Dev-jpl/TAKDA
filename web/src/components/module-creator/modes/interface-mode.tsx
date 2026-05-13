@@ -48,6 +48,7 @@ import {
 } from "@/lib/module/mutations";
 import { EmptyState, PanelHeading, ThreePanel } from "../three-panel";
 import { ContainerRenderer, RenderedElement } from "../element-renderer";
+import { Switch } from "@/components/ui/switch";
 
 const DEVICE_WIDTH: Record<DevicePreview, string> = {
   phone: "390px",
@@ -455,7 +456,6 @@ function Canvas({
             maxWidth: "100%",
             minHeight: "70vh",
           }}
-          onClick={(e) => e.stopPropagation()}
         >
           <DesignContainer
             screen={screen}
@@ -723,22 +723,16 @@ function GenerateFromCollectionModal({
             </select>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-ink-muted">
-            <input
-              type="checkbox"
-              checked={heading}
-              onChange={(e) => setHeading(e.target.checked)}
-            />
-            Add heading
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink-muted">
-            <input
-              type="checkbox"
-              checked={saveButton}
-              onChange={(e) => setSaveButton(e.target.checked)}
-            />
-            Add save button
-          </label>
+          <Switch
+            label="Add heading"
+            checked={heading}
+            onChange={setHeading}
+          />
+          <Switch
+            label="Add save button"
+            checked={saveButton}
+            onChange={setSaveButton}
+          />
 
           {selected && selected.fields.length === 0 && (
             <p className="text-xs text-ink-faint italic">
@@ -957,16 +951,54 @@ function ElementInspector({
         )}
 
         {element.type === "button" && (
-          <Row label="Variant">
-            <select
-              value={(element.config?.variant as string) ?? "primary"}
-              onChange={(e) => setConfig({ variant: e.target.value })}
-              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-            >
-              <option value="primary">Primary</option>
-              <option value="secondary">Secondary</option>
-            </select>
-          </Row>
+          <>
+            <Row label="Variant">
+              <select
+                value={(element.config?.variant as string) ?? "primary"}
+                onChange={(e) => setConfig({ variant: e.target.value })}
+                className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+              >
+                <option value="primary">Primary</option>
+                <option value="secondary">Secondary</option>
+              </select>
+            </Row>
+            <Row label="">
+              <Switch
+                label="Full width"
+                checked={!!element.config?.fullWidth}
+                onChange={(next) => setConfig({ fullWidth: next })}
+              />
+            </Row>
+            {!element.config?.fullWidth && (
+              <Row label="Align">
+                <div className="grid grid-cols-3 gap-1">
+                  {(
+                    [
+                      { id: "left", label: "Left" },
+                      { id: "center", label: "Center" },
+                      { id: "right", label: "Right" },
+                    ] as const
+                  ).map((opt) => {
+                    const active =
+                      ((element.config?.align as string) ?? "left") === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => setConfig({ align: opt.id })}
+                        className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                          active
+                            ? "border-ink bg-ink text-paper"
+                            : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Row>
+            )}
+          </>
         )}
 
         {element.type === "spacer" && (
@@ -993,6 +1025,62 @@ function ElementInspector({
               className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
             />
           </Row>
+        )}
+
+        {element.type === "boolean_toggle" && (
+          <>
+            <Row label="Display as">
+              <div className="grid grid-cols-2 gap-1">
+                {(
+                  [
+                    { id: "switch", label: "Switch" },
+                    { id: "checkbox", label: "Checkbox" },
+                  ] as const
+                ).map((opt) => {
+                  const active =
+                    ((element.config?.displayAs as string) ?? "switch") === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => setConfig({ displayAs: opt.id })}
+                      className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                        active
+                          ? "border-ink bg-ink text-paper"
+                          : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+            <Row label="Default state">
+              <div className="grid grid-cols-2 gap-1">
+                {(
+                  [
+                    { id: false, label: "Off" },
+                    { id: true, label: "On" },
+                  ] as const
+                ).map((opt) => {
+                  const active = !!element.config?.defaultValue === opt.id;
+                  return (
+                    <button
+                      key={String(opt.id)}
+                      onClick={() => setConfig({ defaultValue: opt.id })}
+                      className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                        active
+                          ? "border-ink bg-ink text-paper"
+                          : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+          </>
         )}
 
         {element.type === "select_input" && (

@@ -41,6 +41,7 @@ import {
   updateField,
 } from "@/lib/module/mutations";
 import { EmptyState, PanelHeading, ThreePanel } from "../three-panel";
+import { Switch } from "@/components/ui/switch";
 
 function labelToKey(label: string): string {
   return label
@@ -599,16 +600,13 @@ function FieldInspector({
         </Row>
 
         <Row label="">
-          <label className="flex items-center gap-2 text-sm text-ink-muted">
-            <input
-              type="checkbox"
-              checked={!!field.required}
-              onChange={(e) =>
-                onChange({ required: e.target.checked } as Partial<Field>)
-              }
-            />
-            Required
-          </label>
+          <Switch
+            label="Required"
+            checked={!!field.required}
+            onChange={(next) =>
+              onChange({ required: next } as Partial<Field>)
+            }
+          />
         </Row>
 
         <TypeSpecificConfig
@@ -808,16 +806,13 @@ function TypeSpecificConfig({
           )}
         </Row>
         <Row label="">
-          <label className="flex items-center gap-2 text-sm text-ink-muted">
-            <input
-              type="checkbox"
-              checked={!!f.many}
-              onChange={(e) =>
-                onChange({ many: e.target.checked } as Partial<Field>)
-              }
-            />
-            Many (one-to-many)
-          </label>
+          <Switch
+            label="Many (one-to-many)"
+            checked={!!f.many}
+            onChange={(next) =>
+              onChange({ many: next } as Partial<Field>)
+            }
+          />
         </Row>
       </>
     );

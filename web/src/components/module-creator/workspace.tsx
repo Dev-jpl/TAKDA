@@ -24,6 +24,7 @@ import { InterfaceMode } from "./modes/interface-mode";
 import { BehaviorMode } from "./modes/behavior-mode";
 import { ProfileMode } from "./modes/profile-mode";
 import { PublishModal } from "./publish-modal";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const MODES: { id: CreatorMode; label: string }[] = [
   { id: "schema", label: "Schema" },
@@ -96,7 +97,7 @@ export function ModuleCreatorWorkspace({ moduleId }: { moduleId: string }) {
 
   if (!module) {
     return (
-      <div className="flex h-[calc(100vh-65px)] items-center justify-center">
+      <div className="flex h-screen items-center justify-center">
         <div className="text-center text-ink-muted">
           <p className="text-sm">Module not found.</p>
           <Link
@@ -120,7 +121,7 @@ export function ModuleCreatorWorkspace({ moduleId }: { moduleId: string }) {
   };
 
   return (
-    <div className="flex h-[calc(100vh-65px)] flex-col">
+    <div className="flex h-screen flex-col">
       <TopBar
         moduleName={module.name}
         onRename={renameModule}
@@ -231,6 +232,8 @@ function TopBar({
           <StatusBadge module={module} />
           {savedAt ? ` · saved ${savedAt}` : ""}
         </span>
+
+        <ThemeToggle />
 
         <button
           onClick={onPublishClick}

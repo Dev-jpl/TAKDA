@@ -35,6 +35,7 @@ import {
   ELEMENT_CATALOG,
   addElement,
   addScreen,
+  clearScreen,
   deleteElement,
   deleteScreen,
   findNode,
@@ -166,6 +167,16 @@ export function InterfaceMode({
                 reorderElements(m, selectedScreen.id, from, to),
               )
             }
+            onClearScreen={() => {
+              if (
+                !window.confirm(
+                  `Remove all elements from "${selectedScreen.name}"?`,
+                )
+              )
+                return;
+              setModule((m) => clearScreen(m, selectedScreen.id));
+              setSelectedElementId(null);
+            }}
           />
         ) : (
           <div className="p-10 text-center text-ink-muted">
@@ -412,6 +423,7 @@ function Canvas({
   onDeselect,
   onGenerateFromCollection,
   onReorderElements,
+  onClearScreen,
 }: {
   screen: Screen;
   module: Module;
@@ -425,6 +437,7 @@ function Canvas({
     options: { heading?: boolean; saveButton?: boolean },
   ) => void;
   onReorderElements: (from: number, to: number) => void;
+  onClearScreen: () => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -471,6 +484,18 @@ function Canvas({
             className="rounded-md border border-rule px-4 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors"
           >
             ✨ Generate from collection
+          </button>
+        )}
+        {screen.root.children.length > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClearScreen();
+            }}
+            className="rounded-md border border-rule px-4 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors"
+            title="Remove all elements from this screen"
+          >
+            ↺ Clean canvas
           </button>
         )}
       </div>

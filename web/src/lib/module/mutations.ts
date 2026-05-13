@@ -367,6 +367,10 @@ export function deleteElement(
   }));
 }
 
+export function clearScreen(module: Module, screenId: Id): Module {
+  return mapScreenRoot(module, screenId, (root) => ({ ...root, children: [] }));
+}
+
 export function reorderElements(
   module: Module,
   screenId: Id,

@@ -590,6 +590,87 @@ export function reorderInParent(
   });
 }
 
+/** Wrap the given sibling nodes in a new container, in their existing order.
+ *  All nodes must share the same parent; non-sibling ids are skipped.
+ *  When grouped into a row, each child receives grow:1 so they distribute evenly.
+ *  Returns the new container's id. */
+export function groupNodes(
+  module: Module,
+  screenId: Id,
+  nodeIds: Id[],
+  direction: "row" | "column",
+): { module: Module; containerId: Id | null } {
+  const screen = module.screens.find((s) => s.id === screenId);
+  if (!screen || nodeIds.length < 2) return { module, containerId: null };
+
+  // Locate the shared parent.
+  const firstParent = findParentOf(screen.root, nodeIds[0]) ?? screen.root;
+  const sameParent = nodeIds.every(
+    (id) => (findParentOf(screen.root, id) ?? screen.root) === firstParent,
+  );
+  if (!sameParent) return { module, containerId: null };
+
+  const indexed = firstParent.children
+    .map((child, idx) => ({ child, idx }))
+    .filter(({ child }) => nodeIds.includes(child.id));
+  if (indexed.length < 2) return { module, containerId: null };
+
+  const newContainer: Container = {
+    kind: "container",
+    id: uid(),
+    direction,
+    gap: 12,
+    padding: 12,
+    align: direction === "row" ? "center" : "stretch",
+    children: indexed.map(({ child }) =>
+      child.kind === "element" && direction === "row"
+        ? ({ ...child, grow: 1 } as Element)
+        : child,
+    ),
+  };
+
+  const insertAt = Math.min(...indexed.map(({ idx }) => idx));
+  const remaining = firstParent.children.filter(
+    (c) => !nodeIds.includes(c.id),
+  );
+  const nextChildren = [...remaining];
+  nextChildren.splice(insertAt, 0, newContainer);
+
+  return {
+    module: mapNodeInScreen(module, screenId, firstParent.id, (parent) => {
+      if (parent.kind !== "container") return parent;
+      return { ...parent, children: nextChildren };
+    }),
+    containerId: newContainer.id,
+  };
+}
+
+/** Replace a container with its children, in place. */
+export function ungroupContainer(
+  module: Module,
+  screenId: Id,
+  containerId: Id,
+): Module {
+  const screen = module.screens.find((s) => s.id === screenId);
+  if (!screen) return module;
+  if (containerId === screen.root.id) return module;
+  const parent = findParentOf(screen.root, containerId);
+  if (!parent) return module;
+  const target = parent.children.find(
+    (c) => c.id === containerId && c.kind === "container",
+  ) as Container | undefined;
+  if (!target) return module;
+
+  const idx = parent.children.findIndex((c) => c.id === containerId);
+  const nextChildren = [...parent.children];
+  nextChildren.splice(idx, 1, ...target.children);
+
+  return mapNodeInScreen(module, screenId, parent.id, (p) => {
+    if (p.kind !== "container") return p;
+    return { ...p, children: nextChildren };
+  });
+}
+
 /** Walk the tree and return the Container that directly holds nodeId (or null if at root or absent). */
 export function findParentOf(root: Container, nodeId: Id): Container | null {
   for (const child of root.children) {

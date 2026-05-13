@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -45,7 +46,9 @@ import {
   findNode,
   findParentOf,
   generateFormFromCollection,
+  groupNodes,
   reorderInParent,
+  ungroupContainer,
   updateContainer,
   updateScreen,
   updateNode,
@@ -72,6 +75,30 @@ export function InterfaceMode({
 }) {
   const [selectedScreenId, setSelectedScreenId] = useState<Id | null>(null);
   const [selectedElementId, setSelectedElementId] = useState<Id | null>(null);
+  const [multiSelectIds, setMultiSelectIds] = useState<Set<Id>>(new Set());
+
+  const handleSelect = useCallback(
+    (id: Id, opts?: { additive?: boolean }) => {
+      if (opts?.additive) {
+        setMultiSelectIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+        setSelectedElementId((cur) => cur ?? id);
+        return;
+      }
+      setSelectedElementId(id);
+      setMultiSelectIds(new Set([id]));
+    },
+    [],
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectedElementId(null);
+    setMultiSelectIds(new Set());
+  }, []);
 
   useEffect(() => {
     if (selectedScreenId == null && module.screens.length > 0) {
@@ -168,9 +195,9 @@ export function InterfaceMode({
           selectedElementId={selectedElementId}
           onSelectScreen={(id) => {
             setSelectedScreenId(id);
-            setSelectedElementId(null);
+            clearSelection();
           }}
-          onSelectElement={setSelectedElementId}
+          onSelectElement={(id) => handleSelect(id)}
           onAddScreen={onAddScreen}
           onRenameScreen={(id, name) =>
             setModule((m) => updateScreen(m, id, { name }))
@@ -194,10 +221,37 @@ export function InterfaceMode({
             module={module}
             device={device}
             selectedNodeId={selectedElementId}
-            onSelectNode={setSelectedElementId}
+            multiSelectIds={multiSelectIds}
+            onSelectNode={(id, opts) => handleSelect(id, opts)}
             onAddElement={onAddElement}
             onAddContainer={onAddContainer}
-            onDeselect={() => setSelectedElementId(null)}
+            onDeselect={clearSelection}
+            onGroup={(direction) => {
+              if (!selectedScreen) return;
+              const ids = Array.from(multiSelectIds);
+              if (ids.length < 2) return;
+              setModule((m) => {
+                const { module: next, containerId } = groupNodes(
+                  m,
+                  selectedScreen.id,
+                  ids,
+                  direction,
+                );
+                if (containerId) {
+                  setSelectedElementId(containerId);
+                  setMultiSelectIds(new Set([containerId]));
+                }
+                return next;
+              });
+            }}
+            onUngroup={() => {
+              if (!selectedScreen || !selectedContainer) return;
+              setModule((m) =>
+                ungroupContainer(m, selectedScreen.id, selectedContainer.id),
+              );
+              clearSelection();
+            }}
+            canUngroup={!!selectedContainer}
             onGenerateFromCollection={(collId, opts) => {
               setModule((m) =>
                 generateFormFromCollection(m, selectedScreen.id, collId, opts),
@@ -548,6 +602,7 @@ function Canvas({
   module,
   device,
   selectedNodeId,
+  multiSelectIds,
   onSelectNode,
   onAddElement,
   onAddContainer,
@@ -555,13 +610,17 @@ function Canvas({
   onGenerateFromCollection,
   onReorderInParent,
   onClearScreen,
+  onGroup,
+  onUngroup,
+  canUngroup,
   targetParentId,
 }: {
   screen: Screen;
   module: Module;
   device: DevicePreview;
   selectedNodeId: Id | null;
-  onSelectNode: (id: Id) => void;
+  multiSelectIds: Set<Id>;
+  onSelectNode: (id: Id, opts?: { additive?: boolean }) => void;
   onAddElement: (kind: Element["type"]) => void;
   onAddContainer: (direction: "row" | "column") => void;
   onDeselect: () => void;
@@ -571,6 +630,9 @@ function Canvas({
   ) => void;
   onReorderInParent: (parentId: Id, from: number, to: number) => void;
   onClearScreen: () => void;
+  onGroup: (direction: "row" | "column") => void;
+  onUngroup: () => void;
+  canUngroup: boolean;
   targetParentId: Id | null;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -600,6 +662,7 @@ function Canvas({
             container={screen.root}
             module={module}
             selectedNodeId={selectedNodeId}
+            multiSelectIds={multiSelectIds}
             onSelectNode={onSelectNode}
             onReorderInParent={onReorderInParent}
             isRoot
@@ -641,6 +704,42 @@ function Canvas({
               className="rounded-md border border-rule bg-paper px-4 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors"
             >
               ✨ Generate from collection
+            </button>
+          )}
+          {multiSelectIds.size >= 2 && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGroup("row");
+                }}
+                className="rounded-md border border-ink bg-paper px-4 py-2 text-sm text-ink hover:bg-ink hover:text-paper transition-colors"
+                title="Wrap selected elements in a row"
+              >
+                ⊟ Group as Row ({multiSelectIds.size})
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGroup("column");
+                }}
+                className="rounded-md border border-ink bg-paper px-4 py-2 text-sm text-ink hover:bg-ink hover:text-paper transition-colors"
+                title="Wrap selected elements in a column"
+              >
+                ⊞ Group as Column ({multiSelectIds.size})
+              </button>
+            </>
+          )}
+          {canUngroup && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onUngroup();
+              }}
+              className="rounded-md border border-rule bg-paper px-4 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors"
+              title="Lift the container's children back to its parent"
+            >
+              ⊠ Ungroup
             </button>
           )}
           {screen.root.children.length > 0 && (
@@ -691,6 +790,7 @@ function DesignContainer({
   container,
   module,
   selectedNodeId,
+  multiSelectIds,
   onSelectNode,
   onReorderInParent,
   isRoot,
@@ -698,7 +798,8 @@ function DesignContainer({
   container: Container;
   module: Module;
   selectedNodeId: Id | null;
-  onSelectNode: (id: Id) => void;
+  multiSelectIds: Set<Id>;
+  onSelectNode: (id: Id, opts?: { additive?: boolean }) => void;
   onReorderInParent: (parentId: Id, from: number, to: number) => void;
   isRoot?: boolean;
 }) {
@@ -761,6 +862,7 @@ function DesignContainer({
                 container={node}
                 module={module}
                 selectedNodeId={selectedNodeId}
+                multiSelectIds={multiSelectIds}
                 onSelectNode={onSelectNode}
                 onReorderInParent={onReorderInParent}
               />
@@ -770,7 +872,8 @@ function DesignContainer({
                 element={node as Element}
                 module={module}
                 selected={node.id === selectedNodeId}
-                onSelect={() => onSelectNode(node.id)}
+                multiSelected={multiSelectIds.has(node.id)}
+                onSelect={(opts) => onSelectNode(node.id, opts)}
               />
             ),
           )}
@@ -796,18 +899,21 @@ function SortableCanvasContainer({
   container,
   module,
   selectedNodeId,
+  multiSelectIds,
   onSelectNode,
   onReorderInParent,
 }: {
   container: Container;
   module: Module;
   selectedNodeId: Id | null;
-  onSelectNode: (id: Id) => void;
+  multiSelectIds: Set<Id>;
+  onSelectNode: (id: Id, opts?: { additive?: boolean }) => void;
   onReorderInParent: (parentId: Id, from: number, to: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: container.id });
   const selected = container.id === selectedNodeId;
+  const multiSelected = multiSelectIds.has(container.id);
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -820,12 +926,16 @@ function SortableCanvasContainer({
       style={style}
       onClick={(e) => {
         e.stopPropagation();
-        onSelectNode(container.id);
+        onSelectNode(container.id, {
+          additive: e.shiftKey || e.metaKey || e.ctrlKey,
+        });
       }}
       className={`group relative rounded transition-colors border border-dashed ${
         selected
           ? "border-ink ring-2 ring-ink ring-offset-2 ring-offset-paper"
-          : "border-rule hover:border-ink-faint"
+          : multiSelected
+            ? "border-ink"
+            : "border-rule hover:border-ink-faint"
       } ${isDragging ? "z-10 shadow-md" : ""}`}
     >
       <span
@@ -848,6 +958,7 @@ function SortableCanvasContainer({
         container={container}
         module={module}
         selectedNodeId={selectedNodeId}
+        multiSelectIds={multiSelectIds}
         onSelectNode={onSelectNode}
         onReorderInParent={onReorderInParent}
       />
@@ -859,19 +970,22 @@ function SortableCanvasElement({
   element,
   module: _module,
   selected,
+  multiSelected,
   onSelect,
 }: {
   element: Element;
   module: Module;
   selected: boolean;
-  onSelect: () => void;
+  multiSelected: boolean;
+  onSelect: (opts?: { additive?: boolean }) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: element.id });
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
+    flexGrow: element.grow,
   };
 
   return (
@@ -880,12 +994,16 @@ function SortableCanvasElement({
       style={style}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect();
+        onSelect({
+          additive: e.shiftKey || e.metaKey || e.ctrlKey,
+        });
       }}
       className={`group relative rounded transition-colors ${
         selected
           ? "ring-2 ring-ink ring-offset-2 ring-offset-paper"
-          : "hover:ring-1 hover:ring-ink-faint"
+          : multiSelected
+            ? "ring-1 ring-ink"
+            : "hover:ring-1 hover:ring-ink-faint"
       } ${isDragging ? "z-10 shadow-md" : ""}`}
     >
       <span

@@ -13,7 +13,7 @@ export default function LoginPage() {
       </header>
       <main className="flex flex-1 items-center justify-center px-6">
         <div className="w-full max-w-sm">
-          <h1 className="handwritten text-4xl mb-1">Welcome back</h1>
+          <h1 className="text-2xl font-medium mb-1">Welcome back</h1>
           <p className="text-sm text-ink-muted mb-8">Open your notebook.</p>
           <AuthForm mode="login" />
           <p className="mt-6 text-sm text-ink-muted">

@@ -10,11 +10,14 @@ export default function Landing() {
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-        <h1 className="handwritten text-6xl sm:text-7xl text-ink">
-          <span className="sketch-underline">takdang aralin</span>
+        <h1 className="handwritten text-7xl sm:text-8xl text-ink tracking-wide">
+          TAKDA
         </h1>
-        <p className="mt-6 max-w-md text-ink-muted">
-          Capture your day. Design your tools. A notebook you can program.
+        <p className="mt-4 text-sm sm:text-base text-ink-muted tracking-[0.2em] uppercase">
+          Track <span className="text-ink-faint">·</span> Annotate{" "}
+          <span className="text-ink-faint">·</span> Knowledge{" "}
+          <span className="text-ink-faint">·</span> Deliver{" "}
+          <span className="text-ink-faint">·</span> Automate
         </p>
 
         <div className="mt-10 flex gap-3">

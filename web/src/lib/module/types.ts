@@ -10,22 +10,47 @@ export type Id = string;
 
 export type ModuleStatus = "draft" | "published";
 
+export type Visibility = "private" | "public";
+
+export interface ModuleProfile {
+  icon?: string;             // emoji
+  tagline?: string;          // one-liner
+  description?: string;      // long-form
+  category?: string;
+  tags?: string[];
+  coverColor?: string;       // hex
+  coverImage?: string;       // url
+  visibility: Visibility;
+  versionNotes?: string;
+}
+
 export interface Module {
   id: Id;
   name: string;
   slug: string;
-  icon?: string;
-  description?: string;
   status: ModuleStatus;
   version: number;
+  hasUnpublishedChanges?: boolean;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
 
+  profile: ModuleProfile;
   collections: Collection[];
   computed: ComputedProperty[];
   screens: Screen[];
   wires: Wire[];
+}
+
+// Validation report for publish-readiness.
+export interface PublishCheck {
+  ok: boolean;
+  items: {
+    key: string;
+    label: string;
+    status: "ok" | "missing";
+    hint?: string;
+  }[];
 }
 
 // ─── Schema: Collections + Fields ────────────────────────────────────────────
@@ -237,7 +262,7 @@ export type WireAction =
 
 // ─── Creator workspace state ─────────────────────────────────────────────────
 
-export type CreatorMode = "schema" | "interface" | "behavior";
+export type CreatorMode = "schema" | "interface" | "behavior" | "profile";
 
 export type DevicePreview = "phone" | "tablet" | "desktop";
 

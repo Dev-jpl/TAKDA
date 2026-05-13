@@ -117,7 +117,20 @@ function ElementRenderer({
   );
 }
 
-function ElementBody({
+export function RenderedElement({
+  element,
+  module,
+}: {
+  element: Element;
+  module: Module;
+}) {
+  const boundField = resolveBoundField(element, module);
+  const label =
+    boundField?.label ?? (element.config?.text as string | undefined);
+  return <ElementBody element={element} boundField={boundField} label={label} />;
+}
+
+export function ElementBody({
   element,
   boundField,
   label,
@@ -217,7 +230,65 @@ function ElementBody({
           />
         </FieldWrap>
       );
-    case "select_input":
+    case "select_input": {
+      const displayAs = (cfg.displayAs as string) ?? "dropdown";
+      const options =
+        boundField && (boundField.type === "select" || boundField.type === "multi_select")
+          ? boundField.options
+          : [];
+      const isMulti = boundField?.type === "multi_select";
+
+      if (options.length === 0 && displayAs !== "dropdown") {
+        return (
+          <FieldWrap label={label}>
+            <div className="text-xs text-ink-faint italic">
+              No options yet — add them on the bound field.
+            </div>
+          </FieldWrap>
+        );
+      }
+
+      if (displayAs === "chips") {
+        return (
+          <FieldWrap label={label}>
+            <div className="flex flex-wrap gap-1.5">
+              {options.map((o) => (
+                <span
+                  key={o.value}
+                  className="text-xs px-3 py-1.5 rounded-full border border-rule text-ink-muted"
+                >
+                  {o.label}
+                </span>
+              ))}
+            </div>
+          </FieldWrap>
+        );
+      }
+
+      if (displayAs === "radio" || displayAs === "checkbox") {
+        const inputType = displayAs === "radio" || !isMulti ? "radio" : "checkbox";
+        return (
+          <FieldWrap label={label}>
+            <div className="flex flex-col gap-2">
+              {options.map((o) => (
+                <label
+                  key={o.value}
+                  className="flex items-center gap-2 text-sm text-ink-muted"
+                >
+                  <input
+                    type={inputType}
+                    name={element.id}
+                    disabled
+                    className="cursor-not-allowed"
+                  />
+                  {o.label}
+                </label>
+              ))}
+            </div>
+          </FieldWrap>
+        );
+      }
+
       return (
         <FieldWrap label={label}>
           <select
@@ -225,13 +296,13 @@ function ElementBody({
             className="w-full bg-transparent border-b border-rule py-1.5 text-sm cursor-not-allowed text-ink-muted"
           >
             <option>{(cfg.placeholder as string) || "Choose..."}</option>
-            {boundField?.type === "select" &&
-              boundField.options.map((o) => (
-                <option key={o.value}>{o.label}</option>
-              ))}
+            {options.map((o) => (
+              <option key={o.value}>{o.label}</option>
+            ))}
           </select>
         </FieldWrap>
       );
+    }
     case "relation_picker":
       return (
         <FieldWrap label={label}>
@@ -284,7 +355,10 @@ function FieldWrap({
   );
 }
 
-function resolveBoundField(element: Element, module: Module): Field | null {
+export function resolveBoundField(
+  element: Element,
+  module: Module,
+): Field | null {
   if (!element.binding || element.binding.kind !== "field") return null;
   const { collectionId, fieldId } = element.binding;
   const coll = module.collections.find((c) => c.id === collectionId);

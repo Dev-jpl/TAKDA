@@ -47,7 +47,7 @@ import {
   type ElementCategory,
 } from "@/lib/module/mutations";
 import { EmptyState, PanelHeading, ThreePanel } from "../three-panel";
-import { ContainerRenderer } from "../element-renderer";
+import { ContainerRenderer, RenderedElement } from "../element-renderer";
 
 const DEVICE_WIDTH: Record<DevicePreview, string> = {
   phone: "390px",
@@ -654,35 +654,10 @@ function SortableCanvasElement({
           <circle cx="8" cy="12" r="1.2" />
         </svg>
       </span>
-      <CanvasElementBody element={element} module={_module} />
+      <div className="pointer-events-none">
+        <RenderedElement element={element} module={_module} />
+      </div>
     </div>
-  );
-}
-
-function CanvasElementBody({
-  element,
-  module,
-}: {
-  element: Element;
-  module: Module;
-}) {
-  // Reuse the same body the read-only renderer uses via a minimal container
-  // around just this single element.
-  const single: typeof module.screens[number]["root"] = {
-    kind: "container",
-    id: "tmp",
-    direction: "column",
-    children: [element],
-    gap: 0,
-    padding: 0,
-  };
-  return (
-    <ContainerRenderer
-      container={single}
-      module={module}
-      selectedId={null}
-      onSelect={() => {}}
-    />
   );
 }
 
@@ -1017,6 +992,37 @@ function ElementInspector({
               onChange={(e) => setConfig({ placeholder: e.target.value })}
               className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
             />
+          </Row>
+        )}
+
+        {element.type === "select_input" && (
+          <Row label="Display as">
+            <div className="grid grid-cols-2 gap-1">
+              {(
+                [
+                  { id: "dropdown", label: "Dropdown" },
+                  { id: "chips", label: "Chips" },
+                  { id: "radio", label: "Radio" },
+                  { id: "checkbox", label: "Checkbox" },
+                ] as const
+              ).map((opt) => {
+                const active =
+                  ((element.config?.displayAs as string) ?? "dropdown") === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => setConfig({ displayAs: opt.id })}
+                    className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                      active
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
           </Row>
         )}
 

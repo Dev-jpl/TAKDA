@@ -367,6 +367,81 @@ export function deleteElement(
   }));
 }
 
+export function reorderElements(
+  module: Module,
+  screenId: Id,
+  fromIdx: number,
+  toIdx: number,
+): Module {
+  return mapScreenRoot(module, screenId, (root) => {
+    if (fromIdx === toIdx) return root;
+    if (fromIdx < 0 || fromIdx >= root.children.length) return root;
+    if (toIdx < 0 || toIdx >= root.children.length) return root;
+    const next = [...root.children];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    return { ...root, children: next };
+  });
+}
+
+const FIELD_TO_ELEMENT: Record<FieldType, ElementKind> = {
+  text: "text_input",
+  long_text: "long_text_input",
+  number: "number_input",
+  boolean: "boolean_toggle",
+  date: "date_input",
+  datetime: "date_input",
+  select: "select_input",
+  multi_select: "select_input",
+  relation: "relation_picker",
+  file: "file_input",
+};
+
+export function generateFormFromCollection(
+  module: Module,
+  screenId: Id,
+  collectionId: Id,
+  options: { heading?: boolean; saveButton?: boolean } = {},
+): Module {
+  const collection = module.collections.find((c) => c.id === collectionId);
+  if (!collection) return module;
+
+  const additions: Element[] = [];
+
+  if (options.heading) {
+    additions.push({
+      kind: "element",
+      id: uid(),
+      type: "heading",
+      config: { text: `Log ${collection.name}`, size: "lg" },
+    });
+  }
+
+  for (const f of collection.fields) {
+    additions.push({
+      kind: "element",
+      id: uid(),
+      type: FIELD_TO_ELEMENT[f.type],
+      binding: { kind: "field", collectionId, fieldId: f.id },
+      config: defaultElementConfig(FIELD_TO_ELEMENT[f.type]),
+    });
+  }
+
+  if (options.saveButton) {
+    additions.push({
+      kind: "element",
+      id: uid(),
+      type: "button",
+      config: { text: "Save", variant: "primary" },
+    });
+  }
+
+  return mapScreenRoot(module, screenId, (root) => ({
+    ...root,
+    children: [...root.children, ...additions],
+  }));
+}
+
 export function moveElement(
   module: Module,
   screenId: Id,

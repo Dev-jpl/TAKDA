@@ -42,6 +42,14 @@ import {
 } from "@/lib/module/mutations";
 import { EmptyState, PanelHeading, ThreePanel } from "../three-panel";
 
+function labelToKey(label: string): string {
+  return label
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
 export function SchemaMode({
   module,
   setModule,
@@ -129,7 +137,16 @@ export function SchemaMode({
           onAdd={onAddCollection}
           onDelete={onDeleteCollection}
           onRename={(id, name) =>
-            setModule((m) => updateCollection(m, id, { name }))
+            setModule((m) => {
+              const coll = m.collections.find((c) => c.id === id);
+              const keyInSync = coll
+                ? coll.key === labelToKey(coll.name)
+                : false;
+              return updateCollection(m, id, {
+                name,
+                ...(keyInSync ? { key: labelToKey(name) } : {}),
+              });
+            })
           }
         />
       }
@@ -517,6 +534,20 @@ function FieldInspector({
           </button>
         </div>
 
+        <Row label="Label">
+          <input
+            value={field.label}
+            onChange={(e) => {
+              const nextLabel = e.target.value;
+              const keyInSync = field.key === labelToKey(field.label);
+              const patch: Partial<Field> = { label: nextLabel };
+              if (keyInSync) patch.key = labelToKey(nextLabel);
+              onChange(patch);
+            }}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+
         <Row label="Type">
           <select
             value={field.type}
@@ -541,26 +572,30 @@ function FieldInspector({
           </select>
         </Row>
 
-        <Row label="Label">
-          <input
-            value={field.label}
-            onChange={(e) => onChange({ label: e.target.value } as Partial<Field>)}
-            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-          />
-        </Row>
-
         <Row label="Key" hint="machine name, snake_case">
-          <input
-            value={field.key}
-            onChange={(e) =>
-              onChange({
-                key: e.target.value
-                  .toLowerCase()
-                  .replace(/[^a-z0-9_]/g, "_"),
-              } as Partial<Field>)
-            }
-            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm font-mono"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              value={field.key}
+              onChange={(e) =>
+                onChange({
+                  key: e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_]/g, "_"),
+                } as Partial<Field>)
+              }
+              className="flex-1 bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm font-mono"
+            />
+            <button
+              onClick={() =>
+                onChange({ key: labelToKey(field.label) } as Partial<Field>)
+              }
+              disabled={field.key === labelToKey(field.label)}
+              title="Sync key from label"
+              className="text-xs border border-rule rounded px-2 py-1 text-ink-muted hover:text-ink hover:border-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              ↻ label
+            </button>
+          </div>
         </Row>
 
         <Row label="">

@@ -7,7 +7,24 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type {
+  Collection,
   DevicePreview,
   Element,
   Id,
@@ -21,7 +38,9 @@ import {
   deleteElement,
   deleteScreen,
   findNode,
+  generateFormFromCollection,
   moveElement,
+  reorderElements,
   updateElement,
   updateScreen,
   type ElementCategory,
@@ -103,7 +122,8 @@ export function InterfaceMode({
       left={
         <ScreensRail
           screens={module.screens}
-          selectedScreenId={selectedScreenId}
+          screenId={selectedScreenId}
+          selectedScreen={selectedScreen}
           selectedElementId={selectedElementId}
           onSelectScreen={(id) => {
             setSelectedScreenId(id);
@@ -118,6 +138,12 @@ export function InterfaceMode({
             if (!window.confirm("Delete this screen?")) return;
             setModule((m) => deleteScreen(m, id));
           }}
+          onReorderLayers={(from, to) => {
+            if (!selectedScreen) return;
+            setModule((m) =>
+              reorderElements(m, selectedScreen.id, from, to),
+            );
+          }}
         />
       }
       center={
@@ -130,6 +156,16 @@ export function InterfaceMode({
             onSelectElement={setSelectedElementId}
             onAddElement={onAddElement}
             onDeselect={() => setSelectedElementId(null)}
+            onGenerateFromCollection={(collId, opts) => {
+              setModule((m) =>
+                generateFormFromCollection(m, selectedScreen.id, collId, opts),
+              );
+            }}
+            onReorderElements={(from, to) =>
+              setModule((m) =>
+                reorderElements(m, selectedScreen.id, from, to),
+              )
+            }
           />
         ) : (
           <div className="p-10 text-center text-ink-muted">
@@ -174,24 +210,47 @@ export function InterfaceMode({
 
 function ScreensRail({
   screens,
-  selectedScreenId,
+  screenId,
+  selectedScreen,
   selectedElementId,
   onSelectScreen,
   onSelectElement,
   onAddScreen,
   onRenameScreen,
   onDeleteScreen,
+  onReorderLayers,
 }: {
   screens: Screen[];
-  selectedScreenId: Id | null;
+  screenId: Id | null;
+  selectedScreen: Screen | null;
   selectedElementId: Id | null;
   onSelectScreen: (id: Id) => void;
   onSelectElement: (id: Id) => void;
   onAddScreen: () => void;
   onRenameScreen: (id: Id, name: string) => void;
   onDeleteScreen: (id: Id) => void;
+  onReorderLayers: (from: number, to: number) => void;
 }) {
-  const selectedScreen = screens.find((s) => s.id === selectedScreenId);
+  const selectedScreenId = screenId;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const elementChildren = selectedScreen
+    ? selectedScreen.root.children.filter((n) => n.kind === "element")
+    : [];
+
+  const onDragEndLayers = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = elementChildren.findIndex((n) => n.id === active.id);
+    const to = elementChildren.findIndex((n) => n.id === over.id);
+    if (from < 0 || to < 0) return;
+    onReorderLayers(from, to);
+  };
   return (
     <>
       <PanelHeading>Screens</PanelHeading>
@@ -254,38 +313,90 @@ function ScreensRail({
       <PanelHeading>Layers</PanelHeading>
       {!selectedScreen ? (
         <EmptyState>Select a screen.</EmptyState>
-      ) : selectedScreen.root.children.length === 0 ? (
+      ) : elementChildren.length === 0 ? (
         <EmptyState>Empty — add an element on the canvas.</EmptyState>
       ) : (
-        <ul className="px-2 py-2 space-y-0.5">
-          {selectedScreen.root.children.map((node) => {
-            if (node.kind !== "element") return null;
-            const active = node.id === selectedElementId;
-            const spec = ELEMENT_CATALOG.find((e) => e.kind === node.type);
-            return (
-              <li
-                key={node.id}
-                onClick={() => onSelectElement(node.id)}
-                className={`flex items-center gap-2 rounded px-3 py-1.5 text-sm cursor-pointer ${
-                  active
-                    ? "bg-ink text-paper"
-                    : "text-ink-muted hover:bg-rule/30 hover:text-ink"
-                }`}
-              >
-                <span
-                  className={`w-4 text-center text-[11px] ${
-                    active ? "text-paper/70" : "text-ink-faint"
-                  }`}
-                >
-                  {spec?.glyph}
-                </span>
-                <span className="truncate">{spec?.label ?? node.type}</span>
-              </li>
-            );
-          })}
-        </ul>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={onDragEndLayers}
+        >
+          <SortableContext
+            items={elementChildren.map((n) => n.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="px-2 py-2 space-y-0.5">
+              {elementChildren.map((node) => (
+                <SortableLayerRow
+                  key={node.id}
+                  element={node as Element}
+                  active={node.id === selectedElementId}
+                  onSelect={() => onSelectElement(node.id)}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
       )}
     </>
+  );
+}
+
+function SortableLayerRow({
+  element,
+  active,
+  onSelect,
+}: {
+  element: Element;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: element.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+  const spec = ELEMENT_CATALOG.find((e) => e.kind === element.type);
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      onClick={onSelect}
+      className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer ${
+        active
+          ? "bg-ink text-paper"
+          : "text-ink-muted hover:bg-rule/30 hover:text-ink"
+      } ${isDragging ? "relative z-10 shadow-md bg-paper" : ""}`}
+    >
+      <span
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className={`shrink-0 cursor-grab active:cursor-grabbing ${
+          active ? "text-paper/70" : "text-ink-faint hover:text-ink"
+        }`}
+        title="Drag to reorder"
+      >
+        <svg width="8" height="12" viewBox="0 0 10 14" fill="currentColor">
+          <circle cx="2" cy="2" r="1.2" />
+          <circle cx="2" cy="7" r="1.2" />
+          <circle cx="2" cy="12" r="1.2" />
+          <circle cx="8" cy="2" r="1.2" />
+          <circle cx="8" cy="7" r="1.2" />
+          <circle cx="8" cy="12" r="1.2" />
+        </svg>
+      </span>
+      <span
+        className={`w-4 text-center text-[11px] ${
+          active ? "text-paper/70" : "text-ink-faint"
+        }`}
+      >
+        {spec?.glyph}
+      </span>
+      <span className="truncate">{spec?.label ?? element.type}</span>
+    </li>
   );
 }
 
@@ -299,6 +410,8 @@ function Canvas({
   onSelectElement,
   onAddElement,
   onDeselect,
+  onGenerateFromCollection,
+  onReorderElements,
 }: {
   screen: Screen;
   module: Module;
@@ -307,8 +420,14 @@ function Canvas({
   onSelectElement: (id: Id) => void;
   onAddElement: (kind: Element["type"]) => void;
   onDeselect: () => void;
+  onGenerateFromCollection: (
+    collectionId: Id,
+    options: { heading?: boolean; saveButton?: boolean },
+  ) => void;
+  onReorderElements: (from: number, to: number) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
 
   return (
     <div
@@ -316,7 +435,7 @@ function Canvas({
       onClick={onDeselect}
     >
       <div
-        className="rounded-md border border-rule bg-paper shadow-sm transition-all"
+        className="rounded-md border border-rule bg-paper shadow-sm transition-all w-full"
         style={{
           width: DEVICE_WIDTH[device],
           maxWidth: "100%",
@@ -324,15 +443,16 @@ function Canvas({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <ContainerRenderer
-          container={screen.root}
+        <DesignContainer
+          screen={screen}
           module={module}
-          selectedId={selectedElementId}
-          onSelect={onSelectElement}
+          selectedElementId={selectedElementId}
+          onSelectElement={onSelectElement}
+          onReorderElements={onReorderElements}
         />
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 flex items-center gap-2">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -342,6 +462,17 @@ function Canvas({
         >
           + Add element
         </button>
+        {module.collections.length > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setGenerateOpen(true);
+            }}
+            className="rounded-md border border-rule px-4 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors"
+          >
+            ✨ Generate from collection
+          </button>
+        )}
       </div>
 
       {pickerOpen && (
@@ -353,6 +484,278 @@ function Canvas({
           onClose={() => setPickerOpen(false)}
         />
       )}
+
+      {generateOpen && (
+        <GenerateFromCollectionModal
+          collections={module.collections}
+          onPick={(collId, opts) => {
+            onGenerateFromCollection(collId, opts);
+            setGenerateOpen(false);
+          }}
+          onClose={() => setGenerateOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DesignContainer({
+  screen,
+  module,
+  selectedElementId,
+  onSelectElement,
+  onReorderElements,
+}: {
+  screen: Screen;
+  module: Module;
+  selectedElementId: Id | null;
+  onSelectElement: (id: Id) => void;
+  onReorderElements: (from: number, to: number) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const elements = screen.root.children.filter((n) => n.kind === "element");
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = elements.findIndex((n) => n.id === active.id);
+    const to = elements.findIndex((n) => n.id === over.id);
+    if (from < 0 || to < 0) return;
+    onReorderElements(from, to);
+  };
+
+  if (elements.length === 0) {
+    return (
+      <ContainerRenderer
+        container={screen.root}
+        module={module}
+        selectedId={selectedElementId}
+        onSelect={onSelectElement}
+      />
+    );
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={elements.map((n) => n.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div
+          className="flex flex-col"
+          style={{
+            gap: screen.root.gap ?? 12,
+            padding: screen.root.padding ?? 24,
+          }}
+        >
+          {elements.map((node) => (
+            <SortableCanvasElement
+              key={node.id}
+              element={node as Element}
+              module={module}
+              selected={node.id === selectedElementId}
+              onSelect={() => onSelectElement(node.id)}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function SortableCanvasElement({
+  element,
+  module: _module,
+  selected,
+  onSelect,
+}: {
+  element: Element;
+  module: Module;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: element.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      className={`group relative rounded transition-colors ${
+        selected
+          ? "ring-2 ring-ink ring-offset-2 ring-offset-paper"
+          : "hover:ring-1 hover:ring-ink-faint"
+      } ${isDragging ? "z-10 shadow-md" : ""}`}
+    >
+      <span
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute -left-5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing text-ink-faint hover:text-ink"
+        title="Drag to reorder"
+      >
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+          <circle cx="2" cy="2" r="1.2" />
+          <circle cx="2" cy="7" r="1.2" />
+          <circle cx="2" cy="12" r="1.2" />
+          <circle cx="8" cy="2" r="1.2" />
+          <circle cx="8" cy="7" r="1.2" />
+          <circle cx="8" cy="12" r="1.2" />
+        </svg>
+      </span>
+      <CanvasElementBody element={element} module={_module} />
+    </div>
+  );
+}
+
+function CanvasElementBody({
+  element,
+  module,
+}: {
+  element: Element;
+  module: Module;
+}) {
+  // Reuse the same body the read-only renderer uses via a minimal container
+  // around just this single element.
+  const single: typeof module.screens[number]["root"] = {
+    kind: "container",
+    id: "tmp",
+    direction: "column",
+    children: [element],
+    gap: 0,
+    padding: 0,
+  };
+  return (
+    <ContainerRenderer
+      container={single}
+      module={module}
+      selectedId={null}
+      onSelect={() => {}}
+    />
+  );
+}
+
+function GenerateFromCollectionModal({
+  collections,
+  onPick,
+  onClose,
+}: {
+  collections: Collection[];
+  onPick: (
+    collectionId: Id,
+    opts: { heading?: boolean; saveButton?: boolean },
+  ) => void;
+  onClose: () => void;
+}) {
+  const [collId, setCollId] = useState<Id>(collections[0]?.id ?? "");
+  const [heading, setHeading] = useState(true);
+  const [saveButton, setSaveButton] = useState(true);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const selected = collections.find((c) => c.id === collId);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-ink/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-md border border-rule bg-paper shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-rule">
+          <h3 className="text-base font-medium">Generate form from collection</h3>
+          <p className="text-xs text-ink-muted mt-1">
+            Drops a bound input for every field in the chosen collection onto
+            this screen.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint mb-2">
+              Collection
+            </div>
+            <select
+              value={collId}
+              onChange={(e) => setCollId(e.target.value)}
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1.5 text-sm"
+            >
+              {collections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.fields.length} field
+                  {c.fields.length === 1 ? "" : "s"})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
+            <input
+              type="checkbox"
+              checked={heading}
+              onChange={(e) => setHeading(e.target.checked)}
+            />
+            Add heading
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
+            <input
+              type="checkbox"
+              checked={saveButton}
+              onChange={(e) => setSaveButton(e.target.checked)}
+            />
+            Add save button
+          </label>
+
+          {selected && selected.fields.length === 0 && (
+            <p className="text-xs text-ink-faint italic">
+              This collection has no fields yet.
+            </p>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-rule flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 text-sm text-ink-muted hover:text-ink rounded"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={!selected || selected.fields.length === 0}
+            onClick={() => onPick(collId, { heading, saveButton })}
+            className="rounded-md border border-ink bg-ink text-paper px-4 py-1.5 text-sm hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Generate
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

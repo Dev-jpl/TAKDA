@@ -782,9 +782,9 @@ function Canvas({
             }}
             disabled={!canUndo}
             title="Undo (Cmd+Z)"
-            className="rounded-md border border-rule bg-paper px-3 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="rounded-md border border-rule bg-paper px-3 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
           >
-            ↶
+            <span>↶</span> Undo
           </button>
           <button
             onClick={(e) => {
@@ -793,9 +793,9 @@ function Canvas({
             }}
             disabled={!canRedo}
             title="Redo (Shift+Cmd+Z)"
-            className="rounded-md border border-rule bg-paper px-3 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="rounded-md border border-rule bg-paper px-3 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
           >
-            ↷
+            <span>↷</span> Redo
           </button>
           <span className="w-px h-6 bg-rule mx-1" />
           <button

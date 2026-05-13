@@ -5,7 +5,10 @@ import { Sidebar } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignOutButton } from "@/components/sign-out-button";
 
-const FULLSCREEN_PATTERNS = [/^\/module-creator\/[^/]+/];
+const FULLSCREEN_PATTERNS = [
+  /^\/module-creator\/[^/]+/,
+  /^\/m\/[^/]+/,
+];
 
 export function AppShell({
   email,

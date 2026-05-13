@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -66,7 +67,7 @@ const DEVICE_WIDTH: Record<DevicePreview, string> = {
 
 export function InterfaceMode({
   module,
-  setModule,
+  setModule: setModuleRaw,
   device,
 }: {
   module: Module;
@@ -76,6 +77,82 @@ export function InterfaceMode({
   const [selectedScreenId, setSelectedScreenId] = useState<Id | null>(null);
   const [selectedElementId, setSelectedElementId] = useState<Id | null>(null);
   const [multiSelectIds, setMultiSelectIds] = useState<Set<Id>>(new Set());
+
+  // ── Undo/redo history (scoped to Interface edits) ─────────────────────────
+  const HISTORY_LIMIT = 50;
+  const [past, setPast] = useState<Module[]>([]);
+  const [future, setFuture] = useState<Module[]>([]);
+  const skipNextTrack = useRef(false);
+
+  const setModule: Dispatch<SetStateAction<Module>> = useCallback(
+    (updater) => {
+      setModuleRaw((prev) => {
+        const next =
+          typeof updater === "function"
+            ? (updater as (m: Module) => Module)(prev)
+            : updater;
+        if (skipNextTrack.current) {
+          skipNextTrack.current = false;
+          return next;
+        }
+        if (next === prev) return prev;
+        setPast((p) => {
+          const trimmed = p.length >= HISTORY_LIMIT ? p.slice(1) : p;
+          return [...trimmed, prev];
+        });
+        setFuture([]);
+        return next;
+      });
+    },
+    [setModuleRaw],
+  );
+
+  const canUndo = past.length > 0;
+  const canRedo = future.length > 0;
+
+  const undo = useCallback(() => {
+    if (past.length === 0) return;
+    setModuleRaw((cur) => {
+      const prev = past[past.length - 1];
+      setPast((p) => p.slice(0, -1));
+      setFuture((f) => [cur, ...f]);
+      skipNextTrack.current = true;
+      return prev;
+    });
+  }, [past, setModuleRaw]);
+
+  const redo = useCallback(() => {
+    if (future.length === 0) return;
+    setModuleRaw((cur) => {
+      const next = future[0];
+      setFuture((f) => f.slice(1));
+      setPast((p) => [...p, cur]);
+      skipNextTrack.current = true;
+      return next;
+    });
+  }, [future, setModuleRaw]);
+
+  // Keyboard shortcuts: Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z (or Cmd/Ctrl+Y)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable)
+        return;
+      if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (e.key === "y" || e.key === "Y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   const handleSelect = useCallback(
     (id: Id, opts?: { additive?: boolean }) => {
@@ -252,6 +329,10 @@ export function InterfaceMode({
               clearSelection();
             }}
             canUngroup={!!selectedContainer}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
             onGenerateFromCollection={(collId, opts) => {
               setModule((m) =>
                 generateFormFromCollection(m, selectedScreen.id, collId, opts),
@@ -613,6 +694,10 @@ function Canvas({
   onGroup,
   onUngroup,
   canUngroup,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   targetParentId,
 }: {
   screen: Screen;
@@ -633,6 +718,10 @@ function Canvas({
   onGroup: (direction: "row" | "column") => void;
   onUngroup: () => void;
   canUngroup: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   targetParentId: Id | null;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -686,6 +775,29 @@ function Canvas({
             </p>
           )}
           <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onUndo();
+            }}
+            disabled={!canUndo}
+            title="Undo (Cmd+Z)"
+            className="rounded-md border border-rule bg-paper px-3 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ↶
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRedo();
+            }}
+            disabled={!canRedo}
+            title="Redo (Shift+Cmd+Z)"
+            className="rounded-md border border-rule bg-paper px-3 py-2 text-sm text-ink-muted hover:text-ink hover:border-ink transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ↷
+          </button>
+          <span className="w-px h-6 bg-rule mx-1" />
           <button
             onClick={(e) => {
               e.stopPropagation();

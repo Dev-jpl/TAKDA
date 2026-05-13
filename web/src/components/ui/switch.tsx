@@ -11,10 +11,15 @@ export function Switch({
   label?: string;
   disabled?: boolean;
 }) {
+  const toggle = () => {
+    if (disabled) return;
+    onChange(!checked);
+  };
+
   return (
-    <label
+    <div
       className={`flex items-center gap-3 text-sm ${
-        disabled ? "opacity-50" : "cursor-pointer"
+        disabled ? "opacity-50" : ""
       }`}
     >
       <button
@@ -22,18 +27,29 @@ export function Switch({
         role="switch"
         aria-checked={checked}
         disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-block h-6 w-11 rounded-full transition-colors shrink-0 ${
+        onClick={toggle}
+        className={`relative h-6 w-11 rounded-full transition-colors shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
           checked ? "bg-ink" : "bg-rule"
-        } ${disabled ? "cursor-not-allowed" : ""}`}
+        } ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
       >
         <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-paper shadow-sm transition-transform ${
-            checked ? "translate-x-5" : "translate-x-0.5"
-          }`}
+          aria-hidden
+          style={{
+            transform: `translateX(${checked ? 22 : 2}px)`,
+          }}
+          className="absolute top-0.5 left-0 h-5 w-5 rounded-full bg-paper shadow-[0_1px_2px_rgba(0,0,0,0.25)] transition-transform duration-150"
         />
       </button>
-      {label && <span className="text-ink-muted">{label}</span>}
-    </label>
+      {label && (
+        <span
+          onClick={toggle}
+          className={`text-ink-muted select-none ${
+            disabled ? "cursor-not-allowed" : "cursor-pointer"
+          }`}
+        >
+          {label}
+        </span>
+      )}
+    </div>
   );
 }

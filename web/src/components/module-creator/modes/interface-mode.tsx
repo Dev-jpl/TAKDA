@@ -25,25 +25,30 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type {
   Collection,
+  Container,
   DevicePreview,
   Element,
   Id,
+  LayoutNode,
   Module,
   Screen,
 } from "@/lib/module/types";
 import {
+  CONTAINER_CATALOG,
   ELEMENT_CATALOG,
-  addElement,
+  addContainer,
+  addElementTo,
   addScreen,
   clearScreen,
-  deleteElement,
+  deleteNode,
   deleteScreen,
   findNode,
+  findParentOf,
   generateFormFromCollection,
-  moveElement,
-  reorderElements,
-  updateElement,
+  reorderInParent,
+  updateContainer,
   updateScreen,
+  updateNode,
   type ElementCategory,
 } from "@/lib/module/mutations";
 import { EmptyState, PanelHeading, ThreePanel } from "../three-panel";
@@ -86,11 +91,25 @@ export function InterfaceMode({
     [module.screens, selectedScreenId],
   );
 
-  const selectedElement = useMemo(() => {
+  const selectedNode: LayoutNode | null = useMemo(() => {
     if (!selectedScreen || !selectedElementId) return null;
-    const node = findNode(selectedScreen.root, selectedElementId);
-    return node?.kind === "element" ? node : null;
+    return findNode(selectedScreen.root, selectedElementId);
   }, [selectedScreen, selectedElementId]);
+
+  const selectedElement =
+    selectedNode?.kind === "element" ? selectedNode : null;
+  const selectedContainer =
+    selectedNode?.kind === "container" ? selectedNode : null;
+
+  // For "Add" actions, figure out which container is the target parent.
+  const targetParentId = useMemo<Id | null>(() => {
+    if (!selectedScreen) return null;
+    if (!selectedNode) return selectedScreen.root.id;
+    if (selectedNode.kind === "container") return selectedNode.id;
+    // Selected an element — add as sibling, so target = its parent.
+    const parent = findParentOf(selectedScreen.root, selectedNode.id);
+    return parent ? parent.id : selectedScreen.root.id;
+  }, [selectedScreen, selectedNode]);
 
   const onAddScreen = () => {
     const name = window.prompt("Screen name", "New screen");
@@ -104,18 +123,38 @@ export function InterfaceMode({
   };
 
   const onAddElement = (kind: Element["type"]) => {
-    if (!selectedScreen) return;
+    if (!selectedScreen || !targetParentId) return;
     setModule((m) => {
-      const { module: next, element } = addElement(m, selectedScreen.id, kind);
+      const { module: next, element } = addElementTo(
+        m,
+        selectedScreen.id,
+        targetParentId,
+        kind,
+      );
       setSelectedElementId(element.id);
       return next;
     });
   };
 
-  const onPatchElement = (patch: Partial<Element>) => {
-    if (!selectedScreen || !selectedElement) return;
+  const onAddContainer = (direction: "row" | "column") => {
+    if (!selectedScreen) return;
+    setModule((m) => {
+      // Containers always live at root for M1 (no deep nesting yet).
+      const { module: next, container } = addContainer(
+        m,
+        selectedScreen.id,
+        selectedScreen.root.id,
+        direction,
+      );
+      setSelectedElementId(container.id);
+      return next;
+    });
+  };
+
+  const onPatchSelected = (patch: Partial<Element> | Partial<Container>) => {
+    if (!selectedScreen || !selectedNode) return;
     setModule((m) =>
-      updateElement(m, selectedScreen.id, selectedElement.id, patch),
+      updateNode(m, selectedScreen.id, selectedNode.id, patch),
     );
   };
 
@@ -140,10 +179,10 @@ export function InterfaceMode({
             if (!window.confirm("Delete this screen?")) return;
             setModule((m) => deleteScreen(m, id));
           }}
-          onReorderLayers={(from, to) => {
+          onReorderLayers={(parentId, from, to) => {
             if (!selectedScreen) return;
             setModule((m) =>
-              reorderElements(m, selectedScreen.id, from, to),
+              reorderInParent(m, selectedScreen.id, parentId, from, to),
             );
           }}
         />
@@ -154,18 +193,19 @@ export function InterfaceMode({
             screen={selectedScreen}
             module={module}
             device={device}
-            selectedElementId={selectedElementId}
-            onSelectElement={setSelectedElementId}
+            selectedNodeId={selectedElementId}
+            onSelectNode={setSelectedElementId}
             onAddElement={onAddElement}
+            onAddContainer={onAddContainer}
             onDeselect={() => setSelectedElementId(null)}
             onGenerateFromCollection={(collId, opts) => {
               setModule((m) =>
                 generateFormFromCollection(m, selectedScreen.id, collId, opts),
               );
             }}
-            onReorderElements={(from, to) =>
+            onReorderInParent={(parentId, from, to) =>
               setModule((m) =>
-                reorderElements(m, selectedScreen.id, from, to),
+                reorderInParent(m, selectedScreen.id, parentId, from, to),
               )
             }
             onClearScreen={() => {
@@ -178,6 +218,7 @@ export function InterfaceMode({
               setModule((m) => clearScreen(m, selectedScreen.id));
               setSelectedElementId(null);
             }}
+            targetParentId={targetParentId}
           />
         ) : (
           <div className="p-10 text-center text-ink-muted">
@@ -189,21 +230,52 @@ export function InterfaceMode({
         )
       }
       right={
-        selectedElement && selectedScreen ? (
+        selectedContainer && selectedScreen ? (
+          <ContainerInspector
+            container={selectedContainer}
+            onPatch={(p) =>
+              setModule((m) =>
+                updateContainer(m, selectedScreen.id, selectedContainer.id, p),
+              )
+            }
+            onDelete={() => {
+              setModule((m) =>
+                deleteNode(m, selectedScreen.id, selectedContainer.id),
+              );
+              setSelectedElementId(null);
+            }}
+          />
+        ) : selectedElement && selectedScreen ? (
           <ElementInspector
             module={module}
             screen={selectedScreen}
             element={selectedElement}
-            onPatch={onPatchElement}
+            onPatch={onPatchSelected}
             onDelete={() => {
               setModule((m) =>
-                deleteElement(m, selectedScreen.id, selectedElement.id),
+                deleteNode(m, selectedScreen.id, selectedElement.id),
               );
               setSelectedElementId(null);
             }}
-            onMove={(d) => {
+            onMove={(_d) => {
+              // Move via inspector: compute parent + neighbor index and reorder.
+              if (!selectedScreen) return;
+              const parent =
+                findParentOf(selectedScreen.root, selectedElement.id) ??
+                selectedScreen.root;
+              const idx = parent.children.findIndex(
+                (c) => c.id === selectedElement.id,
+              );
+              const target = idx + _d;
+              if (target < 0 || target >= parent.children.length) return;
               setModule((m) =>
-                moveElement(m, selectedScreen.id, selectedElement.id, d),
+                reorderInParent(
+                  m,
+                  selectedScreen.id,
+                  parent.id,
+                  idx,
+                  target,
+                ),
               );
             }}
           />
@@ -241,28 +313,9 @@ function ScreensRail({
   onAddScreen: () => void;
   onRenameScreen: (id: Id, name: string) => void;
   onDeleteScreen: (id: Id) => void;
-  onReorderLayers: (from: number, to: number) => void;
+  onReorderLayers: (parentId: Id, from: number, to: number) => void;
 }) {
   const selectedScreenId = screenId;
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
-  const elementChildren = selectedScreen
-    ? selectedScreen.root.children.filter((n) => n.kind === "element")
-    : [];
-
-  const onDragEndLayers = (e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const from = elementChildren.findIndex((n) => n.id === active.id);
-    const to = elementChildren.findIndex((n) => n.id === over.id);
-    if (from < 0 || to < 0) return;
-    onReorderLayers(from, to);
-  };
   return (
     <>
       <PanelHeading>Screens</PanelHeading>
@@ -325,89 +378,165 @@ function ScreensRail({
       <PanelHeading>Layers</PanelHeading>
       {!selectedScreen ? (
         <EmptyState>Select a screen.</EmptyState>
-      ) : elementChildren.length === 0 ? (
+      ) : selectedScreen.root.children.length === 0 ? (
         <EmptyState>Empty — add an element on the canvas.</EmptyState>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={onDragEndLayers}
-        >
-          <SortableContext
-            items={elementChildren.map((n) => n.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <ul className="px-2 py-2 space-y-0.5">
-              {elementChildren.map((node) => (
-                <SortableLayerRow
-                  key={node.id}
-                  element={node as Element}
-                  active={node.id === selectedElementId}
-                  onSelect={() => onSelectElement(node.id)}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+        <div className="px-2 py-2">
+          <LayerTree
+            container={selectedScreen.root}
+            depth={0}
+            selectedId={selectedElementId}
+            onSelect={onSelectElement}
+            onReorder={onReorderLayers}
+          />
+        </div>
       )}
     </>
   );
 }
 
-function SortableLayerRow({
-  element,
-  active,
+function LayerTree({
+  container,
+  depth,
+  selectedId,
   onSelect,
+  onReorder,
 }: {
-  element: Element;
+  container: Container;
+  depth: number;
+  selectedId: Id | null;
+  onSelect: (id: Id) => void;
+  onReorder: (parentId: Id, from: number, to: number) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = container.children.findIndex((n) => n.id === active.id);
+    const to = container.children.findIndex((n) => n.id === over.id);
+    if (from < 0 || to < 0) return;
+    onReorder(container.id, from, to);
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={container.children.map((n) => n.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <ul className="space-y-0.5">
+          {container.children.map((node) => (
+            <SortableLayerRow
+              key={node.id}
+              node={node}
+              active={node.id === selectedId}
+              depth={depth}
+              onSelect={() => onSelect(node.id)}
+              selectedId={selectedId}
+              onChildSelect={onSelect}
+              onChildReorder={onReorder}
+            />
+          ))}
+        </ul>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function SortableLayerRow({
+  node,
+  active,
+  depth,
+  onSelect,
+  selectedId,
+  onChildSelect,
+  onChildReorder,
+}: {
+  node: LayoutNode;
   active: boolean;
+  depth: number;
   onSelect: () => void;
+  selectedId: Id | null;
+  onChildSelect: (id: Id) => void;
+  onChildReorder: (parentId: Id, from: number, to: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: element.id });
+    useSortable({ id: node.id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
+    marginLeft: depth > 0 ? depth * 12 : undefined,
   };
-  const spec = ELEMENT_CATALOG.find((e) => e.kind === element.type);
+  const isContainer = node.kind === "container";
+  const spec = isContainer
+    ? CONTAINER_CATALOG.find(
+        (c) => c.direction === (node as Container).direction,
+      )
+    : ELEMENT_CATALOG.find((e) => e.kind === (node as Element).type);
+
   return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      onClick={onSelect}
-      className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer ${
-        active
-          ? "bg-ink text-paper"
-          : "text-ink-muted hover:bg-rule/30 hover:text-ink"
-      } ${isDragging ? "relative z-10 shadow-md bg-paper" : ""}`}
-    >
-      <span
-        {...attributes}
-        {...listeners}
-        onClick={(e) => e.stopPropagation()}
-        className={`shrink-0 cursor-grab active:cursor-grabbing ${
-          active ? "text-paper/70" : "text-ink-faint hover:text-ink"
-        }`}
-        title="Drag to reorder"
+    <li ref={setNodeRef} style={style}>
+      <div
+        onClick={onSelect}
+        className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer ${
+          active
+            ? "bg-ink text-paper"
+            : "text-ink-muted hover:bg-rule/30 hover:text-ink"
+        } ${isDragging ? "relative z-10 shadow-md bg-paper" : ""}`}
       >
-        <svg width="8" height="12" viewBox="0 0 10 14" fill="currentColor">
-          <circle cx="2" cy="2" r="1.2" />
-          <circle cx="2" cy="7" r="1.2" />
-          <circle cx="2" cy="12" r="1.2" />
-          <circle cx="8" cy="2" r="1.2" />
-          <circle cx="8" cy="7" r="1.2" />
-          <circle cx="8" cy="12" r="1.2" />
-        </svg>
-      </span>
-      <span
-        className={`w-4 text-center text-[11px] ${
-          active ? "text-paper/70" : "text-ink-faint"
-        }`}
-      >
-        {spec?.glyph}
-      </span>
-      <span className="truncate">{spec?.label ?? element.type}</span>
+        <span
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          className={`shrink-0 cursor-grab active:cursor-grabbing ${
+            active ? "text-paper/70" : "text-ink-faint hover:text-ink"
+          }`}
+          title="Drag to reorder"
+        >
+          <svg width="8" height="12" viewBox="0 0 10 14" fill="currentColor">
+            <circle cx="2" cy="2" r="1.2" />
+            <circle cx="2" cy="7" r="1.2" />
+            <circle cx="2" cy="12" r="1.2" />
+            <circle cx="8" cy="2" r="1.2" />
+            <circle cx="8" cy="7" r="1.2" />
+            <circle cx="8" cy="12" r="1.2" />
+          </svg>
+        </span>
+        <span
+          className={`w-4 text-center text-[11px] ${
+            active ? "text-paper/70" : "text-ink-faint"
+          }`}
+        >
+          {spec?.glyph}
+        </span>
+        <span className="truncate">
+          {isContainer
+            ? `${spec?.label ?? "Container"} · ${(node as Container).children.length}`
+            : (spec as { label?: string })?.label ?? (node as Element).type}
+        </span>
+      </div>
+      {isContainer && (node as Container).children.length > 0 && (
+        <div className="mt-0.5">
+          <LayerTree
+            container={node as Container}
+            depth={depth + 1}
+            selectedId={selectedId}
+            onSelect={onChildSelect}
+            onReorder={onChildReorder}
+          />
+        </div>
+      )}
     </li>
   );
 }
@@ -418,30 +547,40 @@ function Canvas({
   screen,
   module,
   device,
-  selectedElementId,
-  onSelectElement,
+  selectedNodeId,
+  onSelectNode,
   onAddElement,
+  onAddContainer,
   onDeselect,
   onGenerateFromCollection,
-  onReorderElements,
+  onReorderInParent,
   onClearScreen,
+  targetParentId,
 }: {
   screen: Screen;
   module: Module;
   device: DevicePreview;
-  selectedElementId: Id | null;
-  onSelectElement: (id: Id) => void;
+  selectedNodeId: Id | null;
+  onSelectNode: (id: Id) => void;
   onAddElement: (kind: Element["type"]) => void;
+  onAddContainer: (direction: "row" | "column") => void;
   onDeselect: () => void;
   onGenerateFromCollection: (
     collectionId: Id,
     options: { heading?: boolean; saveButton?: boolean },
   ) => void;
-  onReorderElements: (from: number, to: number) => void;
+  onReorderInParent: (parentId: Id, from: number, to: number) => void;
   onClearScreen: () => void;
+  targetParentId: Id | null;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
+
+  const targetIsRoot = targetParentId === screen.root.id;
+  const targetParent =
+    targetParentId && !targetIsRoot
+      ? (findNode(screen.root, targetParentId) as Container | null)
+      : null;
 
   return (
     <div
@@ -458,11 +597,12 @@ function Canvas({
           }}
         >
           <DesignContainer
-            screen={screen}
+            container={screen.root}
             module={module}
-            selectedElementId={selectedElementId}
-            onSelectElement={onSelectElement}
-            onReorderElements={onReorderElements}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={onSelectNode}
+            onReorderInParent={onReorderInParent}
+            isRoot
           />
         </div>
       </div>
@@ -471,7 +611,18 @@ function Canvas({
         className="sticky bottom-0 left-0 right-0 z-20 w-full border-t border-rule bg-paper/95 backdrop-blur-sm px-6 py-3"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex flex-col items-center gap-2">
+          {targetParent && (
+            <p className="text-[11px] text-ink-faint">
+              Adding into{" "}
+              <span className="text-ink-muted">
+                {CONTAINER_CATALOG.find(
+                  (c) => c.direction === targetParent.direction,
+                )?.label}
+              </span>
+            </p>
+          )}
+          <div className="flex items-center justify-center gap-2">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -504,13 +655,18 @@ function Canvas({
               ↺ Clean canvas
             </button>
           )}
+          </div>
         </div>
       </div>
 
       {pickerOpen && (
         <ElementPickerModal
-          onPick={(k) => {
+          onPickElement={(k) => {
             onAddElement(k);
+            setPickerOpen(false);
+          }}
+          onPickContainer={(direction) => {
+            onAddContainer(direction);
             setPickerOpen(false);
           }}
           onClose={() => setPickerOpen(false)}
@@ -532,17 +688,19 @@ function Canvas({
 }
 
 function DesignContainer({
-  screen,
+  container,
   module,
-  selectedElementId,
-  onSelectElement,
-  onReorderElements,
+  selectedNodeId,
+  onSelectNode,
+  onReorderInParent,
+  isRoot,
 }: {
-  screen: Screen;
+  container: Container;
   module: Module;
-  selectedElementId: Id | null;
-  onSelectElement: (id: Id) => void;
-  onReorderElements: (from: number, to: number) => void;
+  selectedNodeId: Id | null;
+  onSelectNode: (id: Id) => void;
+  onReorderInParent: (parentId: Id, from: number, to: number) => void;
+  isRoot?: boolean;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -551,25 +709,27 @@ function DesignContainer({
     }),
   );
 
-  const elements = screen.root.children.filter((n) => n.kind === "element");
+  const children = container.children;
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    const from = elements.findIndex((n) => n.id === active.id);
-    const to = elements.findIndex((n) => n.id === over.id);
+    const from = children.findIndex((n) => n.id === active.id);
+    const to = children.findIndex((n) => n.id === over.id);
     if (from < 0 || to < 0) return;
-    onReorderElements(from, to);
+    onReorderInParent(container.id, from, to);
   };
 
-  if (elements.length === 0) {
+  if (children.length === 0) {
     return (
-      <ContainerRenderer
-        container={screen.root}
-        module={module}
-        selectedId={selectedElementId}
-        onSelect={onSelectElement}
-      />
+      <div
+        className={`flex items-center justify-center text-xs text-ink-faint ${
+          isRoot ? "min-h-[60vh]" : "min-h-16"
+        }`}
+        style={{ padding: container.padding ?? 24 }}
+      >
+        Empty — add an element
+      </div>
     );
   }
 
@@ -580,28 +740,118 @@ function DesignContainer({
       onDragEnd={onDragEnd}
     >
       <SortableContext
-        items={elements.map((n) => n.id)}
+        items={children.map((n) => n.id)}
         strategy={verticalListSortingStrategy}
       >
         <div
-          className="flex flex-col"
           style={{
-            gap: screen.root.gap ?? 12,
-            padding: screen.root.padding ?? 24,
+            display: "flex",
+            flexDirection: container.direction,
+            gap: container.gap ?? (isRoot ? 12 : 8),
+            padding: container.padding ?? (isRoot ? 24 : 12),
+            alignItems: alignToFlex(container.align),
+            justifyContent: justifyToFlex(container.justify),
+            flexWrap: container.wrap ? "wrap" : "nowrap",
           }}
         >
-          {elements.map((node) => (
-            <SortableCanvasElement
-              key={node.id}
-              element={node as Element}
-              module={module}
-              selected={node.id === selectedElementId}
-              onSelect={() => onSelectElement(node.id)}
-            />
-          ))}
+          {children.map((node) =>
+            node.kind === "container" ? (
+              <SortableCanvasContainer
+                key={node.id}
+                container={node}
+                module={module}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={onSelectNode}
+                onReorderInParent={onReorderInParent}
+              />
+            ) : (
+              <SortableCanvasElement
+                key={node.id}
+                element={node as Element}
+                module={module}
+                selected={node.id === selectedNodeId}
+                onSelect={() => onSelectNode(node.id)}
+              />
+            ),
+          )}
         </div>
       </SortableContext>
     </DndContext>
+  );
+}
+
+function alignToFlex(a?: string): string | undefined {
+  if (!a) return undefined;
+  if (a === "stretch") return "stretch";
+  return `flex-${a}`;
+}
+
+function justifyToFlex(j?: string): string | undefined {
+  if (!j) return undefined;
+  if (j === "between") return "space-between";
+  return `flex-${j}`;
+}
+
+function SortableCanvasContainer({
+  container,
+  module,
+  selectedNodeId,
+  onSelectNode,
+  onReorderInParent,
+}: {
+  container: Container;
+  module: Module;
+  selectedNodeId: Id | null;
+  onSelectNode: (id: Id) => void;
+  onReorderInParent: (parentId: Id, from: number, to: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: container.id });
+  const selected = container.id === selectedNodeId;
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    flexGrow: 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelectNode(container.id);
+      }}
+      className={`group relative rounded transition-colors border border-dashed ${
+        selected
+          ? "border-ink ring-2 ring-ink ring-offset-2 ring-offset-paper"
+          : "border-rule hover:border-ink-faint"
+      } ${isDragging ? "z-10 shadow-md" : ""}`}
+    >
+      <span
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute -left-5 top-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing text-ink-faint hover:text-ink"
+        title="Drag to reorder"
+      >
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+          <circle cx="2" cy="2" r="1.2" />
+          <circle cx="2" cy="7" r="1.2" />
+          <circle cx="2" cy="12" r="1.2" />
+          <circle cx="8" cy="2" r="1.2" />
+          <circle cx="8" cy="7" r="1.2" />
+          <circle cx="8" cy="12" r="1.2" />
+        </svg>
+      </span>
+      <DesignContainer
+        container={container}
+        module={module}
+        selectedNodeId={selectedNodeId}
+        onSelectNode={onSelectNode}
+        onReorderInParent={onReorderInParent}
+      />
+    </div>
   );
 }
 
@@ -762,10 +1012,12 @@ function GenerateFromCollectionModal({
 }
 
 function ElementPickerModal({
-  onPick,
+  onPickElement,
+  onPickContainer,
   onClose,
 }: {
-  onPick: (kind: Element["type"]) => void;
+  onPickElement: (kind: Element["type"]) => void;
+  onPickContainer: (direction: "row" | "column") => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -778,21 +1030,28 @@ function ElementPickerModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const matches = (s: string) =>
+    !query || s.toLowerCase().includes(query.toLowerCase());
+
   const cats: ElementCategory[] = ["input", "display", "action", "layout"];
   const filtered = (cat: ElementCategory) =>
     ELEMENT_CATALOG.filter(
-      (e) =>
-        e.category === cat &&
-        (!query ||
-          e.label.toLowerCase().includes(query.toLowerCase()) ||
-          e.kind.toLowerCase().includes(query.toLowerCase())),
+      (e) => e.category === cat && (matches(e.label) || matches(e.kind)),
     );
-  const allFiltered = ELEMENT_CATALOG.filter(
-    (e) =>
-      !query ||
-      e.label.toLowerCase().includes(query.toLowerCase()) ||
-      e.kind.toLowerCase().includes(query.toLowerCase()),
+  const filteredContainers = CONTAINER_CATALOG.filter(
+    (c) => matches(c.label) || matches(c.kind),
   );
+  const allFilteredElements = ELEMENT_CATALOG.filter(
+    (e) => matches(e.label) || matches(e.kind),
+  );
+
+  const handleEnter = () => {
+    if (filteredContainers.length > 0) {
+      onPickContainer(filteredContainers[0].direction);
+    } else if (allFilteredElements.length > 0) {
+      onPickElement(allFilteredElements[0].kind);
+    }
+  };
 
   return (
     <div
@@ -811,14 +1070,36 @@ function ElementPickerModal({
             placeholder="Search elements..."
             className="w-full bg-transparent text-sm outline-none placeholder:text-ink-faint"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && allFiltered.length > 0) {
-                onPick(allFiltered[0].kind);
-              }
+              if (e.key === "Enter") handleEnter();
             }}
           />
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto p-3 space-y-4">
+          {filteredContainers.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint px-2 py-1">
+                Containers
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {filteredContainers.map((c) => (
+                  <button
+                    key={c.kind}
+                    onClick={() => onPickContainer(c.direction)}
+                    className="flex items-center gap-3 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-3 py-2 transition-colors"
+                  >
+                    <span className="w-6 h-6 rounded border border-rule flex items-center justify-center text-xs text-ink-faint shrink-0">
+                      {c.glyph}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate">{c.label}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {cats.map((cat) => {
             const items = filtered(cat);
             if (items.length === 0) return null;
@@ -831,7 +1112,7 @@ function ElementPickerModal({
                   {items.map((e) => (
                     <button
                       key={e.kind}
-                      onClick={() => onPick(e.kind)}
+                      onClick={() => onPickElement(e.kind)}
                       className="flex items-center gap-3 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-3 py-2 transition-colors"
                     >
                       <span className="w-6 h-6 rounded border border-rule flex items-center justify-center text-xs text-ink-faint shrink-0">
@@ -846,11 +1127,12 @@ function ElementPickerModal({
               </div>
             );
           })}
-          {allFiltered.length === 0 && (
-            <div className="text-center py-6 text-sm text-ink-faint">
-              No elements match &ldquo;{query}&rdquo;
-            </div>
-          )}
+          {filteredContainers.length === 0 &&
+            allFilteredElements.length === 0 && (
+              <div className="text-center py-6 text-sm text-ink-faint">
+                No elements match &ldquo;{query}&rdquo;
+              </div>
+            )}
         </div>
 
         <div className="px-4 py-2 border-t border-rule text-[10px] text-ink-faint flex items-center justify-between">
@@ -859,6 +1141,161 @@ function ElementPickerModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Right: container inspector ──────────────────────────────────────────────
+
+function ContainerInspector({
+  container,
+  onPatch,
+  onDelete,
+}: {
+  container: Container;
+  onPatch: (patch: Partial<Container>) => void;
+  onDelete: () => void;
+}) {
+  const spec = CONTAINER_CATALOG.find(
+    (c) => c.direction === container.direction,
+  );
+
+  const justifies: Array<{ id: Container["justify"]; label: string }> = [
+    { id: "start", label: "Start" },
+    { id: "center", label: "Center" },
+    { id: "end", label: "End" },
+    { id: "between", label: "Between" },
+  ];
+  const aligns: Array<{ id: Container["align"]; label: string }> = [
+    { id: "start", label: "Start" },
+    { id: "center", label: "Center" },
+    { id: "end", label: "End" },
+    { id: "stretch", label: "Stretch" },
+  ];
+
+  return (
+    <>
+      <PanelHeading>{spec?.label ?? "Container"}</PanelHeading>
+      <div className="p-4 space-y-4">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Delete this ${spec?.label.toLowerCase()} and its contents?`,
+                )
+              )
+                onDelete();
+            }}
+            className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-ink"
+          >
+            Delete
+          </button>
+        </div>
+
+        <Row label="Direction">
+          <div className="grid grid-cols-2 gap-1">
+            {(
+              [
+                { id: "row", label: "Row" },
+                { id: "column", label: "Column" },
+              ] as const
+            ).map((opt) => {
+              const active = container.direction === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => onPatch({ direction: opt.id })}
+                  className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
+
+        <Row label="Gap (px)">
+          <input
+            type="number"
+            min={0}
+            value={container.gap ?? 0}
+            onChange={(e) => onPatch({ gap: Number(e.target.value) || 0 })}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+
+        <Row label="Padding (px)">
+          <input
+            type="number"
+            min={0}
+            value={container.padding ?? 0}
+            onChange={(e) => onPatch({ padding: Number(e.target.value) || 0 })}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+
+        <Row label="Justify">
+          <div className="grid grid-cols-2 gap-1">
+            {justifies.map((opt) => {
+              const active =
+                (container.justify ?? "start") === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => onPatch({ justify: opt.id })}
+                  className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
+
+        <Row label="Align">
+          <div className="grid grid-cols-2 gap-1">
+            {aligns.map((opt) => {
+              const active =
+                (container.align ??
+                  (container.direction === "row" ? "center" : "stretch")) ===
+                opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => onPatch({ align: opt.id })}
+                  className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
+
+        <Row label="">
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
+            <input
+              type="checkbox"
+              checked={!!container.wrap}
+              onChange={(e) => onPatch({ wrap: e.target.checked })}
+            />
+            Wrap children
+          </label>
+        </Row>
+      </div>
+    </>
   );
 }
 

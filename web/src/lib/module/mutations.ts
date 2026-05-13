@@ -478,6 +478,172 @@ function mapScreenRoot(
   };
 }
 
+// ─── Nested containers ───────────────────────────────────────────────────────
+//
+// Tree shape: screen.root → (Container | Element)[]
+//   - A Container in root.children may hold further Element children
+//   - For M1 we limit nesting to one level (containers inside root, elements
+//     inside those). The recursive helpers below already support deeper trees;
+//     the UI just doesn't expose deeper adds yet.
+
+export function addContainer(
+  module: Module,
+  screenId: Id,
+  parentId: Id,
+  direction: "row" | "column",
+): { module: Module; container: Container } {
+  const container: Container = {
+    kind: "container",
+    id: uid(),
+    direction,
+    gap: 12,
+    padding: 12,
+    align: direction === "row" ? "center" : "stretch",
+    children: [],
+  };
+  return {
+    module: mapNodeInScreen(module, screenId, parentId, (parent) => {
+      if (parent.kind !== "container") return parent;
+      return { ...parent, children: [...parent.children, container] };
+    }),
+    container,
+  };
+}
+
+export function addElementTo(
+  module: Module,
+  screenId: Id,
+  parentId: Id,
+  kind: ElementKind,
+): { module: Module; element: Element } {
+  const element: Element = {
+    kind: "element",
+    id: uid(),
+    type: kind,
+    config: defaultElementConfig(kind),
+  };
+  return {
+    module: mapNodeInScreen(module, screenId, parentId, (parent) => {
+      if (parent.kind !== "container") return parent;
+      return { ...parent, children: [...parent.children, element] };
+    }),
+    element,
+  };
+}
+
+export function updateContainer(
+  module: Module,
+  screenId: Id,
+  containerId: Id,
+  patch: Partial<Container>,
+): Module {
+  return mapNodeInScreen(module, screenId, containerId, (node) => {
+    if (node.kind !== "container") return node;
+    return { ...node, ...patch } as Container;
+  });
+}
+
+/** Patch any node (element or container) by id. */
+export function updateNode(
+  module: Module,
+  screenId: Id,
+  nodeId: Id,
+  patch: Partial<Element> | Partial<Container>,
+): Module {
+  return mapNodeInScreen(module, screenId, nodeId, (node) =>
+    ({ ...node, ...patch } as LayoutNode),
+  );
+}
+
+/** Remove any node (container or element) from anywhere in the tree, except the screen root. */
+export function deleteNode(module: Module, screenId: Id, nodeId: Id): Module {
+  return mapScreenRoot(module, screenId, (root) => stripNode(root, nodeId));
+}
+
+function stripNode(c: Container, nodeId: Id): Container {
+  return {
+    ...c,
+    children: c.children
+      .filter((child) => child.id !== nodeId)
+      .map((child) =>
+        child.kind === "container" ? stripNode(child, nodeId) : child,
+      ),
+  };
+}
+
+export function reorderInParent(
+  module: Module,
+  screenId: Id,
+  parentId: Id,
+  fromIdx: number,
+  toIdx: number,
+): Module {
+  return mapNodeInScreen(module, screenId, parentId, (parent) => {
+    if (parent.kind !== "container") return parent;
+    if (fromIdx === toIdx) return parent;
+    if (fromIdx < 0 || fromIdx >= parent.children.length) return parent;
+    if (toIdx < 0 || toIdx >= parent.children.length) return parent;
+    const next = [...parent.children];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    return { ...parent, children: next };
+  });
+}
+
+/** Walk the tree and return the Container that directly holds nodeId (or null if at root or absent). */
+export function findParentOf(root: Container, nodeId: Id): Container | null {
+  for (const child of root.children) {
+    if (child.id === nodeId) return root;
+    if (child.kind === "container") {
+      const found = findParentOf(child, nodeId);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function mapNodeInScreen(
+  module: Module,
+  screenId: Id,
+  targetId: Id,
+  fn: (node: LayoutNode) => LayoutNode,
+): Module {
+  return mapScreenRoot(module, screenId, (root) => mapNode(root, targetId, fn));
+}
+
+function mapNode(
+  c: Container,
+  targetId: Id,
+  fn: (node: LayoutNode) => LayoutNode,
+): Container {
+  if (c.id === targetId) {
+    const replaced = fn(c);
+    return (replaced.kind === "container" ? replaced : c) as Container;
+  }
+  return {
+    ...c,
+    children: c.children.map((child) => {
+      if (child.id === targetId) return fn(child);
+      if (child.kind === "container") return mapNode(child, targetId, fn);
+      return child;
+    }),
+  };
+}
+
+// ─── Container catalog (for the picker) ──────────────────────────────────────
+
+export interface ContainerSpec {
+  kind: "row" | "column";
+  label: string;
+  glyph: string;
+  direction: "row" | "column";
+}
+
+export const CONTAINER_CATALOG: ContainerSpec[] = [
+  { kind: "row", label: "Row", glyph: "⇿", direction: "row" },
+  { kind: "column", label: "Column", glyph: "⇕", direction: "column" },
+];
+
 export function findNode(
   container: Container,
   id: Id,

@@ -1,9 +1,15 @@
 import type {
   Collection,
+  Container,
+  Element,
+  ElementKind,
   Field,
   FieldType,
   Id,
+  LayoutNode,
   Module,
+  Screen,
+  ScreenKind,
 } from "./types";
 
 function uid(): Id {
@@ -176,6 +182,216 @@ export function deleteField(
         : { ...c, fields: c.fields.filter((f) => f.id !== fieldId) },
     ),
   };
+}
+
+// ─── Screens ─────────────────────────────────────────────────────────────────
+
+function uniqueScreenKey(base: string, existing: string[]): string {
+  return uniqueKey(toKey(base) || "screen", existing);
+}
+
+export function addScreen(
+  module: Module,
+  name = "New screen",
+  kind: ScreenKind = "page",
+): { module: Module; screen: Screen } {
+  const root: Container = {
+    kind: "container",
+    id: uid(),
+    direction: "column",
+    gap: 12,
+    padding: 24,
+    align: "stretch",
+    children: [],
+  };
+  const screen: Screen = {
+    id: uid(),
+    key: uniqueScreenKey(
+      name,
+      module.screens.map((s) => s.key),
+    ),
+    name,
+    kind,
+    root,
+  };
+  return {
+    module: { ...module, screens: [...module.screens, screen] },
+    screen,
+  };
+}
+
+export function updateScreen(
+  module: Module,
+  id: Id,
+  patch: Partial<Pick<Screen, "name" | "key" | "kind">>,
+): Module {
+  return {
+    ...module,
+    screens: module.screens.map((s) =>
+      s.id === id ? { ...s, ...patch } : s,
+    ),
+  };
+}
+
+export function deleteScreen(module: Module, id: Id): Module {
+  return {
+    ...module,
+    screens: module.screens.filter((s) => s.id !== id),
+  };
+}
+
+// ─── Elements (within a screen's root container) ─────────────────────────────
+
+export function addElement(
+  module: Module,
+  screenId: Id,
+  kind: ElementKind,
+): { module: Module; element: Element } {
+  const element: Element = {
+    kind: "element",
+    id: uid(),
+    type: kind,
+    config: defaultElementConfig(kind),
+  };
+  return {
+    module: mapScreenRoot(module, screenId, (root) => ({
+      ...root,
+      children: [...root.children, element],
+    })),
+    element,
+  };
+}
+
+export function updateElement(
+  module: Module,
+  screenId: Id,
+  elementId: Id,
+  patch: Partial<Element>,
+): Module {
+  return mapScreenRoot(module, screenId, (root) => ({
+    ...root,
+    children: root.children.map((n) =>
+      n.kind === "element" && n.id === elementId
+        ? ({ ...n, ...patch } as Element)
+        : n,
+    ),
+  }));
+}
+
+export function deleteElement(
+  module: Module,
+  screenId: Id,
+  elementId: Id,
+): Module {
+  return mapScreenRoot(module, screenId, (root) => ({
+    ...root,
+    children: root.children.filter(
+      (n) => !(n.kind === "element" && n.id === elementId),
+    ),
+  }));
+}
+
+export function moveElement(
+  module: Module,
+  screenId: Id,
+  elementId: Id,
+  delta: -1 | 1,
+): Module {
+  return mapScreenRoot(module, screenId, (root) => {
+    const idx = root.children.findIndex(
+      (n) => n.kind === "element" && n.id === elementId,
+    );
+    if (idx < 0) return root;
+    const target = idx + delta;
+    if (target < 0 || target >= root.children.length) return root;
+    const next = [...root.children];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    return { ...root, children: next };
+  });
+}
+
+function mapScreenRoot(
+  module: Module,
+  screenId: Id,
+  fn: (root: Container) => Container,
+): Module {
+  return {
+    ...module,
+    screens: module.screens.map((s) =>
+      s.id !== screenId ? s : { ...s, root: fn(s.root) },
+    ),
+  };
+}
+
+export function findNode(
+  container: Container,
+  id: Id,
+): LayoutNode | null {
+  for (const child of container.children) {
+    if (child.kind === "element" && child.id === id) return child;
+    if (child.kind === "container") {
+      if (child.id === id) return child;
+      const found = findNode(child, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// ─── Element catalog (for pickers) ───────────────────────────────────────────
+
+export type ElementCategory = "input" | "display" | "action" | "layout";
+
+export interface ElementSpec {
+  kind: ElementKind;
+  label: string;
+  glyph: string;
+  category: ElementCategory;
+}
+
+export const ELEMENT_CATALOG: ElementSpec[] = [
+  // Inputs
+  { kind: "text_input", label: "Text input", glyph: "T", category: "input" },
+  { kind: "long_text_input", label: "Long text", glyph: "¶", category: "input" },
+  { kind: "number_input", label: "Number", glyph: "#", category: "input" },
+  { kind: "boolean_toggle", label: "Toggle", glyph: "◐", category: "input" },
+  { kind: "date_input", label: "Date", glyph: "📅", category: "input" },
+  { kind: "select_input", label: "Select", glyph: "▾", category: "input" },
+  { kind: "relation_picker", label: "Relation", glyph: "→", category: "input" },
+  { kind: "file_input", label: "File", glyph: "📎", category: "input" },
+  // Display
+  { kind: "heading", label: "Heading", glyph: "H", category: "display" },
+  { kind: "paragraph", label: "Paragraph", glyph: "P", category: "display" },
+  { kind: "label", label: "Label", glyph: "L", category: "display" },
+  // Action
+  { kind: "button", label: "Button", glyph: "▶", category: "action" },
+  // Layout
+  { kind: "divider", label: "Divider", glyph: "—", category: "layout" },
+  { kind: "spacer", label: "Spacer", glyph: "␣", category: "layout" },
+];
+
+function defaultElementConfig(kind: ElementKind): Record<string, unknown> {
+  switch (kind) {
+    case "heading":
+      return { text: "Heading", size: "lg" };
+    case "paragraph":
+      return { text: "Some paragraph text." };
+    case "label":
+      return { text: "Label" };
+    case "button":
+      return { text: "Button", variant: "primary" };
+    case "spacer":
+      return { size: 16 };
+    case "text_input":
+    case "long_text_input":
+      return { placeholder: "" };
+    case "number_input":
+      return { placeholder: "0" };
+    case "select_input":
+      return { placeholder: "Choose..." };
+    default:
+      return {};
+  }
 }
 
 // ─── Field types catalog (for pickers) ───────────────────────────────────────

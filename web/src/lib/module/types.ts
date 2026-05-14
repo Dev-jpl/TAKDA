@@ -203,6 +203,7 @@ export type ElementKind =
   | "spacer"
   | "list"
   | "stat"
+  | "progress_bar"
   | "chart"
   | "calendar"
   | "image";

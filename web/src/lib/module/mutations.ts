@@ -787,6 +787,9 @@ export const ELEMENT_CATALOG: ElementSpec[] = [
   { kind: "heading", label: "Heading", glyph: "H", category: "display" },
   { kind: "paragraph", label: "Paragraph", glyph: "P", category: "display" },
   { kind: "label", label: "Label", glyph: "L", category: "display" },
+  { kind: "stat", label: "Stat", glyph: "#", category: "display" },
+  { kind: "progress_bar", label: "Progress bar", glyph: "▰", category: "display" },
+  { kind: "list", label: "List", glyph: "≡", category: "display" },
   // Action
   { kind: "button", label: "Button", glyph: "▶", category: "action" },
   // Layout

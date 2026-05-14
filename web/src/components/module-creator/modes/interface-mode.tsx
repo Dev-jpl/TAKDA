@@ -1077,13 +1077,15 @@ function SortableCanvasContainer({
         </svg>
       </span>
       {container.collapsible && (
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-dashed border-rule text-xs text-ink-muted">
-          <span className="text-ink-faint">▾</span>
-          <span className="flex-1 truncate">
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rule bg-rule/30 text-sm">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-ink-faint text-ink-muted text-xs">
+            ▾
+          </span>
+          <span className="flex-1 truncate font-medium text-ink">
             {container.title || "Collapsible section"}
           </span>
-          <span className="text-[10px] text-ink-faint uppercase tracking-[0.18em]">
-            collapsible
+          <span className="text-[10px] text-ink-faint uppercase tracking-[0.18em] inline-flex items-center gap-1">
+            <span>⌄</span> collapsible
           </span>
         </div>
       )}
@@ -1919,8 +1921,168 @@ function ElementInspector({
         {element.type === "stat" && (
           <StatConfigPanel module={module} element={element} onPatch={onPatch} />
         )}
+
+        {/* Progress bar config */}
+        {element.type === "progress_bar" && (
+          <ProgressConfigPanel
+            module={module}
+            element={element}
+            onPatch={onPatch}
+          />
+        )}
       </div>
     </>
+  );
+}
+
+function ProgressConfigPanel({
+  module,
+  element,
+  onPatch,
+}: {
+  module: Module;
+  element: Element;
+  onPatch: (patch: Partial<Element>) => void;
+}) {
+  const cfg = (element.config ?? {}) as Record<string, unknown>;
+  const collectionId = (cfg.collectionId as string) ?? "";
+  const aggregation = (cfg.aggregation as string) ?? "sum";
+  const fieldId = (cfg.fieldId as string) ?? "";
+  const filter = (cfg.filter as string) ?? "today";
+  const collection = collectionId
+    ? module.collections.find((c) => c.id === collectionId) ?? null
+    : null;
+  const numberFields = collection?.fields.filter((f) => f.type === "number") ?? [];
+
+  const set = (patch: Record<string, unknown>) =>
+    onPatch({ config: { ...(element.config ?? {}), ...patch } });
+
+  return (
+    <div className="pt-4 border-t border-rule space-y-3">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+        Progress
+      </div>
+
+      <Row label="Label">
+        <input
+          value={(cfg.label as string) ?? ""}
+          onChange={(e) => set({ label: e.target.value || undefined })}
+          placeholder="e.g. Calories today"
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        />
+      </Row>
+
+      <Row label="Collection">
+        <select
+          value={collectionId}
+          onChange={(e) =>
+            set({
+              collectionId: e.target.value || undefined,
+              fieldId: undefined,
+            })
+          }
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        >
+          <option value="">— pick a collection —</option>
+          {module.collections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Row>
+
+      <Row label="Aggregation">
+        <div className="grid grid-cols-3 gap-1">
+          {(
+            [
+              { id: "count", label: "Count" },
+              { id: "sum", label: "Sum" },
+              { id: "avg", label: "Avg" },
+              { id: "min", label: "Min" },
+              { id: "max", label: "Max" },
+            ] as const
+          ).map((opt) => {
+            const active = aggregation === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => set({ aggregation: opt.id })}
+                className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                  active
+                    ? "border-ink bg-ink text-paper"
+                    : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </Row>
+
+      {aggregation !== "count" && (
+        <Row label="Number field">
+          <select
+            value={fieldId}
+            onChange={(e) => set({ fieldId: e.target.value || undefined })}
+            disabled={!collection}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+          >
+            <option value="">— pick a number field —</option>
+            {numberFields.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </Row>
+      )}
+
+      <Row label="Time window">
+        <select
+          value={filter}
+          onChange={(e) => set({ filter: e.target.value })}
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        >
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="this_week">This week</option>
+          <option value="this_month">This month</option>
+        </select>
+      </Row>
+
+      <Row label="Goal">
+        <input
+          type="number"
+          value={(cfg.goal as number | undefined) ?? ""}
+          onChange={(e) =>
+            set({
+              goal: e.target.value === "" ? undefined : Number(e.target.value),
+            })
+          }
+          placeholder="e.g. 2000"
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        />
+      </Row>
+
+      <Row label="Suffix">
+        <input
+          value={(cfg.suffix as string) ?? ""}
+          onChange={(e) => set({ suffix: e.target.value || undefined })}
+          placeholder="kcal, kg..."
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        />
+      </Row>
+
+      <Row label="">
+        <Switch
+          label="Show value / goal text"
+          checked={cfg.showText !== false}
+          onChange={(next) => set({ showText: next })}
+        />
+      </Row>
+    </div>
   );
 }
 

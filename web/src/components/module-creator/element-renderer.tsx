@@ -377,6 +377,34 @@ export function ElementBody({
           </div>
         </FieldWrap>
       );
+    case "progress_bar": {
+      const pcfg = cfg as Record<string, unknown>;
+      const labelText = (pcfg.label as string) || "Progress";
+      const goal = (pcfg.goal as number) ?? 100;
+      const sampleValue = Math.round(goal * 0.6);
+      const pct = Math.max(0, Math.min(100, (sampleValue / goal) * 100));
+      const showText = pcfg.showText !== false;
+      const suffix = (pcfg.suffix as string) ?? "";
+      return (
+        <div className="rounded-md border border-rule bg-paper px-4 py-3 w-full">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs text-ink-muted">{labelText}</span>
+            {showText && (
+              <span className="text-[11px] text-ink-faint font-mono">
+                {sampleValue} / {goal}
+                {suffix ? ` ${suffix}` : ""}
+              </span>
+            )}
+          </div>
+          <div className="mt-2 h-2 rounded-full bg-rule overflow-hidden">
+            <div
+              className="h-full bg-ink rounded-full transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      );
+    }
     case "stat": {
       const statCfg = cfg as Record<string, unknown>;
       const collection = module.collections.find(

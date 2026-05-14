@@ -507,6 +507,14 @@ function LiveElement({
           version={entriesVersion}
         />
       );
+    case "progress_bar":
+      return (
+        <LiveProgressBar
+          element={element}
+          module={module}
+          version={entriesVersion}
+        />
+      );
     default:
       return (
         <div className="text-xs text-ink-faint italic px-2 py-1 border border-dashed border-rule rounded">
@@ -741,6 +749,71 @@ function LiveStat({
       <span className="text-2xl font-medium text-ink mt-1">{display}</span>
     </div>
   );
+}
+
+function LiveProgressBar({
+  element,
+  module,
+  version,
+}: {
+  element: Element;
+  module: Module;
+  version: number;
+}) {
+  const cfg = readStatConfig(element);
+  const collection = cfg.collectionId
+    ? module.collections.find((c) => c.id === cfg.collectionId)
+    : null;
+  const goal = (element.config?.goal as number) ?? 100;
+  const showText = element.config?.showText !== false;
+  const label = cfg.label || "Progress";
+
+  const [result, setResult] = useState<{
+    value: number | null;
+    suffix?: string;
+  }>({ value: null });
+
+  useEffect(() => {
+    if (!collection) {
+      setResult({ value: null });
+      return;
+    }
+    const entries = listEntries(module.id, collection.id);
+    setResult(evaluateStat(module, entries, cfg));
+  }, [module, collection, version, cfg.aggregation, cfg.fieldId, cfg.filter]);
+
+  const value = result.value ?? 0;
+  const suffix = cfg.suffix ?? result.suffix ?? "";
+  const pct =
+    goal > 0 ? Math.max(0, Math.min(100, (value / goal) * 100)) : 0;
+  const isOver = goal > 0 && value > goal;
+
+  return (
+    <div className="rounded-md border border-rule bg-paper px-4 py-3 w-full">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs text-ink-muted">{label}</span>
+        {showText && (
+          <span className="text-[11px] text-ink-faint font-mono">
+            {formatNumber(value)} / {formatNumber(goal)}
+            {suffix ? ` ${suffix}` : ""}
+          </span>
+        )}
+      </div>
+      <div className="mt-2 h-2 rounded-full bg-rule overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${
+            isOver ? "bg-red-500/80 dark:bg-red-400/80" : "bg-ink"
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function formatNumber(n: number): string {
+  if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+  return n.toFixed(1);
 }
 
 function formatSelect(field: Field, value: unknown): string {

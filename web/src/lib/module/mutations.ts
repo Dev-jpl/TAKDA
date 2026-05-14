@@ -519,7 +519,7 @@ export function addContainer(
     id: uid(),
     direction,
     gap: 12,
-    padding: 12,
+    padding: 0,
     align: direction === "row" ? "center" : "stretch",
     children: [],
   };
@@ -642,7 +642,7 @@ export function groupNodes(
     id: uid(),
     direction,
     gap: 12,
-    padding: 12,
+    padding: 0,
     align: direction === "row" ? "center" : "stretch",
     children: indexed.map(({ child }) =>
       child.kind === "element" && direction === "row"

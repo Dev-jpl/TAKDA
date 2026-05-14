@@ -22,8 +22,27 @@ import { LiveContainer, bindingKey, type FormState } from "./live-renderer";
 export function ModuleRuntime({ moduleId }: { moduleId: string }) {
   const [module, setModuleState] = useState<Module | null>(null);
   const [screenIdx, setScreenIdx] = useState(0);
+  const [history, setHistory] = useState<number[]>([0]);
   const [formState, setFormState] = useState<FormState>({});
   const [entriesVersion, setEntriesVersion] = useState(0);
+
+  const goToScreen = (idx: number, push = true) => {
+    if (idx < 0) return;
+    setScreenIdx(idx);
+    setFormState({});
+    if (push) setHistory((h) => [...h, idx]);
+  };
+
+  const goBack = () => {
+    setHistory((h) => {
+      if (h.length <= 1) return h;
+      const next = h.slice(0, -1);
+      const idx = next[next.length - 1];
+      setScreenIdx(idx);
+      setFormState({});
+      return next;
+    });
+  };
 
   useEffect(() => {
     setModuleState(loadModule(moduleId));
@@ -78,24 +97,37 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
     );
   }
 
-  const onAction = (kind: string) => {
-    if (kind !== "save_entry") return;
-    // Group form values per collection and persist one entry per collection.
-    const perCollection: Record<string, Record<string, unknown>> = {};
-    for (const [key, value] of Object.entries(formState)) {
-      const [collectionId, fieldId] = key.split("::");
-      if (!collectionId || !fieldId) continue;
-      if (value === undefined || value === null || value === "") continue;
-      perCollection[collectionId] = {
-        ...(perCollection[collectionId] ?? {}),
-        [fieldId]: value,
-      };
+  const onAction = (kind: string, params?: Record<string, unknown>) => {
+    if (kind === "save_entry") {
+      // Group form values per collection and persist one entry per collection.
+      const perCollection: Record<string, Record<string, unknown>> = {};
+      for (const [key, value] of Object.entries(formState)) {
+        const [collectionId, fieldId] = key.split("::");
+        if (!collectionId || !fieldId) continue;
+        if (value === undefined || value === null || value === "") continue;
+        perCollection[collectionId] = {
+          ...(perCollection[collectionId] ?? {}),
+          [fieldId]: value,
+        };
+      }
+      for (const [collectionId, values] of Object.entries(perCollection)) {
+        createEntry(module.id, collectionId, values);
+      }
+      setFormState({});
+      setEntriesVersion((v) => v + 1);
+      return;
     }
-    for (const [collectionId, values] of Object.entries(perCollection)) {
-      createEntry(module.id, collectionId, values);
+    if (kind === "navigate_screen") {
+      const targetId = params?.targetScreenId as string | undefined;
+      if (!targetId) return;
+      const idx = module.screens.findIndex((s) => s.id === targetId);
+      if (idx >= 0) goToScreen(idx);
+      return;
     }
-    setFormState({});
-    setEntriesVersion((v) => v + 1);
+    if (kind === "navigate_back") {
+      goBack();
+      return;
+    }
   };
 
   return (
@@ -123,6 +155,7 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
                 key={s.id}
                 onClick={() => {
                   setScreenIdx(i);
+                  setHistory([i]);
                   setFormState({});
                 }}
                 className={`px-3 py-1.5 text-sm transition-colors ${

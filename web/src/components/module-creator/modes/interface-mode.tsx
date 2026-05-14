@@ -1627,6 +1627,51 @@ function ElementInspector({
 
         {element.type === "button" && (
           <>
+            <Row label="Action">
+              <select
+                value={(element.config?.action as string) ?? "save_entry"}
+                onChange={(e) =>
+                  setConfig({
+                    action: e.target.value,
+                    ...(e.target.value === "navigate_screen"
+                      ? {}
+                      : { targetScreenId: undefined }),
+                  })
+                }
+                className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+              >
+                <option value="save_entry">Save entry</option>
+                <option value="navigate_screen">Go to screen</option>
+                <option value="navigate_back">Go back</option>
+              </select>
+            </Row>
+
+            {(element.config?.action ?? "save_entry") === "navigate_screen" && (
+              <Row label="Target screen">
+                <select
+                  value={(element.config?.targetScreenId as string) ?? ""}
+                  onChange={(e) =>
+                    setConfig({ targetScreenId: e.target.value || undefined })
+                  }
+                  className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                >
+                  <option value="">— pick a screen —</option>
+                  {module.screens
+                    .filter((s) => s.id !== screen.id)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+                {module.screens.length <= 1 && (
+                  <p className="text-xs text-ink-faint mt-1">
+                    Add another screen to navigate to.
+                  </p>
+                )}
+              </Row>
+            )}
+
             <Row label="Variant">
               <select
                 value={(element.config?.variant as string) ?? "primary"}

@@ -35,7 +35,7 @@ export function LiveContainer({
   module: Module;
   formState: FormState;
   setFormState: (next: FormState) => void;
-  onAction: (kind: string) => void;
+  onAction: (kind: string, params?: Record<string, unknown>) => void;
   entriesVersion: number;
   onEntriesChange: () => void;
 }) {
@@ -80,7 +80,7 @@ function LiveNode({
   module: Module;
   formState: FormState;
   setFormState: (next: FormState) => void;
-  onAction: (kind: string) => void;
+  onAction: (kind: string, params?: Record<string, unknown>) => void;
   entriesVersion: number;
   onEntriesChange: () => void;
 }) {
@@ -127,7 +127,7 @@ function LiveElement({
   module: Module;
   formState: FormState;
   setFormState: (next: FormState) => void;
-  onAction: (kind: string) => void;
+  onAction: (kind: string, params?: Record<string, unknown>) => void;
   entriesVersion: number;
   onEntriesChange: () => void;
 }) {
@@ -170,10 +170,15 @@ function LiveElement({
     case "button": {
       const fullWidth = !!cfg.fullWidth;
       const align = (cfg.align as string) ?? "left";
+      const action = (cfg.action as string) ?? "save_entry";
       const btn = (
         <button
           type="button"
-          onClick={() => onAction((cfg.action as string) ?? "save_entry")}
+          onClick={() =>
+            onAction(action, {
+              targetScreenId: cfg.targetScreenId,
+            })
+          }
           className={`text-sm px-4 py-2 rounded transition-opacity hover:opacity-90 ${
             fullWidth ? "w-full" : ""
           } ${

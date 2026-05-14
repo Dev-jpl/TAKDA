@@ -171,6 +171,12 @@ export interface Container {
   align?: Align;
   wrap?: boolean;
   background?: string;
+  /** When true, runtime shows a header bar that toggles children visibility. */
+  collapsible?: boolean;
+  /** Title shown in the collapsible header (and as a label in the editor). */
+  title?: string;
+  /** Initial expanded state at runtime; defaults to true. */
+  defaultExpanded?: boolean;
   children: LayoutNode[];
 }
 

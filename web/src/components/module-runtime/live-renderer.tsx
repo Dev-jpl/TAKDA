@@ -30,6 +30,7 @@ export function LiveContainer({
   onAction,
   entriesVersion,
   onEntriesChange,
+  __depth = 0,
 }: {
   container: Container;
   module: Module;
@@ -38,7 +39,21 @@ export function LiveContainer({
   onAction: (kind: string, params?: Record<string, unknown>) => void;
   entriesVersion: number;
   onEntriesChange: () => void;
+  __depth?: number;
 }) {
+  if (container.collapsible) {
+    return (
+      <CollapsibleContainer
+        container={container}
+        module={module}
+        formState={formState}
+        setFormState={setFormState}
+        onAction={onAction}
+        entriesVersion={entriesVersion}
+        onEntriesChange={onEntriesChange}
+      />
+    );
+  }
   return (
     <div
       style={{
@@ -67,6 +82,72 @@ export function LiveContainer({
   );
 }
 
+function CollapsibleContainer({
+  container,
+  module,
+  formState,
+  setFormState,
+  onAction,
+  entriesVersion,
+  onEntriesChange,
+}: {
+  container: Container;
+  module: Module;
+  formState: FormState;
+  setFormState: (next: FormState) => void;
+  onAction: (kind: string, params?: Record<string, unknown>) => void;
+  entriesVersion: number;
+  onEntriesChange: () => void;
+}) {
+  const [expanded, setExpanded] = useState(container.defaultExpanded !== false);
+
+  return (
+    <div className="rounded-md border border-rule bg-paper overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center gap-2 px-4 py-2 border-b border-rule text-sm hover:bg-rule/20 transition-colors text-left"
+      >
+        <span
+          className="text-ink-faint inline-block transition-transform"
+          style={{ transform: expanded ? "rotate(0deg)" : "rotate(-90deg)" }}
+        >
+          ▾
+        </span>
+        <span className="font-medium text-ink">
+          {container.title || "Section"}
+        </span>
+      </button>
+      {expanded && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: container.direction,
+            gap: container.gap ?? 12,
+            padding: container.padding ?? 16,
+            alignItems: alignToFlex(container.align),
+            justifyContent: justifyToFlex(container.justify),
+            flexWrap: container.wrap ? "wrap" : "nowrap",
+          }}
+        >
+          {container.children.map((node) => (
+            <LiveNode
+              key={node.id}
+              node={node}
+              module={module}
+              formState={formState}
+              setFormState={setFormState}
+              onAction={onAction}
+              entriesVersion={entriesVersion}
+              onEntriesChange={onEntriesChange}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LiveNode({
   node,
   module,
@@ -83,6 +164,7 @@ function LiveNode({
   onAction: (kind: string, params?: Record<string, unknown>) => void;
   entriesVersion: number;
   onEntriesChange: () => void;
+  __depth?: number;
 }) {
   if (node.kind === "container") {
     return (
@@ -130,6 +212,7 @@ function LiveElement({
   onAction: (kind: string, params?: Record<string, unknown>) => void;
   entriesVersion: number;
   onEntriesChange: () => void;
+  __depth?: number;
 }) {
   const cfg = element.config ?? {};
   const boundField = resolveBoundField(element, module);

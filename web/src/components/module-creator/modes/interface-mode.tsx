@@ -1076,6 +1076,17 @@ function SortableCanvasContainer({
           <circle cx="8" cy="12" r="1.2" />
         </svg>
       </span>
+      {container.collapsible && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-dashed border-rule text-xs text-ink-muted">
+          <span className="text-ink-faint">▾</span>
+          <span className="flex-1 truncate">
+            {container.title || "Collapsible section"}
+          </span>
+          <span className="text-[10px] text-ink-faint uppercase tracking-[0.18em]">
+            collapsible
+          </span>
+        </div>
+      )}
       <DesignContainer
         container={container}
         module={module}
@@ -1533,15 +1544,49 @@ function ContainerInspector({
         </Row>
 
         <Row label="">
-          <label className="flex items-center gap-2 text-sm text-ink-muted">
-            <input
-              type="checkbox"
-              checked={!!container.wrap}
-              onChange={(e) => onPatch({ wrap: e.target.checked })}
-            />
-            Wrap children
-          </label>
+          <Switch
+            label="Wrap children"
+            checked={!!container.wrap}
+            onChange={(next) => onPatch({ wrap: next })}
+          />
         </Row>
+
+        <div className="pt-4 border-t border-rule space-y-3">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+            Collapsible
+          </div>
+
+          <Row label="">
+            <Switch
+              label="Make this section collapsible"
+              checked={!!container.collapsible}
+              onChange={(next) => onPatch({ collapsible: next })}
+            />
+          </Row>
+
+          {container.collapsible && (
+            <>
+              <Row label="Title">
+                <input
+                  value={container.title ?? ""}
+                  onChange={(e) =>
+                    onPatch({ title: e.target.value || undefined })
+                  }
+                  placeholder="Section title"
+                  className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                />
+              </Row>
+
+              <Row label="">
+                <Switch
+                  label="Start expanded"
+                  checked={container.defaultExpanded !== false}
+                  onChange={(next) => onPatch({ defaultExpanded: next })}
+                />
+              </Row>
+            </>
+          )}
+        </div>
       </div>
     </>
   );

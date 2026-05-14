@@ -1052,12 +1052,12 @@ function SortableCanvasContainer({
           additive: e.shiftKey || e.metaKey || e.ctrlKey,
         });
       }}
-      className={`group relative rounded transition-colors border border-dashed ${
+      className={`group relative rounded transition-colors ${
         selected
-          ? "border-ink ring-2 ring-ink ring-offset-2 ring-offset-paper"
+          ? "ring-2 ring-ink ring-offset-2 ring-offset-paper"
           : multiSelected
-            ? "border-ink"
-            : "border-rule hover:border-ink-faint"
+            ? "ring-1 ring-ink"
+            : "hover:ring-1 hover:ring-ink-faint"
       } ${isDragging ? "z-10 shadow-md" : ""}`}
     >
       <span

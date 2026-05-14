@@ -377,6 +377,32 @@ export function ElementBody({
           </div>
         </FieldWrap>
       );
+    case "stat": {
+      const statCfg = cfg as Record<string, unknown>;
+      const collection = module.collections.find(
+        (c) => c.id === (statCfg.collectionId as string),
+      );
+      const labelText =
+        (statCfg.label as string) ||
+        (collection
+          ? `${(statCfg.aggregation as string) ?? "count"} · ${collection.name}`
+          : "Stat");
+      const sample =
+        (statCfg.aggregation as string) === "count" ? "12" : "1,240";
+      const suffix = (statCfg.suffix as string) ?? "";
+      return (
+        <div className="rounded-md border border-rule bg-paper px-4 py-3 inline-flex flex-col">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+            {labelText}
+          </span>
+          <span className="text-2xl font-medium text-ink mt-1">
+            {(statCfg.prefix as string) ?? ""}
+            {sample}
+            {suffix ? ` ${suffix}` : ""}
+          </span>
+        </div>
+      );
+    }
     case "list": {
       const collectionId =
         element.binding?.kind === "collection"

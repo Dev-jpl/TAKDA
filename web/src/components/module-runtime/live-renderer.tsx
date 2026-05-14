@@ -10,6 +10,11 @@ import type {
   Module,
 } from "@/lib/module/types";
 import { deleteEntry, listEntries, type Entry } from "@/lib/module/entries";
+import {
+  evaluateStat,
+  formatStat,
+  readStatConfig,
+} from "@/lib/module/stat";
 
 export type FormState = Record<string, unknown>; // keyed by `${collectionId}::${fieldId}`
 
@@ -406,6 +411,14 @@ function LiveElement({
           onChange={onEntriesChange}
         />
       );
+    case "stat":
+      return (
+        <LiveStat
+          element={element}
+          module={module}
+          version={entriesVersion}
+        />
+      );
     default:
       return (
         <div className="text-xs text-ink-faint italic px-2 py-1 border border-dashed border-rule rounded">
@@ -590,6 +603,54 @@ function LiveList({
       ) : (
         <ul>{entries.map(renderRow)}</ul>
       )}
+    </div>
+  );
+}
+
+function LiveStat({
+  element,
+  module,
+  version,
+}: {
+  element: Element;
+  module: Module;
+  version: number;
+}) {
+  const cfg = readStatConfig(element);
+  const collection = cfg.collectionId
+    ? module.collections.find((c) => c.id === cfg.collectionId)
+    : null;
+
+  const [result, setResult] = useState<{
+    value: number | null;
+    suffix?: string;
+  }>({ value: null });
+
+  useEffect(() => {
+    if (!collection) {
+      setResult({ value: null });
+      return;
+    }
+    const entries = listEntries(module.id, collection.id);
+    setResult(evaluateStat(module, entries, cfg));
+  }, [module, collection, version, cfg.aggregation, cfg.fieldId, cfg.filter]);
+
+  const label =
+    cfg.label ||
+    (collection
+      ? `${(cfg.aggregation ?? "count").toUpperCase()} · ${collection.name}`
+      : "Stat");
+
+  const display = collection
+    ? formatStat(result.value, cfg, result.suffix)
+    : "—";
+
+  return (
+    <div className="rounded-md border border-rule bg-paper px-4 py-3 inline-flex flex-col">
+      <span className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+        {label}
+      </span>
+      <span className="text-2xl font-medium text-ink mt-1">{display}</span>
     </div>
   );
 }

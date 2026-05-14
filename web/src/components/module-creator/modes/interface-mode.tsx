@@ -1798,8 +1798,157 @@ function ElementInspector({
         {element.type === "list" && (
           <ListConfig module={module} element={element} onPatch={onPatch} />
         )}
+
+        {/* Stat config */}
+        {element.type === "stat" && (
+          <StatConfigPanel module={module} element={element} onPatch={onPatch} />
+        )}
       </div>
     </>
+  );
+}
+
+function StatConfigPanel({
+  module,
+  element,
+  onPatch,
+}: {
+  module: Module;
+  element: Element;
+  onPatch: (patch: Partial<Element>) => void;
+}) {
+  const cfg = (element.config ?? {}) as Record<string, unknown>;
+  const collectionId = (cfg.collectionId as string) ?? "";
+  const aggregation = (cfg.aggregation as string) ?? "count";
+  const fieldId = (cfg.fieldId as string) ?? "";
+  const filter = (cfg.filter as string) ?? "all";
+  const collection = collectionId
+    ? module.collections.find((c) => c.id === collectionId) ?? null
+    : null;
+  const numberFields = collection?.fields.filter((f) => f.type === "number") ?? [];
+
+  const set = (patch: Record<string, unknown>) =>
+    onPatch({ config: { ...(element.config ?? {}), ...patch } });
+
+  return (
+    <div className="pt-4 border-t border-rule space-y-3">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+        Stat
+      </div>
+
+      <Row label="Label">
+        <input
+          value={(cfg.label as string) ?? ""}
+          onChange={(e) => set({ label: e.target.value || undefined })}
+          placeholder="e.g. Today's calories"
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        />
+      </Row>
+
+      <Row label="Collection">
+        <select
+          value={collectionId}
+          onChange={(e) =>
+            set({
+              collectionId: e.target.value || undefined,
+              fieldId: undefined,
+            })
+          }
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        >
+          <option value="">— pick a collection —</option>
+          {module.collections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Row>
+
+      <Row label="Aggregation">
+        <div className="grid grid-cols-3 gap-1">
+          {(
+            [
+              { id: "count", label: "Count" },
+              { id: "sum", label: "Sum" },
+              { id: "avg", label: "Avg" },
+              { id: "min", label: "Min" },
+              { id: "max", label: "Max" },
+            ] as const
+          ).map((opt) => {
+            const active = aggregation === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => set({ aggregation: opt.id })}
+                className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                  active
+                    ? "border-ink bg-ink text-paper"
+                    : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </Row>
+
+      {aggregation !== "count" && (
+        <Row label="Number field">
+          <select
+            value={fieldId}
+            onChange={(e) => set({ fieldId: e.target.value || undefined })}
+            disabled={!collection}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+          >
+            <option value="">— pick a number field —</option>
+            {numberFields.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          {collection && numberFields.length === 0 && (
+            <p className="text-xs text-ink-faint mt-1">
+              This collection has no number fields.
+            </p>
+          )}
+        </Row>
+      )}
+
+      <Row label="Time window">
+        <select
+          value={filter}
+          onChange={(e) => set({ filter: e.target.value })}
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        >
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="this_week">This week</option>
+          <option value="this_month">This month</option>
+        </select>
+      </Row>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Row label="Prefix">
+          <input
+            value={(cfg.prefix as string) ?? ""}
+            onChange={(e) => set({ prefix: e.target.value || undefined })}
+            placeholder="$, etc."
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+        <Row label="Suffix">
+          <input
+            value={(cfg.suffix as string) ?? ""}
+            onChange={(e) => set({ suffix: e.target.value || undefined })}
+            placeholder="kcal, kg..."
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+      </div>
+    </div>
   );
 }
 

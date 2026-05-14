@@ -96,6 +96,7 @@ export function saveModule(module: Module): void {
   }
   store[module.id] = next;
   writeStore(store);
+  void import("./sync").then(({ pushModule }) => pushModule(next));
 }
 
 export function createModule(name = "Untitled module"): Module {
@@ -103,6 +104,7 @@ export function createModule(name = "Untitled module"): Module {
   const store = readStore();
   store[m.id] = m;
   writeStore(store);
+  void import("./sync").then(({ pushModule }) => pushModule(m));
   return m;
 }
 
@@ -110,6 +112,9 @@ export function deleteModule(id: string): void {
   const store = readStore();
   delete store[id];
   writeStore(store);
+  void import("./sync").then(({ deleteRemoteModule }) =>
+    deleteRemoteModule(id),
+  );
 }
 
 export function publishModule(id: string, versionNotes?: string): Module | null {
@@ -128,6 +133,7 @@ export function publishModule(id: string, versionNotes?: string): Module | null 
   };
   store[id] = next;
   writeStore(store);
+  void import("./sync").then(({ pushModule }) => pushModule(next));
   return next;
 }
 

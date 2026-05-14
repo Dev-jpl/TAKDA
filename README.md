@@ -25,6 +25,18 @@ takda/
 └── backend/    FastAPI + Postgres
 ```
 
+## Database setup
+
+After creating your Supabase project, run the migration once in the SQL
+editor:
+
+```
+db/migrations/v2_001_initial.sql
+```
+
+It creates `modules` and `entries` tables with Row Level Security so users
+only see their own data, plus triggers to maintain `updated_at`.
+
 ## Quick start
 
 ### Web
@@ -63,9 +75,10 @@ Open http://localhost:8000/health.
 ## Roadmap
 
 - [x] **M0** — Scaffold: landing, login/signup, home, theme toggle, FastAPI health
-- [ ] **M1** — Module schema designer (define fields, types, relations)
-- [ ] **M2** — Dynamic renderer (consume module JSON → render views)
-- [ ] **M3** — Capture form designer (drag/drop on dotted canvas)
-- [ ] **M4** — Visualization tools (list, detail, charts, calendar)
-- [ ] **M5** — Computed properties + triggers
-- [ ] **M6** — Composition (embed modules, cross-module relations)
+- [x] **M1** — Module creator: schema, interface, profile, publish, drag/drop, group/ungroup, undo/redo
+- [x] **M1.5** — Runtime (use what you designed), list/stat elements, sync to Supabase
+- [ ] **M2** — Local-first sync queue (proper offline writes + replay)
+- [ ] **M3** — Service Worker / PWA (installable, offline shell)
+- [ ] **M4** — Visualization: charts (bar/line/pie), calendar heatmap
+- [ ] **M5** — Behavior mode: wires, computed properties (named), Run mode
+- [ ] **M6** — Composition (embed modules, cross-module relations, marketplace)

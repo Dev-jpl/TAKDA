@@ -66,6 +66,8 @@ export function createEntry(
   const store = readAll(moduleId);
   store[collectionId] = [...(store[collectionId] ?? []), entry];
   writeAll(moduleId, store);
+  // Fire-and-forget remote push (no-op when offline / not signed in).
+  void import("./sync").then(({ pushEntry }) => pushEntry(entry));
   return entry;
 }
 
@@ -79,6 +81,25 @@ export function deleteEntry(
     (e) => e.id !== entryId,
   );
   writeAll(moduleId, store);
+  void import("./sync").then(({ deleteRemoteEntry }) =>
+    deleteRemoteEntry(entryId),
+  );
+}
+
+/** Used by the sync reconciler — write an entry as-is into local storage. */
+export function createEntryAt(entry: Entry): void {
+  const store = readAll(entry.moduleId);
+  store[entry.collectionId] = [...(store[entry.collectionId] ?? []), entry];
+  writeAll(entry.moduleId, store);
+}
+
+/** Replace an entry by id in local storage with the provided record. */
+export function replaceLocalEntry(entry: Entry): void {
+  const store = readAll(entry.moduleId);
+  store[entry.collectionId] = (store[entry.collectionId] ?? []).map((e) =>
+    e.id === entry.id ? entry : e,
+  );
+  writeAll(entry.moduleId, store);
 }
 
 export function countEntries(moduleId: Id, collectionId: Id): number {

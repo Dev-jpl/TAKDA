@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignOutButton } from "@/components/sign-out-button";
+import { SyncStatus } from "@/components/sync-status";
 
 const FULLSCREEN_PATTERNS = [
   /^\/module-creator\/[^/]+/,
@@ -21,7 +22,16 @@ export function AppShell({
   const fullscreen = FULLSCREEN_PATTERNS.some((p) => p.test(pathname));
 
   if (fullscreen) {
-    return <div className="min-h-screen">{children}</div>;
+    // Mount SyncStatus invisibly to run reconciliation in fullscreen routes
+    // (workspace, runtime); their own top bars include the visible badge.
+    return (
+      <div className="min-h-screen">
+        <div className="hidden">
+          <SyncStatus />
+        </div>
+        {children}
+      </div>
+    );
   }
 
   return (
@@ -29,6 +39,7 @@ export function AppShell({
       <Sidebar email={email} />
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-end gap-3 px-6 py-4 border-b border-rule bg-paper">
+          <SyncStatus />
           <span className="text-xs text-ink-muted">{email}</span>
           <ThemeToggle />
           <SignOutButton />

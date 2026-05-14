@@ -59,7 +59,7 @@ export function addCollection(module: Module, name = "New collection"): {
 export function updateCollection(
   module: Module,
   id: Id,
-  patch: Partial<Pick<Collection, "name" | "key" | "description">>,
+  patch: Partial<Pick<Collection, "name" | "key" | "description" | "singleton">>,
 ): Module {
   return {
     ...module,

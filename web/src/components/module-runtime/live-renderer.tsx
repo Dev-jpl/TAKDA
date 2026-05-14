@@ -764,9 +764,20 @@ function LiveProgressBar({
   const collection = cfg.collectionId
     ? module.collections.find((c) => c.id === cfg.collectionId)
     : null;
-  const goal = (element.config?.goal as number) ?? 100;
   const showText = element.config?.showText !== false;
   const label = cfg.label || "Progress";
+
+  // Resolve goal: a literal number, or read from a (collection, field) source —
+  // useful with a singleton collection so end users can edit their goal.
+  const goalSource = element.config?.goalSource as
+    | { collectionId?: string; fieldId?: string }
+    | undefined;
+  let goal = (element.config?.goal as number) ?? 100;
+  if (goalSource?.collectionId && goalSource?.fieldId) {
+    const goalEntries = listEntries(module.id, goalSource.collectionId);
+    const raw = goalEntries[0]?.values[goalSource.fieldId];
+    if (typeof raw === "number") goal = raw;
+  }
 
   const [result, setResult] = useState<{
     value: number | null;

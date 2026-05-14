@@ -7,6 +7,7 @@ import {
   createEntry,
   deleteEntry,
   listEntries,
+  setSingletonEntry,
   type Entry,
 } from "@/lib/module/entries";
 import type {
@@ -30,10 +31,30 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
   const [formState, setFormState] = useState<FormState>({});
   const [entriesVersion, setEntriesVersion] = useState(0);
 
+  const prefillForScreen = (idx: number, m: Module | null): FormState => {
+    if (!m) return {};
+    const screen = m.screens[idx];
+    if (!screen) return {};
+    const state: FormState = {};
+    walkScreen(screen.root, (n) => {
+      if (n.kind !== "element") return;
+      const b = n.binding;
+      if (!b || b.kind !== "field") return;
+      const coll = m.collections.find((c) => c.id === b.collectionId);
+      if (!coll?.singleton) return;
+      const entry = listEntries(m.id, coll.id)[0];
+      if (!entry) return;
+      const value = entry.values[b.fieldId];
+      if (value === undefined) return;
+      state[bindingKey(coll.id, b.fieldId)] = value;
+    });
+    return state;
+  };
+
   const goToScreen = (idx: number, push = true) => {
     if (idx < 0) return;
     setScreenIdx(idx);
-    setFormState({});
+    setFormState(prefillForScreen(idx, module));
     if (push) setHistory((h) => [...h, idx]);
   };
 
@@ -43,7 +64,7 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
       const next = h.slice(0, -1);
       const idx = next[next.length - 1];
       setScreenIdx(idx);
-      setFormState({});
+      setFormState(prefillForScreen(idx, module));
       return next;
     });
   };
@@ -56,7 +77,9 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
       const idx = firstPage >= 0 ? firstPage : 0;
       setScreenIdx(idx);
       setHistory([idx]);
+      setFormState(prefillForScreen(idx, m));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId]);
 
   const screen = useMemo(
@@ -68,7 +91,7 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
   const targetCollections = useMemo<Collection[]>(() => {
     if (!module || !screen) return [];
     const ids = new Set<string>();
-    walk(screen.root, (n) => {
+    walkScreen(screen.root, (n) => {
       if (n.kind === "element" && n.binding?.kind === "field") {
         ids.add(n.binding.collectionId);
       }
@@ -122,10 +145,24 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
         };
       }
       for (const [collectionId, values] of Object.entries(perCollection)) {
-        createEntry(module.id, collectionId, values);
+        const coll = module.collections.find((c) => c.id === collectionId);
+        if (coll?.singleton) {
+          setSingletonEntry(module.id, collectionId, values);
+        } else {
+          createEntry(module.id, collectionId, values);
+        }
       }
-      setFormState({});
       setEntriesVersion((v) => v + 1);
+      // Keep singleton values in form; clear non-singleton form keys.
+      setFormState((cur) => {
+        const next: FormState = {};
+        for (const [key, value] of Object.entries(cur)) {
+          const [collectionId] = key.split("::");
+          const coll = module.collections.find((c) => c.id === collectionId);
+          if (coll?.singleton) next[key] = value;
+        }
+        return next;
+      });
       return;
     }
     if (kind === "navigate_screen") {
@@ -197,7 +234,7 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
                   onClick={() => {
                     setScreenIdx(i);
                     setHistory([i]);
-                    setFormState({});
+                    setFormState(prefillForScreen(i, module));
                   }}
                   className={`px-3 py-1.5 text-sm transition-colors ${
                     i === screenIdx
@@ -315,10 +352,29 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
                   for (const [collectionId, values] of Object.entries(
                     perCollection,
                   )) {
-                    createEntry(module.id, collectionId, values);
+                    const coll = module.collections.find(
+                      (c) => c.id === collectionId,
+                    );
+                    if (coll?.singleton) {
+                      setSingletonEntry(module.id, collectionId, values);
+                    } else {
+                      createEntry(module.id, collectionId, values);
+                    }
                   }
-                  setModalFormState((m) => ({ ...m, [topModal.id]: {} }));
                   setEntriesVersion((v) => v + 1);
+                  setModalFormState((m) => {
+                    const next: FormState = {};
+                    for (const [key, value] of Object.entries(
+                      m[topModal.id] ?? {},
+                    )) {
+                      const [collectionId] = key.split("::");
+                      const coll = module.collections.find(
+                        (c) => c.id === collectionId,
+                      );
+                      if (coll?.singleton) next[key] = value;
+                    }
+                    return { ...m, [topModal.id]: next };
+                  });
                   return;
                 }
                 onAction(kind, params);
@@ -409,9 +465,9 @@ function EntriesList({
   );
 }
 
-function walk(node: LayoutNode, fn: (n: LayoutNode) => void): void {
+function walkScreen(node: LayoutNode, fn: (n: LayoutNode) => void): void {
   fn(node);
   if (node.kind === "container") {
-    for (const child of (node as Container).children) walk(child, fn);
+    for (const child of (node as Container).children) walkScreen(child, fn);
   }
 }

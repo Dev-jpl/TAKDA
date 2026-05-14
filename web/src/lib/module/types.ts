@@ -60,6 +60,10 @@ export interface Collection {
   key: string;           // machine name (snake_case)
   name: string;          // display name
   description?: string;
+  /** When true, the runtime keeps exactly one entry per user (upsert on save,
+   *  capture screens pre-fill with current values). Use for module-level
+   *  settings / preferences (e.g. a Variables collection of targets). */
+  singleton?: boolean;
   fields: Field[];
 }
 

@@ -162,6 +162,13 @@ export function SchemaMode({
             onReorderFields={(from, to) =>
               setModule((m) => reorderFields(m, selectedCollection.id, from, to))
             }
+            onToggleSingleton={(next) =>
+              setModule((m) =>
+                updateCollection(m, selectedCollection.id, {
+                  singleton: next || undefined,
+                }),
+              )
+            }
           />
         ) : (
           <div className="p-10 text-center text-ink-muted">
@@ -294,6 +301,7 @@ function FieldTable({
   onAddField,
   onDeleteField,
   onReorderFields,
+  onToggleSingleton,
 }: {
   collection: Collection;
   selectedFieldId: Id | null;
@@ -301,6 +309,7 @@ function FieldTable({
   onAddField: (type: FieldType) => void;
   onDeleteField: (id: Id) => void;
   onReorderFields: (from: number, to: number) => void;
+  onToggleSingleton: (next: boolean) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -322,11 +331,31 @@ function FieldTable({
 
   return (
     <div className="p-8">
-      <div className="mb-6">
-        <h2 className="text-xl font-medium text-ink">{collection.name}</h2>
-        <p className="text-xs text-ink-faint mt-1 font-mono">
-          {collection.key}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-medium text-ink flex items-center gap-2">
+            {collection.name}
+            {collection.singleton && (
+              <span className="text-[10px] uppercase tracking-[0.18em] text-ink-faint border border-rule rounded-full px-2 py-0.5">
+                singleton
+              </span>
+            )}
+          </h2>
+          <p className="text-xs text-ink-faint mt-1 font-mono">
+            {collection.key}
+          </p>
+        </div>
+        <div className="shrink-0 rounded-md border border-rule bg-paper px-4 py-2.5">
+          <Switch
+            label="Singleton"
+            checked={!!collection.singleton}
+            onChange={onToggleSingleton}
+          />
+          <p className="mt-1.5 text-[10px] text-ink-faint max-w-60 leading-snug">
+            One entry per user. Saves upsert; capture screens pre-fill with the
+            current values. Use for settings / preferences.
+          </p>
+        </div>
       </div>
 
       <div className="rounded-md border border-rule bg-paper overflow-hidden">

@@ -86,6 +86,30 @@ export function deleteEntry(
   );
 }
 
+/** Replace the (assumed-singleton) entry of a collection with a new values map,
+ *  preserving id + createdAt of the existing entry if any. */
+export function setSingletonEntry(
+  moduleId: Id,
+  collectionId: Id,
+  values: Record<string, unknown>,
+): Entry {
+  const store = readAll(moduleId);
+  const existing = (store[collectionId] ?? [])[0];
+  const now = nowIso();
+  const entry: Entry = {
+    id: existing?.id ?? uid(),
+    moduleId,
+    collectionId,
+    values,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  store[collectionId] = [entry];
+  writeAll(moduleId, store);
+  void import("./sync").then(({ pushEntry }) => pushEntry(entry));
+  return entry;
+}
+
 /** Used by the sync reconciler — write an entry as-is into local storage. */
 export function createEntryAt(entry: Entry): void {
   const store = readAll(entry.moduleId);

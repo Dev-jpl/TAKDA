@@ -380,7 +380,11 @@ export function ElementBody({
     case "progress_bar": {
       const pcfg = cfg as Record<string, unknown>;
       const labelText = (pcfg.label as string) || "Progress";
-      const goal = (pcfg.goal as number) ?? 100;
+      const goalSource = pcfg.goalSource as
+        | { collectionId?: string; fieldId?: string }
+        | undefined;
+      const isFieldGoal = !!(goalSource?.collectionId && goalSource?.fieldId);
+      const goal = isFieldGoal ? 100 : ((pcfg.goal as number) ?? 100);
       const sampleValue = Math.round(goal * 0.6);
       const pct = Math.max(0, Math.min(100, (sampleValue / goal) * 100));
       const showText = pcfg.showText !== false;

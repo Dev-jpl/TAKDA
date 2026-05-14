@@ -2052,19 +2052,7 @@ function ProgressConfigPanel({
         </select>
       </Row>
 
-      <Row label="Goal">
-        <input
-          type="number"
-          value={(cfg.goal as number | undefined) ?? ""}
-          onChange={(e) =>
-            set({
-              goal: e.target.value === "" ? undefined : Number(e.target.value),
-            })
-          }
-          placeholder="e.g. 2000"
-          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-        />
-      </Row>
+      <GoalSourceControl module={module} element={element} onPatch={onPatch} />
 
       <Row label="Suffix">
         <input
@@ -2391,6 +2379,143 @@ function BindingControl({
         </Row>
       )}
     </div>
+  );
+}
+
+function GoalSourceControl({
+  module,
+  element,
+  onPatch,
+}: {
+  module: Module;
+  element: Element;
+  onPatch: (patch: Partial<Element>) => void;
+}) {
+  const cfg = (element.config ?? {}) as Record<string, unknown>;
+  const goalSource = cfg.goalSource as
+    | { collectionId?: string; fieldId?: string }
+    | undefined;
+  const mode: "fixed" | "field" =
+    goalSource?.collectionId && goalSource?.fieldId ? "field" : "fixed";
+
+  const set = (patch: Record<string, unknown>) =>
+    onPatch({ config: { ...(element.config ?? {}), ...patch } });
+
+  const collection = goalSource?.collectionId
+    ? module.collections.find((c) => c.id === goalSource.collectionId) ?? null
+    : null;
+  const numberFields = collection?.fields.filter((f) => f.type === "number") ?? [];
+  const singletonCollections = module.collections.filter((c) => c.singleton);
+
+  return (
+    <>
+      <Row label="Goal source">
+        <div className="grid grid-cols-2 gap-1">
+          {(
+            [
+              { id: "fixed", label: "Fixed value" },
+              { id: "field", label: "From field" },
+            ] as const
+          ).map((opt) => {
+            const active = mode === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => {
+                  if (opt.id === "fixed") {
+                    set({ goalSource: undefined });
+                  } else {
+                    set({
+                      goalSource: {
+                        collectionId: singletonCollections[0]?.id,
+                        fieldId: undefined,
+                      },
+                    });
+                  }
+                }}
+                className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                  active
+                    ? "border-ink bg-ink text-paper"
+                    : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </Row>
+
+      {mode === "fixed" ? (
+        <Row label="Goal">
+          <input
+            type="number"
+            value={(cfg.goal as number | undefined) ?? ""}
+            onChange={(e) =>
+              set({
+                goal:
+                  e.target.value === "" ? undefined : Number(e.target.value),
+              })
+            }
+            placeholder="e.g. 2000"
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+      ) : (
+        <>
+          <Row label="Collection">
+            <select
+              value={goalSource?.collectionId ?? ""}
+              onChange={(e) =>
+                set({
+                  goalSource: {
+                    collectionId: e.target.value || undefined,
+                    fieldId: undefined,
+                  },
+                })
+              }
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+            >
+              <option value="">— pick a collection —</option>
+              {module.collections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.singleton ? " · singleton" : ""}
+                </option>
+              ))}
+            </select>
+            {singletonCollections.length === 0 && (
+              <p className="text-xs text-ink-faint mt-1">
+                Tip: mark a collection as singleton on the Schema tab so end
+                users can edit the goal.
+              </p>
+            )}
+          </Row>
+          <Row label="Number field">
+            <select
+              value={goalSource?.fieldId ?? ""}
+              onChange={(e) =>
+                set({
+                  goalSource: {
+                    ...(goalSource ?? {}),
+                    fieldId: e.target.value || undefined,
+                  },
+                })
+              }
+              disabled={!collection}
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+            >
+              <option value="">— pick a number field —</option>
+              {numberFields.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </Row>
+        </>
+      )}
+    </>
   );
 }
 

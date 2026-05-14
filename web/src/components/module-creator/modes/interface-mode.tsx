@@ -215,11 +215,15 @@ export function InterfaceMode({
     return parent ? parent.id : selectedScreen.root.id;
   }, [selectedScreen, selectedNode]);
 
-  const onAddScreen = () => {
-    const name = window.prompt("Screen name", "New screen");
+  const onAddScreen = (kind: "page" | "modal" = "page") => {
+    const placeholder = kind === "modal" ? "New modal" : "New screen";
+    const name = window.prompt(
+      kind === "modal" ? "Modal name" : "Screen name",
+      placeholder,
+    );
     if (!name) return;
     setModule((m) => {
-      const { module: next, screen } = addScreen(m, name, "page");
+      const { module: next, screen } = addScreen(m, name, kind);
       setSelectedScreenId(screen.id);
       setSelectedElementId(null);
       return next;
@@ -445,7 +449,7 @@ function ScreensRail({
   selectedElementId: Id | null;
   onSelectScreen: (id: Id) => void;
   onSelectElement: (id: Id) => void;
-  onAddScreen: () => void;
+  onAddScreen: (kind?: "page" | "modal") => void;
   onRenameScreen: (id: Id, name: string) => void;
   onDeleteScreen: (id: Id) => void;
   onReorderLayers: (parentId: Id, from: number, to: number) => void;
@@ -501,12 +505,18 @@ function ScreensRail({
           })}
         </ul>
       )}
-      <div className="px-3 py-2">
+      <div className="px-3 py-2 space-y-1.5">
         <button
-          onClick={onAddScreen}
+          onClick={() => onAddScreen("page")}
           className="w-full text-left text-sm text-ink-muted hover:text-ink border border-dashed border-rule hover:border-ink rounded px-3 py-2 transition-colors"
         >
           + Add screen
+        </button>
+        <button
+          onClick={() => onAddScreen("modal")}
+          className="w-full text-left text-sm text-ink-muted hover:text-ink border border-dashed border-rule hover:border-ink rounded px-3 py-2 transition-colors"
+        >
+          + Add modal
         </button>
       </div>
 
@@ -1633,7 +1643,8 @@ function ElementInspector({
                 onChange={(e) =>
                   setConfig({
                     action: e.target.value,
-                    ...(e.target.value === "navigate_screen"
+                    ...(e.target.value === "navigate_screen" ||
+                    e.target.value === "open_modal"
                       ? {}
                       : { targetScreenId: undefined }),
                   })
@@ -1643,11 +1654,20 @@ function ElementInspector({
                 <option value="save_entry">Save entry</option>
                 <option value="navigate_screen">Go to screen</option>
                 <option value="navigate_back">Go back</option>
+                <option value="open_modal">Open modal</option>
+                <option value="close_modal">Close modal</option>
               </select>
             </Row>
 
-            {(element.config?.action ?? "save_entry") === "navigate_screen" && (
-              <Row label="Target screen">
+            {((element.config?.action ?? "save_entry") === "navigate_screen" ||
+              element.config?.action === "open_modal") && (
+              <Row
+                label={
+                  element.config?.action === "open_modal"
+                    ? "Target modal"
+                    : "Target screen"
+                }
+              >
                 <select
                   value={(element.config?.targetScreenId as string) ?? ""}
                   onChange={(e) =>
@@ -1655,20 +1675,26 @@ function ElementInspector({
                   }
                   className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
                 >
-                  <option value="">— pick a screen —</option>
+                  <option value="">— pick —</option>
                   {module.screens
                     .filter((s) => s.id !== screen.id)
+                    .filter((s) =>
+                      element.config?.action === "open_modal"
+                        ? s.kind === "modal"
+                        : s.kind !== "modal",
+                    )
                     .map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
                       </option>
                     ))}
                 </select>
-                {module.screens.length <= 1 && (
-                  <p className="text-xs text-ink-faint mt-1">
-                    Add another screen to navigate to.
-                  </p>
-                )}
+                {element.config?.action === "open_modal" &&
+                  !module.screens.some((s) => s.kind === "modal") && (
+                    <p className="text-xs text-ink-faint mt-1">
+                      Add a modal first (left rail → + Add modal).
+                    </p>
+                  )}
               </Row>
             )}
 

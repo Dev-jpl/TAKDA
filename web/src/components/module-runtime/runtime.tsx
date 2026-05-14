@@ -23,6 +23,10 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
   const [module, setModuleState] = useState<Module | null>(null);
   const [screenIdx, setScreenIdx] = useState(0);
   const [history, setHistory] = useState<number[]>([0]);
+  const [modalStack, setModalStack] = useState<string[]>([]);
+  const [modalFormState, setModalFormState] = useState<
+    Record<string, FormState>
+  >({});
   const [formState, setFormState] = useState<FormState>({});
   const [entriesVersion, setEntriesVersion] = useState(0);
 
@@ -45,7 +49,14 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
   };
 
   useEffect(() => {
-    setModuleState(loadModule(moduleId));
+    const m = loadModule(moduleId);
+    setModuleState(m);
+    if (m) {
+      const firstPage = m.screens.findIndex((s) => s.kind !== "modal");
+      const idx = firstPage >= 0 ? firstPage : 0;
+      setScreenIdx(idx);
+      setHistory([idx]);
+    }
   }, [moduleId]);
 
   const screen = useMemo(
@@ -128,7 +139,34 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
       goBack();
       return;
     }
+    if (kind === "open_modal") {
+      const targetId = params?.targetScreenId as string | undefined;
+      if (!targetId) return;
+      const target = module.screens.find((s) => s.id === targetId);
+      if (!target) return;
+      setModalStack((s) => [...s, target.id]);
+      setModalFormState((m) => ({ ...m, [target.id]: {} }));
+      return;
+    }
+    if (kind === "close_modal") {
+      setModalStack((s) => {
+        if (s.length === 0) return s;
+        const popped = s[s.length - 1];
+        setModalFormState((m) => {
+          const next = { ...m };
+          delete next[popped];
+          return next;
+        });
+        return s.slice(0, -1);
+      });
+      return;
+    }
   };
+
+  const topModalId = modalStack[modalStack.length - 1];
+  const topModal = topModalId
+    ? module.screens.find((s) => s.id === topModalId)
+    : null;
 
   return (
     <div className="flex h-screen flex-col">
@@ -148,25 +186,28 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
           <span className="text-sm font-medium text-ink">{module.name}</span>
         </div>
 
-        {module.screens.length > 1 && (
+        {module.screens.filter((s) => s.kind !== "modal").length > 1 && (
           <div className="flex items-center rounded-md border border-rule overflow-hidden">
-            {module.screens.map((s, i) => (
-              <button
-                key={s.id}
-                onClick={() => {
-                  setScreenIdx(i);
-                  setHistory([i]);
-                  setFormState({});
-                }}
-                className={`px-3 py-1.5 text-sm transition-colors ${
-                  i === screenIdx
-                    ? "bg-ink text-paper"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-              >
-                {s.name}
-              </button>
-            ))}
+            {module.screens
+              .map((s, i) => ({ s, i }))
+              .filter(({ s }) => s.kind !== "modal")
+              .map(({ s, i }) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    setScreenIdx(i);
+                    setHistory([i]);
+                    setFormState({});
+                  }}
+                  className={`px-3 py-1.5 text-sm transition-colors ${
+                    i === screenIdx
+                      ? "bg-ink text-paper"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {s.name}
+                </button>
+              ))}
           </div>
         )}
 
@@ -226,6 +267,68 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
           </div>
         </aside>
       </div>
+
+      {topModal && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4"
+          onClick={() => onAction("close_modal")}
+        >
+          <div
+            className="w-full max-w-md rounded-md border border-rule bg-paper shadow-xl max-h-[80vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-2 border-b border-rule flex items-center justify-between bg-paper sticky top-0 z-10">
+              <span className="text-sm font-medium">{topModal.name}</span>
+              <button
+                onClick={() => onAction("close_modal")}
+                className="text-xs text-ink-muted hover:text-ink"
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
+            </div>
+            <LiveContainer
+              container={topModal.root}
+              module={module}
+              formState={modalFormState[topModal.id] ?? {}}
+              setFormState={(next) =>
+                setModalFormState((m) => ({ ...m, [topModal.id]: next }))
+              }
+              onAction={(kind, params) => {
+                if (kind === "save_entry") {
+                  // Save from modal — use that modal's form state.
+                  const state = modalFormState[topModal.id] ?? {};
+                  const perCollection: Record<
+                    string,
+                    Record<string, unknown>
+                  > = {};
+                  for (const [key, value] of Object.entries(state)) {
+                    const [collectionId, fieldId] = key.split("::");
+                    if (!collectionId || !fieldId) continue;
+                    if (value === undefined || value === null || value === "")
+                      continue;
+                    perCollection[collectionId] = {
+                      ...(perCollection[collectionId] ?? {}),
+                      [fieldId]: value,
+                    };
+                  }
+                  for (const [collectionId, values] of Object.entries(
+                    perCollection,
+                  )) {
+                    createEntry(module.id, collectionId, values);
+                  }
+                  setModalFormState((m) => ({ ...m, [topModal.id]: {} }));
+                  setEntriesVersion((v) => v + 1);
+                  return;
+                }
+                onAction(kind, params);
+              }}
+              entriesVersion={entriesVersion}
+              onEntriesChange={() => setEntriesVersion((v) => v + 1)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

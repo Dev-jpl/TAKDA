@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import type { Module, ModuleProfile } from "@/lib/module/types";
+import { IconPicker } from "@/components/module-icon";
 
 const CATEGORIES = [
   "Health",
@@ -12,11 +13,6 @@ const CATEGORIES = [
   "Work",
   "Creative",
   "Other",
-];
-
-const EMOJI_OPTIONS = [
-  "📓", "📝", "✍️", "🍽", "💪", "💰", "📚", "🎯", "📊",
-  "🗓", "⏱", "🌱", "🧠", "❤️", "🏃", "✨", "🛠", "🎨",
 ];
 
 export function ProfileMode({
@@ -42,30 +38,11 @@ export function ProfileMode({
           </p>
         </section>
 
-        <Field label="Icon" hint="Pick an emoji">
-          <div className="flex flex-wrap gap-1">
-            {EMOJI_OPTIONS.map((e) => (
-              <button
-                key={e}
-                onClick={() => setProfile({ icon: e })}
-                className={`h-9 w-9 rounded border text-lg transition-colors ${
-                  module.profile.icon === e
-                    ? "border-ink bg-ink/5"
-                    : "border-rule hover:border-ink"
-                }`}
-              >
-                {e}
-              </button>
-            ))}
-            <input
-              value={module.profile.icon ?? ""}
-              onChange={(e) =>
-                setProfile({ icon: e.target.value.slice(0, 4) || undefined })
-              }
-              placeholder="custom"
-              className="h-9 w-20 rounded border border-rule px-2 text-sm bg-transparent outline-none focus:border-ink"
-            />
-          </div>
+        <Field label="Icon" hint="Search and pick — used on home & module cards">
+          <IconPicker
+            value={module.profile.icon}
+            onChange={(next) => setProfile({ icon: next })}
+          />
         </Field>
 
         <Field label="Name">

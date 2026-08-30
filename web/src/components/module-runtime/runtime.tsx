@@ -2,6 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ModuleIcon } from "@/components/module-icon";
+import { resolveDefault, validateValue } from "@/lib/module/validation";
+import {
+  dispatchEdgeTrigger,
+  dispatchGraph,
+  flowsFor,
+  runFlow,
+  type FlowRuntime,
+} from "@/lib/module/flows";
 import { loadModule } from "@/lib/module/draft";
 import {
   createEntry,
@@ -16,11 +25,46 @@ import type {
   Element,
   LayoutNode,
   Module,
+  Screen,
 } from "@/lib/module/types";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { LiveContainer, bindingKey, type FormState } from "./live-renderer";
+import {
+  FormErrorsProvider,
+  LiveContainer,
+  bindingKey,
+  type FormErrors,
+  type FormState,
+} from "./live-renderer";
 
-export function ModuleRuntime({ moduleId }: { moduleId: string }) {
+const MODAL_MAX_W: Record<NonNullable<Screen["modalSize"]>, string> = {
+  sm: "max-w-sm",
+  md: "max-w-md",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
+};
+
+const MODAL_BACKDROP_ALIGN: Record<NonNullable<Screen["modalPosition"]>, string> = {
+  top: "items-start justify-center pt-16",
+  center: "items-center justify-center",
+  bottom: "items-end justify-center pb-16",
+};
+
+// Tailwind tokens for the page max-width. A page declares its target viewport
+// via `pageWidth`; the runtime constrains the content column to that and
+// reflows below it. Unset = desktop.
+const PAGE_MAX_W: Record<NonNullable<Screen["pageWidth"]>, string> = {
+  mobile: "max-w-md",
+  tablet: "max-w-2xl",
+  desktop: "max-w-5xl",
+};
+
+export function ModuleRuntime({
+  moduleId,
+  chromeless = false,
+}: {
+  moduleId: string;
+  chromeless?: boolean;
+}) {
   const [module, setModuleState] = useState<Module | null>(null);
   const [screenIdx, setScreenIdx] = useState(0);
   const [history, setHistory] = useState<number[]>([0]);
@@ -29,6 +73,44 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
     Record<string, FormState>
   >({});
   const [formState, setFormState] = useState<FormState>({});
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [modalFormErrors, setModalFormErrors] = useState<
+    Record<string, FormErrors>
+  >({});
+
+  const clearFormError = (key: string) =>
+    setFormErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+
+  const clearModalError = (modalId: string) => (key: string) =>
+    setModalFormErrors((m) => {
+      const inner = m[modalId] ?? {};
+      if (!(key in inner)) return m;
+      const next = { ...inner };
+      delete next[key];
+      return { ...m, [modalId]: next };
+    });
+
+  // Toast state for show_toast flow action.
+  const [toast, setToast] = useState<{
+    id: number;
+    message: string;
+    tone: "info" | "success" | "warn";
+  } | null>(null);
+  const pushToast = (
+    message: string,
+    tone: "info" | "success" | "warn" = "info",
+  ) => {
+    const id = Date.now() + Math.random();
+    setToast({ id, message, tone });
+    setTimeout(() => {
+      setToast((t) => (t && t.id === id ? null : t));
+    }, 3000);
+  };
   const [entriesVersion, setEntriesVersion] = useState(0);
 
   const prefillForScreen = (idx: number, m: Module | null): FormState => {
@@ -41,12 +123,24 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
       const b = n.binding;
       if (!b || b.kind !== "field") return;
       const coll = m.collections.find((c) => c.id === b.collectionId);
-      if (!coll?.singleton) return;
-      const entry = listEntries(m.id, coll.id)[0];
-      if (!entry) return;
-      const value = entry.values[b.fieldId];
-      if (value === undefined) return;
-      state[bindingKey(coll.id, b.fieldId)] = value;
+      if (!coll) return;
+      const field = coll.fields.find((f) => f.id === b.fieldId);
+      if (!field) return;
+
+      // 1. Singletons prefer the existing entry's value.
+      if (coll.singleton) {
+        const entry = listEntries(m.id, coll.id)[0];
+        if (entry && entry.values[b.fieldId] !== undefined) {
+          state[bindingKey(coll.id, b.fieldId)] = entry.values[b.fieldId];
+          return;
+        }
+      }
+
+      // 2. Fall back to the field's default (resolves "__today__" etc.).
+      const def = resolveDefault(field);
+      if (def !== undefined) {
+        state[bindingKey(coll.id, b.fieldId)] = def;
+      }
     });
     return state;
   };
@@ -73,11 +167,36 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
     const m = loadModule(moduleId);
     setModuleState(m);
     if (m) {
-      const firstPage = m.screens.findIndex((s) => s.kind !== "modal");
-      const idx = firstPage >= 0 ? firstPage : 0;
-      setScreenIdx(idx);
-      setHistory([idx]);
-      setFormState(prefillForScreen(idx, m));
+      // Honor ?screen=<id> from the URL (used by home's "+ Log" shortcut).
+      // If the target is a modal, open it on top of the first page;
+      // otherwise just land on that page.
+      const params =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search)
+          : null;
+      const requestedId = params?.get("screen") ?? null;
+      const firstPageIdx = m.screens.findIndex((s) => s.kind !== "modal");
+      const baseIdx = firstPageIdx >= 0 ? firstPageIdx : 0;
+
+      const requested = requestedId
+        ? m.screens.find((s) => s.id === requestedId)
+        : null;
+
+      if (requested && requested.kind === "modal") {
+        setScreenIdx(baseIdx);
+        setHistory([baseIdx]);
+        setFormState(prefillForScreen(baseIdx, m));
+        setModalStack([requested.id]);
+        setModalFormState({ [requested.id]: {} });
+      } else {
+        const idx = requested
+          ? m.screens.findIndex((s) => s.id === requested.id)
+          : baseIdx;
+        const finalIdx = idx >= 0 ? idx : baseIdx;
+        setScreenIdx(finalIdx);
+        setHistory([finalIdx]);
+        setFormState(prefillForScreen(finalIdx, m));
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId]);
@@ -131,8 +250,139 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
     );
   }
 
+  // ── Flow dispatch ───────────────────────────────────────────────────────
+  const flowRuntime: FlowRuntime = {
+    showToast: (message, tone) => pushToast(message, tone),
+    openModal: (screenId) => {
+      const target = module.screens.find((s) => s.id === screenId);
+      if (!target) return;
+      setModalStack((s) => [...s, target.id]);
+      setModalFormState((m) => ({ ...m, [target.id]: {} }));
+    },
+    navigateScreen: (screenId) => {
+      const idx = module.screens.findIndex((s) => s.id === screenId);
+      if (idx >= 0) goToScreen(idx);
+    },
+    createEntry: (collectionId, values) => {
+      const coll = module.collections.find((c) => c.id === collectionId);
+      if (!coll) return;
+      const entry = coll.singleton
+        ? setSingletonEntry(module.id, collectionId, values)
+        : createEntry(module.id, collectionId, values);
+      setEntriesVersion((v) => v + 1);
+      // Don't recurse — only dispatch flows for *user-initiated* saves to
+      // keep cascades manageable. If we ever want chained flows, gate this
+      // explicitly behind an opt-in.
+      void entry;
+    },
+    submit: () => onAction("save_entry"),
+    compute: ({ targetComputedId, inputs }) => {
+      const prop = module.computed?.find((c) => c.id === targetComputedId);
+      if (!prop) {
+        pushToast(`Compute: unknown property`, "warn");
+        return;
+      }
+      // Evaluator placeholder — collect the chosen input field values from
+      // current form state and surface them next to the property's formula.
+      // Replace with a real expression evaluator once the DSL lands; the
+      // result should then be written back to the computed property's cache.
+      const values: string[] = [];
+      for (const inp of inputs) {
+        const coll = module.collections.find((c) => c.id === inp.collectionId);
+        const field = coll?.fields.find((f) => f.id === inp.fieldId);
+        if (!field) continue;
+        const key = bindingKey(inp.collectionId, inp.fieldId);
+        const v = formState[key];
+        values.push(
+          `${field.key}=${v === undefined ? "—" : JSON.stringify(v)}`,
+        );
+      }
+      const ctx = values.length > 0 ? ` (${values.join(", ")})` : "";
+      pushToast(
+        `Compute → ${prop.label}: ${prop.expression || "(no formula)"}${ctx}`,
+        "info",
+      );
+    },
+  };
+
+  const dispatchScreenOpened = (screenId: string) => {
+    const match = (t: import("@/lib/module/types").Trigger) =>
+      t.kind === "screen_opened" && t.screenId === screenId;
+    if (module.flowGraph && module.flowGraph.nodes.length > 0) {
+      dispatchGraph(module.flowGraph, match, { module }, flowRuntime);
+      return;
+    }
+    const matched = flowsFor(module, match);
+    for (const f of matched) runFlow(f, {}, flowRuntime);
+  };
+  // Suppress unused warning in builds where the dispatch hasn't been wired yet.
+  void dispatchScreenOpened;
+
+  const dispatchEntrySaved = (
+    collectionId: string,
+    entry: import("@/lib/module/entries").Entry,
+    kind: "created" | "updated",
+  ) => {
+    const triggerMatch = (t: import("@/lib/module/types").Trigger) => {
+      if (t.kind === "entry_created" && kind === "created")
+        return t.collectionId === collectionId;
+      if (t.kind === "entry_updated" && kind === "updated")
+        return t.collectionId === collectionId;
+      return false;
+    };
+    // Prefer the visual graph when it has nodes; fall back to linear flows.
+    if (module.flowGraph && module.flowGraph.nodes.length > 0) {
+      dispatchGraph(module.flowGraph, triggerMatch, { entry, module }, flowRuntime);
+      return;
+    }
+    const matched = flowsFor(module, triggerMatch);
+    for (const f of matched) runFlow(f, { entry }, flowRuntime);
+  };
+
   const onAction = (kind: string, params?: Record<string, unknown>) => {
+    if (kind === "element_clicked") {
+      const elementId = params?.elementId as string | undefined;
+      const fallback = params?.fallback as
+        | {
+            action?: string;
+            targetScreenId?: string;
+            thenAction?: string;
+            thenTargetScreenId?: string;
+          }
+        | undefined;
+      let fired = 0;
+      if (elementId && module.flowGraph && module.flowGraph.nodes.length > 0) {
+        fired = dispatchEdgeTrigger(
+          module.flowGraph,
+          (t) => t.kind === "element_clicked" && t.elementId === elementId,
+          { module },
+          flowRuntime,
+        );
+      }
+      // No graph edges matched — run the legacy cfg-based action so older
+      // buttons (and brand-new ones without wiring yet) still do something.
+      if (fired === 0 && fallback) {
+        if (fallback.action) {
+          onAction(fallback.action, {
+            targetScreenId: fallback.targetScreenId,
+          });
+        }
+        if (fallback.thenAction && fallback.thenAction !== "none") {
+          onAction(fallback.thenAction, {
+            targetScreenId: fallback.thenTargetScreenId,
+          });
+        }
+      }
+      return;
+    }
     if (kind === "save_entry") {
+      // Validate against each bound field's rules first.
+      const errMap = collectErrors(module, formState);
+      if (Object.keys(errMap).length > 0) {
+        setFormErrors(errMap);
+        return;
+      }
+      setFormErrors({});
       // Group form values per collection and persist one entry per collection.
       const perCollection: Record<string, Record<string, unknown>> = {};
       for (const [key, value] of Object.entries(formState)) {
@@ -147,9 +397,11 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
       for (const [collectionId, values] of Object.entries(perCollection)) {
         const coll = module.collections.find((c) => c.id === collectionId);
         if (coll?.singleton) {
-          setSingletonEntry(module.id, collectionId, values);
+          const entry = setSingletonEntry(module.id, collectionId, values);
+          dispatchEntrySaved(collectionId, entry, "updated");
         } else {
-          createEntry(module.id, collectionId, values);
+          const entry = createEntry(module.id, collectionId, values);
+          dispatchEntrySaved(collectionId, entry, "created");
         }
       }
       setEntriesVersion((v) => v + 1);
@@ -206,8 +458,9 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
     : null;
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className={`flex flex-col ${chromeless ? "flex-1 min-h-0" : "h-screen"}`}>
       {/* Header */}
+      {!chromeless && (
       <div className="flex items-center gap-4 px-6 py-3 border-b border-rule bg-paper">
         <Link
           href="/home"
@@ -218,7 +471,11 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
         </Link>
         <div className="flex items-center gap-2 shrink-0">
           {module.profile.icon && (
-            <span className="text-base leading-none">{module.profile.icon}</span>
+            <ModuleIcon
+              icon={module.profile.icon}
+              size={16}
+              className="text-ink-muted"
+            />
           )}
           <span className="text-sm font-medium text-ink">{module.name}</span>
         </div>
@@ -258,22 +515,32 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
           </Link>
         </div>
       </div>
+      )}
 
       {/* Main */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[1fr_360px]">
         <div className="overflow-auto">
-          <div className="max-w-3xl mx-auto px-6 py-8">
+          <div
+            className={`${
+              screen ? PAGE_MAX_W[screen.pageWidth ?? "desktop"] : "max-w-5xl"
+            } mx-auto px-6 py-8 transition-all`}
+          >
             <div className="rounded-md border border-rule bg-paper shadow-sm">
               {screen && (
-                <LiveContainer
-                  container={screen.root}
-                  module={module}
-                  formState={formState}
-                  setFormState={setFormState}
-                  onAction={onAction}
-                  entriesVersion={entriesVersion}
-                  onEntriesChange={() => setEntriesVersion((v) => v + 1)}
-                />
+                <FormErrorsProvider
+                  errors={formErrors}
+                  onClear={clearFormError}
+                >
+                  <LiveContainer
+                    container={screen.root}
+                    module={module}
+                    formState={formState}
+                    setFormState={setFormState}
+                    onAction={onAction}
+                    entriesVersion={entriesVersion}
+                    onEntriesChange={() => setEntriesVersion((v) => v + 1)}
+                  />
+                </FormErrorsProvider>
               )}
             </div>
           </div>
@@ -307,11 +574,11 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
 
       {topModal && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4"
+          className={`fixed inset-0 z-40 flex ${MODAL_BACKDROP_ALIGN[topModal.modalPosition ?? "center"]} bg-ink/40 backdrop-blur-sm px-4`}
           onClick={() => onAction("close_modal")}
         >
           <div
-            className="w-full max-w-md rounded-md border border-rule bg-paper shadow-xl max-h-[80vh] overflow-auto"
+            className={`w-full ${MODAL_MAX_W[topModal.modalSize ?? "md"]} rounded-md border border-rule bg-paper shadow-xl max-h-[80vh] overflow-auto`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-4 py-2 border-b border-rule flex items-center justify-between bg-paper sticky top-0 z-10">
@@ -324,6 +591,10 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
                 ✕
               </button>
             </div>
+            <FormErrorsProvider
+              errors={modalFormErrors[topModal.id] ?? {}}
+              onClear={clearModalError(topModal.id)}
+            >
             <LiveContainer
               container={topModal.root}
               module={module}
@@ -335,6 +606,15 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
                 if (kind === "save_entry") {
                   // Save from modal — use that modal's form state.
                   const state = modalFormState[topModal.id] ?? {};
+                  const errMap = collectErrors(module, state);
+                  if (Object.keys(errMap).length > 0) {
+                    setModalFormErrors((m) => ({
+                      ...m,
+                      [topModal.id]: errMap,
+                    }));
+                    return;
+                  }
+                  setModalFormErrors((m) => ({ ...m, [topModal.id]: {} }));
                   const perCollection: Record<
                     string,
                     Record<string, unknown>
@@ -356,9 +636,19 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
                       (c) => c.id === collectionId,
                     );
                     if (coll?.singleton) {
-                      setSingletonEntry(module.id, collectionId, values);
+                      const entry = setSingletonEntry(
+                        module.id,
+                        collectionId,
+                        values,
+                      );
+                      dispatchEntrySaved(collectionId, entry, "updated");
                     } else {
-                      createEntry(module.id, collectionId, values);
+                      const entry = createEntry(
+                        module.id,
+                        collectionId,
+                        values,
+                      );
+                      dispatchEntrySaved(collectionId, entry, "created");
                     }
                   }
                   setEntriesVersion((v) => v + 1);
@@ -382,6 +672,23 @@ export function ModuleRuntime({ moduleId }: { moduleId: string }) {
               entriesVersion={entriesVersion}
               onEntriesChange={() => setEntriesVersion((v) => v + 1)}
             />
+            </FormErrorsProvider>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div
+            className={`pointer-events-auto rounded-md border px-4 py-2.5 shadow-lg text-sm backdrop-blur-sm ${
+              toast.tone === "success"
+                ? "border-green-600/40 bg-green-500/10 text-ink"
+                : toast.tone === "warn"
+                  ? "border-amber-600/40 bg-amber-500/10 text-ink"
+                  : "border-rule bg-paper/95 text-ink"
+            }`}
+          >
+            {toast.message}
           </div>
         </div>
       )}
@@ -463,6 +770,40 @@ function EntriesList({
       )}
     </div>
   );
+}
+
+function collectErrors(module: Module, state: FormState): FormErrors {
+  const errors: FormErrors = {};
+  const seenByColl: Record<string, Set<string>> = {};
+  for (const key of Object.keys(state)) {
+    const [c, f] = key.split("::");
+    if (!c || !f) continue;
+    seenByColl[c] = seenByColl[c] ?? new Set();
+    seenByColl[c].add(f);
+  }
+
+  for (const [key, value] of Object.entries(state)) {
+    const [collectionId, fieldId] = key.split("::");
+    if (!collectionId || !fieldId) continue;
+    const coll = module.collections.find((c) => c.id === collectionId);
+    if (!coll) continue;
+    const field = coll.fields.find((f) => f.id === fieldId);
+    if (!field) continue;
+    const err = validateValue(field, value);
+    if (err) errors[key] = err;
+  }
+
+  for (const [collectionId, fieldSet] of Object.entries(seenByColl)) {
+    const coll = module.collections.find((c) => c.id === collectionId);
+    if (!coll) continue;
+    for (const field of coll.fields) {
+      if (!field.required) continue;
+      if (fieldSet.has(field.id)) continue;
+      const err = validateValue(field, undefined);
+      if (err) errors[bindingKey(collectionId, field.id)] = err;
+    }
+  }
+  return errors;
 }
 
 function walkScreen(node: LayoutNode, fn: (n: LayoutNode) => void): void {

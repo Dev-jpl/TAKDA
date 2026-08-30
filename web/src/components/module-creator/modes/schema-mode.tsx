@@ -19,6 +19,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type {
   Collection,
+  ComputedProperty,
   Field,
   FieldType,
   Id,
@@ -31,13 +32,16 @@ import type {
 import {
   FIELD_TYPES,
   addCollection,
+  addComputed,
   addField,
   changeFieldType,
   deleteCollection,
+  deleteComputed,
   deleteField,
   moveField,
   reorderFields,
   updateCollection,
+  updateComputed,
   updateField,
 } from "@/lib/module/mutations";
 import { EmptyState, PanelHeading, ThreePanel } from "../three-panel";
@@ -62,6 +66,7 @@ export function SchemaMode({
     null,
   );
   const [selectedFieldId, setSelectedFieldId] = useState<Id | null>(null);
+  const [selectedComputedId, setSelectedComputedId] = useState<Id | null>(null);
 
   // Auto-select first collection when added.
   useEffect(() => {
@@ -76,6 +81,22 @@ export function SchemaMode({
       setSelectedFieldId(null);
     }
   }, [module.collections, selectedCollectionId]);
+
+  // Drop the computed selection if the property is deleted elsewhere.
+  useEffect(() => {
+    if (
+      selectedComputedId &&
+      !(module.computed ?? []).some((c) => c.id === selectedComputedId)
+    ) {
+      setSelectedComputedId(null);
+    }
+  }, [module.computed, selectedComputedId]);
+
+  const selectedComputed = useMemo(
+    () =>
+      (module.computed ?? []).find((c) => c.id === selectedComputedId) ?? null,
+    [module.computed, selectedComputedId],
+  );
 
   const selectedCollection = useMemo(
     () => module.collections.find((c) => c.id === selectedCollectionId) ?? null,
@@ -125,34 +146,84 @@ export function SchemaMode({
     if (selectedFieldId === fieldId) setSelectedFieldId(null);
   };
 
+  const onAddComputed = () => {
+    const label = window.prompt("Computed property name", "New computed");
+    if (!label) return;
+    setModule((m) => {
+      const { module: next, computed } = addComputed(m, label);
+      setSelectedComputedId(computed.id);
+      setSelectedCollectionId(null);
+      setSelectedFieldId(null);
+      return next;
+    });
+  };
+
+  const onUpdateComputed = (patch: Partial<ComputedProperty>) => {
+    if (!selectedComputed) return;
+    setModule((m) => updateComputed(m, selectedComputed.id, patch));
+  };
+
+  const onDeleteComputed = (id: Id) => {
+    if (!window.confirm("Delete this computed property?")) return;
+    setModule((m) => deleteComputed(m, id));
+    if (selectedComputedId === id) setSelectedComputedId(null);
+  };
+
   return (
     <ThreePanel
       left={
-        <CollectionsRail
-          collections={module.collections}
-          selectedId={selectedCollectionId}
-          onSelect={(id) => {
-            setSelectedCollectionId(id);
-            setSelectedFieldId(null);
-          }}
-          onAdd={onAddCollection}
-          onDelete={onDeleteCollection}
-          onRename={(id, name) =>
-            setModule((m) => {
-              const coll = m.collections.find((c) => c.id === id);
-              const keyInSync = coll
-                ? coll.key === labelToKey(coll.name)
-                : false;
-              return updateCollection(m, id, {
-                name,
-                ...(keyInSync ? { key: labelToKey(name) } : {}),
-              });
-            })
-          }
-        />
+        <>
+          <CollectionsRail
+            collections={module.collections}
+            selectedId={selectedCollectionId}
+            onSelect={(id) => {
+              setSelectedCollectionId(id);
+              setSelectedFieldId(null);
+              setSelectedComputedId(null);
+            }}
+            onAdd={onAddCollection}
+            onDelete={onDeleteCollection}
+            onRename={(id, name) =>
+              setModule((m) => {
+                const coll = m.collections.find((c) => c.id === id);
+                const keyInSync = coll
+                  ? coll.key === labelToKey(coll.name)
+                  : false;
+                return updateCollection(m, id, {
+                  name,
+                  ...(keyInSync ? { key: labelToKey(name) } : {}),
+                });
+              })
+            }
+          />
+          <ComputedRail
+            computed={module.computed ?? []}
+            selectedId={selectedComputedId}
+            onSelect={(id) => {
+              setSelectedComputedId(id);
+              setSelectedCollectionId(null);
+              setSelectedFieldId(null);
+            }}
+            onAdd={onAddComputed}
+            onDelete={onDeleteComputed}
+          />
+        </>
       }
       center={
-        selectedCollection ? (
+        selectedComputed ? (
+          <div className="p-10 text-center text-ink-muted">
+            <p className="text-sm">
+              Editing computed property{" "}
+              <span className="text-ink font-medium">
+                {selectedComputed.label}
+              </span>
+              .
+            </p>
+            <p className="text-xs mt-1 text-ink-faint">
+              Configure the formula and result type on the right.
+            </p>
+          </div>
+        ) : selectedCollection ? (
           <FieldTable
             collection={selectedCollection}
             selectedFieldId={selectedFieldId}
@@ -180,7 +251,14 @@ export function SchemaMode({
         )
       }
       right={
-        selectedField && selectedCollection ? (
+        selectedComputed ? (
+          <ComputedInspector
+            module={module}
+            computed={selectedComputed}
+            onChange={onUpdateComputed}
+            onDelete={() => onDeleteComputed(selectedComputed.id)}
+          />
+        ) : selectedField && selectedCollection ? (
           <FieldInspector
             module={module}
             collection={selectedCollection}
@@ -287,6 +365,200 @@ function CollectionsRail({
         >
           + Add collection
         </button>
+      </div>
+    </>
+  );
+}
+
+// ─── Left rail (continued): computed properties ──────────────────────────────
+
+function ComputedRail({
+  computed,
+  selectedId,
+  onSelect,
+  onAdd,
+  onDelete,
+}: {
+  computed: ComputedProperty[];
+  selectedId: Id | null;
+  onSelect: (id: Id) => void;
+  onAdd: () => void;
+  onDelete: (id: Id) => void;
+}) {
+  return (
+    <>
+      <PanelHeading>Computed</PanelHeading>
+      {computed.length === 0 ? (
+        <EmptyState>No computed properties yet.</EmptyState>
+      ) : (
+        <ul className="px-2 py-2 space-y-0.5">
+          {computed.map((c) => {
+            const active = c.id === selectedId;
+            return (
+              <li key={c.id} className="group">
+                <div
+                  className={`flex items-center gap-2 rounded px-3 py-2 text-sm cursor-pointer ${
+                    active
+                      ? "bg-ink text-paper"
+                      : "text-ink-muted hover:bg-rule/30 hover:text-ink"
+                  }`}
+                  onClick={() => onSelect(c.id)}
+                >
+                  <span className="flex-1 truncate">{c.label}</span>
+                  <span
+                    className={`text-[10px] font-mono ${
+                      active ? "text-paper/60" : "text-ink-faint"
+                    }`}
+                  >
+                    {c.resultType}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(c.id);
+                    }}
+                    className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs ${
+                      active
+                        ? "text-paper/70 hover:text-paper"
+                        : "text-ink-faint hover:text-ink"
+                    }`}
+                    aria-label="Delete computed property"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="px-3 py-2">
+        <button
+          onClick={onAdd}
+          className="w-full text-left text-sm text-ink-muted hover:text-ink border border-dashed border-rule hover:border-ink rounded px-3 py-2 transition-colors"
+        >
+          + Add computed
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ─── Right: computed property inspector ──────────────────────────────────────
+
+function ComputedInspector({
+  module,
+  computed,
+  onChange,
+  onDelete,
+}: {
+  module: Module;
+  computed: ComputedProperty;
+  onChange: (patch: Partial<ComputedProperty>) => void;
+  onDelete: () => void;
+}) {
+  const RESULT_TYPES: Array<{ id: ComputedProperty["resultType"]; label: string }> = [
+    { id: "number", label: "Number" },
+    { id: "text", label: "Text" },
+    { id: "boolean", label: "Boolean" },
+    { id: "date", label: "Date" },
+  ];
+  return (
+    <>
+      <PanelHeading>Computed property</PanelHeading>
+      <div className="p-4 space-y-4">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onDelete}
+            className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-ink"
+          >
+            Delete
+          </button>
+        </div>
+
+        <Row label="Label">
+          <input
+            value={computed.label}
+            onChange={(e) => {
+              const label = e.target.value;
+              // Keep the key auto-synced while it tracks the label slug.
+              const keyInSync = computed.key === labelToKey(computed.label);
+              onChange({
+                label,
+                ...(keyInSync ? { key: labelToKey(label) } : {}),
+              });
+            }}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+
+        <Row label="Key">
+          <input
+            value={computed.key}
+            onChange={(e) => onChange({ key: labelToKey(e.target.value) })}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm font-mono"
+          />
+        </Row>
+
+        <Row label="Result type">
+          <div className="grid grid-cols-4 gap-1">
+            {RESULT_TYPES.map((t) => {
+              const active = computed.resultType === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onChange({ resultType: t.id })}
+                  className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
+
+        <Row label="Scope">
+          <select
+            value={computed.collectionId ?? ""}
+            onChange={(e) =>
+              onChange({
+                collectionId: e.target.value ? e.target.value : undefined,
+              })
+            }
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          >
+            <option value="">Module-wide</option>
+            {module.collections.map((c) => (
+              <option key={c.id} value={c.id}>
+                Per entry in {c.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-ink-faint mt-1.5">
+            Module-wide = one value for the whole module. Per-entry = one value
+            computed for each row in the chosen collection.
+          </p>
+        </Row>
+
+        <Row label="Expression">
+          <textarea
+            value={computed.expression}
+            onChange={(e) => onChange({ expression: e.target.value })}
+            placeholder="e.g. calories * servings"
+            rows={4}
+            className="w-full bg-transparent border border-rule focus:border-ink outline-none p-2 text-sm font-mono rounded"
+            spellCheck={false}
+          />
+          <p className="text-[10px] text-ink-faint mt-1.5">
+            Reference fields by their <span className="font-mono">key</span>.
+            No evaluator yet — wire a Compute action in Behavior mode to test
+            inputs.
+          </p>
+        </Row>
       </div>
     </>
   );
@@ -419,8 +691,8 @@ function FieldTable({
                   }}
                   className="flex items-center gap-2 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-2 py-1.5"
                 >
-                  <span className="w-5 text-center text-ink-faint">
-                    {t.glyph}
+                  <span className="w-5 flex items-center justify-center text-ink-faint">
+                    <t.icon size={14} weight="regular" />
                   </span>
                   {t.label}
                 </button>
@@ -488,7 +760,9 @@ function SortableFieldRow({
         )}
       </div>
       <div className="px-4 py-3 text-sm text-ink-muted flex items-center gap-2">
-        <span className="text-ink-faint">{spec?.glyph}</span>
+        <span className="text-ink-faint flex items-center">
+          {spec?.icon && <spec.icon size={14} weight="regular" />}
+        </span>
         {spec?.label ?? field.type}
       </div>
       <div className="px-4 py-3 text-xs text-ink-faint font-mono truncate">
@@ -638,6 +912,8 @@ function FieldInspector({
           />
         </Row>
 
+        <DefaultValueRow field={field} onChange={onChange} />
+
         <TypeSpecificConfig
           field={field}
           collection={collection}
@@ -647,6 +923,149 @@ function FieldInspector({
       </div>
     </>
   );
+}
+
+function DefaultValueRow({
+  field,
+  onChange,
+}: {
+  field: Field;
+  onChange: (patch: Partial<Field>) => void;
+}) {
+  const def = field.defaultValue;
+
+  if (field.type === "boolean") {
+    return (
+      <Row label="Default state">
+        <div className="grid grid-cols-3 gap-1">
+          {(
+            [
+              { id: undefined, label: "— none —" },
+              { id: false, label: "Off" },
+              { id: true, label: "On" },
+            ] as const
+          ).map((opt) => {
+            const active = def === opt.id;
+            return (
+              <button
+                key={String(opt.id)}
+                onClick={() =>
+                  onChange({ defaultValue: opt.id } as Partial<Field>)
+                }
+                className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                  active
+                    ? "border-ink bg-ink text-paper"
+                    : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </Row>
+    );
+  }
+
+  if (field.type === "date" || field.type === "datetime") {
+    const isToday = def === "__today__";
+    return (
+      <Row label="Default">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() =>
+              onChange({
+                defaultValue: isToday ? undefined : "__today__",
+              } as Partial<Field>)
+            }
+            className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+              isToday
+                ? "border-ink bg-ink text-paper"
+                : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+            }`}
+          >
+            Today
+          </button>
+          <input
+            type={field.type === "datetime" ? "datetime-local" : "date"}
+            value={
+              isToday || def === undefined || def === null
+                ? ""
+                : String(def).slice(0, field.type === "datetime" ? 16 : 10)
+            }
+            onChange={(e) =>
+              onChange({
+                defaultValue: e.target.value || undefined,
+              } as Partial<Field>)
+            }
+            className="flex-1 bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </div>
+      </Row>
+    );
+  }
+
+  if (field.type === "select") {
+    const opts = (field as SelectField).options;
+    return (
+      <Row label="Default">
+        <select
+          value={typeof def === "string" ? def : ""}
+          onChange={(e) =>
+            onChange({
+              defaultValue: e.target.value || undefined,
+            } as Partial<Field>)
+          }
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        >
+          <option value="">— none —</option>
+          {opts.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </Row>
+    );
+  }
+
+  if (field.type === "number") {
+    return (
+      <Row label="Default">
+        <input
+          type="number"
+          value={typeof def === "number" ? def : ""}
+          onChange={(e) =>
+            onChange({
+              defaultValue:
+                e.target.value === "" ? undefined : Number(e.target.value),
+            } as Partial<Field>)
+          }
+          placeholder="—"
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        />
+      </Row>
+    );
+  }
+
+  if (field.type === "text" || field.type === "long_text") {
+    return (
+      <Row label="Default">
+        <input
+          value={typeof def === "string" ? def : ""}
+          onChange={(e) =>
+            onChange({
+              defaultValue: e.target.value || undefined,
+            } as Partial<Field>)
+          }
+          placeholder="—"
+          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        />
+      </Row>
+    );
+  }
+
+  return null;
 }
 
 function Row({
@@ -712,6 +1131,18 @@ function TypeSpecificConfig({
               } as Partial<Field>)
             }
             className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+        <Row label="Pattern (regex)">
+          <input
+            value={f.pattern ?? ""}
+            onChange={(e) =>
+              onChange({
+                pattern: e.target.value || undefined,
+              } as Partial<Field>)
+            }
+            placeholder="e.g. ^[A-Z][a-z]+$"
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm font-mono"
           />
         </Row>
       </>

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
+import { ModuleIcon } from "@/components/module-icon";
 import {
   checkPublishable,
   loadModule,
@@ -25,6 +26,7 @@ import { BehaviorMode } from "./modes/behavior-mode";
 import { ProfileMode } from "./modes/profile-mode";
 import { PublishModal } from "./publish-modal";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ModuleRuntime } from "@/components/module-runtime/runtime";
 
 const MODES: { id: CreatorMode; label: string }[] = [
   { id: "schema", label: "Schema" },
@@ -39,13 +41,51 @@ const DEVICES: { id: DevicePreview; label: string; glyph: string }[] = [
   { id: "desktop", label: "Desktop", glyph: "▢" },
 ];
 
+const MODE_IDS: ReadonlySet<CreatorMode> = new Set<CreatorMode>([
+  "schema",
+  "interface",
+  "behavior",
+  "profile",
+]);
+
+function readModeFromHash(): CreatorMode | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.location.hash.replace(/^#/, "");
+  return MODE_IDS.has(raw as CreatorMode) ? (raw as CreatorMode) : null;
+}
+
 export function ModuleCreatorWorkspace({ moduleId }: { moduleId: string }) {
   const [module, setModule] = useState<Module | null>(null);
-  const [mode, setMode] = useState<CreatorMode>("schema");
+  // Restore the last-active tab from the URL hash so reloads stay put and
+  // deep links like /module-creator/abc#behavior work.
+  const [mode, setModeState] = useState<CreatorMode>(
+    () => readModeFromHash() ?? "schema",
+  );
   const [device, setDevice] = useState<DevicePreview>("desktop");
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const firstLoad = useRef(true);
+
+  const setMode = useCallback((next: CreatorMode) => {
+    setModeState(next);
+    if (typeof window !== "undefined") {
+      // replaceState (not pushState) so tab switches don't pollute browser
+      // history. The hash still updates so reload restores the tab.
+      const url = `${window.location.pathname}${window.location.search}#${next}`;
+      window.history.replaceState(null, "", url);
+    }
+  }, []);
+
+  // Sync mode when the user hits browser back/forward across hash changes.
+  useEffect(() => {
+    const onHash = () => {
+      const next = readModeFromHash();
+      if (next) setModeState(next);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   useEffect(() => {
     const m = loadModule(moduleId);
@@ -132,8 +172,16 @@ export function ModuleCreatorWorkspace({ moduleId }: { moduleId: string }) {
         savedAt={savedAt}
         module={module}
         onPublishClick={() => setPublishOpen(true)}
+        previewing={previewing}
+        onTogglePreview={() => setPreviewing((p) => !p)}
       />
-      <div className="flex flex-1 min-h-0">{modeView}</div>
+      <div className="flex flex-1 min-h-0">
+        {previewing ? (
+          <ModuleRuntime moduleId={module.id} chromeless />
+        ) : (
+          modeView
+        )}
+      </div>
       {publishOpen && publishCheck && (
         <PublishModal
           module={module}
@@ -160,6 +208,8 @@ function TopBar({
   savedAt,
   module,
   onPublishClick,
+  previewing,
+  onTogglePreview,
 }: {
   moduleName: string;
   onRename: (n: string) => void;
@@ -170,6 +220,8 @@ function TopBar({
   savedAt: string | null;
   module: Module;
   onPublishClick: () => void;
+  previewing: boolean;
+  onTogglePreview: () => void;
 }) {
   return (
     <div className="flex items-center gap-4 px-6 py-3 border-b border-rule bg-paper">
@@ -183,7 +235,11 @@ function TopBar({
 
       <div className="flex items-center gap-2 shrink-0">
         {module.profile.icon && (
-          <span className="text-base leading-none">{module.profile.icon}</span>
+          <ModuleIcon
+            icon={module.profile.icon}
+            size={16}
+            className="text-ink-muted"
+          />
         )}
         <input
           value={moduleName}
@@ -197,11 +253,12 @@ function TopBar({
           <button
             key={m.id}
             onClick={() => setMode(m.id)}
+            disabled={previewing}
             className={`px-4 py-1.5 text-sm transition-colors ${
               mode === m.id
                 ? "bg-ink text-paper"
                 : "text-ink-muted hover:text-ink"
-            }`}
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
           >
             {m.label}
           </button>
@@ -209,7 +266,7 @@ function TopBar({
       </div>
 
       <div className="ml-auto flex items-center gap-3">
-        {(mode === "interface" || mode === "behavior") && (
+        {(mode === "interface" || mode === "behavior") && !previewing && (
           <div className="flex items-center rounded-md border border-rule overflow-hidden">
             {DEVICES.map((d) => (
               <button
@@ -236,11 +293,25 @@ function TopBar({
         <ThemeToggle />
 
         <button
-          onClick={onPublishClick}
-          className="rounded-md border border-ink bg-ink text-paper px-4 py-1.5 text-sm hover:opacity-90 transition-opacity"
+          onClick={onTogglePreview}
+          title={previewing ? "Back to editor" : "Try the module"}
+          className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+            previewing
+              ? "border-ink bg-ink text-paper hover:opacity-90"
+              : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+          }`}
         >
-          {module.status === "published" ? "Publish update" : "Publish"}
+          {previewing ? "Exit preview" : "Preview"}
         </button>
+
+        {!previewing && (
+          <button
+            onClick={onPublishClick}
+            className="rounded-md border border-ink bg-ink text-paper px-4 py-1.5 text-sm hover:opacity-90 transition-opacity"
+          >
+            {module.status === "published" ? "Publish update" : "Publish"}
+          </button>
+        )}
       </div>
     </div>
   );

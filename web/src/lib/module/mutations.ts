@@ -1,5 +1,6 @@
 import type {
   Collection,
+  ComputedProperty,
   Container,
   Element,
   ElementKind,
@@ -582,6 +583,44 @@ export function deleteNode(module: Module, screenId: Id, nodeId: Id): Module {
   return mapScreenRoot(module, screenId, (root) => stripNode(root, nodeId));
 }
 
+/** Deep-clone a node tree with brand-new ids on the node and all descendants.
+ *  Use before re-inserting copied nodes so the tree never has duplicate ids. */
+export function cloneNode<T extends LayoutNode>(node: T): T {
+  if (node.kind === "element") {
+    return { ...node, id: uid() } as T;
+  }
+  const container = node as Container;
+  return {
+    ...container,
+    id: uid(),
+    children: container.children.map((c) => cloneNode(c)),
+  } as T;
+}
+
+/** Insert one or more nodes into a container. `afterNodeId`, when set,
+ *  places the new nodes immediately after that sibling; otherwise they go
+ *  at the end. Returns the updated module + the inserted node ids in order. */
+export function insertNodes(
+  module: Module,
+  screenId: Id,
+  parentId: Id,
+  nodes: LayoutNode[],
+  afterNodeId?: Id,
+): { module: Module; ids: Id[] } {
+  const ids = nodes.map((n) => n.id);
+  const next = mapNodeInScreen(module, screenId, parentId, (parent) => {
+    if (parent.kind !== "container") return parent;
+    const idx = afterNodeId
+      ? parent.children.findIndex((c) => c.id === afterNodeId)
+      : -1;
+    const insertAt = idx >= 0 ? idx + 1 : parent.children.length;
+    const children = [...parent.children];
+    children.splice(insertAt, 0, ...nodes);
+    return { ...parent, children };
+  });
+  return { module: next, ids };
+}
+
 function stripNode(c: Container, nodeId: Id): Container {
   return {
     ...c,
@@ -735,16 +774,43 @@ function mapNode(
 
 // ─── Container catalog (for the picker) ──────────────────────────────────────
 
+import {
+  ArrowsLeftRight,
+  ArrowsDownUp,
+  TextT,
+  Paragraph,
+  Hash,
+  ToggleLeft,
+  Calendar,
+  CalendarBlank,
+  Clock,
+  CaretDown,
+  ArrowRight,
+  Paperclip,
+  TextHOne,
+  TextAlignLeft,
+  Tag,
+  ChartBar,
+  ChartLineUp,
+  List as ListIcon,
+  ListChecks,
+  Cursor,
+  Minus,
+  ArrowsOutLineVertical,
+  Smiley,
+  type Icon,
+} from "@phosphor-icons/react";
+
 export interface ContainerSpec {
   kind: "row" | "column";
   label: string;
-  glyph: string;
+  icon: Icon;
   direction: "row" | "column";
 }
 
 export const CONTAINER_CATALOG: ContainerSpec[] = [
-  { kind: "row", label: "Row", glyph: "⇿", direction: "row" },
-  { kind: "column", label: "Column", glyph: "⇕", direction: "column" },
+  { kind: "row", label: "Row", icon: ArrowsLeftRight, direction: "row" },
+  { kind: "column", label: "Column", icon: ArrowsDownUp, direction: "column" },
 ];
 
 export function findNode(
@@ -769,35 +835,37 @@ export type ElementCategory = "input" | "display" | "action" | "layout";
 export interface ElementSpec {
   kind: ElementKind;
   label: string;
-  glyph: string;
+  icon: Icon;
   category: ElementCategory;
 }
 
 export const ELEMENT_CATALOG: ElementSpec[] = [
   // Inputs
-  { kind: "text_input", label: "Text input", glyph: "T", category: "input" },
-  { kind: "long_text_input", label: "Long text", glyph: "¶", category: "input" },
-  { kind: "number_input", label: "Number", glyph: "#", category: "input" },
-  { kind: "boolean_toggle", label: "Toggle", glyph: "◐", category: "input" },
-  { kind: "date_input", label: "Date", glyph: "📅", category: "input" },
-  { kind: "select_input", label: "Select", glyph: "▾", category: "input" },
-  { kind: "relation_picker", label: "Relation", glyph: "→", category: "input" },
-  { kind: "file_input", label: "File", glyph: "📎", category: "input" },
+  { kind: "text_input", label: "Text input", icon: TextT, category: "input" },
+  { kind: "long_text_input", label: "Long text", icon: Paragraph, category: "input" },
+  { kind: "number_input", label: "Number", icon: Hash, category: "input" },
+  { kind: "boolean_toggle", label: "Toggle", icon: ToggleLeft, category: "input" },
+  { kind: "date_input", label: "Date", icon: Calendar, category: "input" },
+  { kind: "select_input", label: "Select", icon: CaretDown, category: "input" },
+  { kind: "relation_picker", label: "Relation", icon: ArrowRight, category: "input" },
+  { kind: "file_input", label: "File", icon: Paperclip, category: "input" },
   // Display
-  { kind: "heading", label: "Heading", glyph: "H", category: "display" },
-  { kind: "paragraph", label: "Paragraph", glyph: "P", category: "display" },
-  { kind: "label", label: "Label", glyph: "L", category: "display" },
-  { kind: "stat", label: "Stat", glyph: "#", category: "display" },
-  { kind: "progress_bar", label: "Progress bar", glyph: "▰", category: "display" },
-  { kind: "list", label: "List", glyph: "≡", category: "display" },
+  { kind: "heading", label: "Heading", icon: TextHOne, category: "display" },
+  { kind: "paragraph", label: "Paragraph", icon: TextAlignLeft, category: "display" },
+  { kind: "label", label: "Label", icon: Tag, category: "display" },
+  { kind: "stat", label: "Stat", icon: Hash, category: "display" },
+  { kind: "progress_bar", label: "Progress bar", icon: ChartBar, category: "display" },
+  { kind: "chart", label: "Chart", icon: ChartLineUp, category: "display" },
+  { kind: "list", label: "List", icon: ListIcon, category: "display" },
+  { kind: "icon", label: "Icon", icon: Smiley, category: "display" },
   // Action
-  { kind: "button", label: "Button", glyph: "▶", category: "action" },
+  { kind: "button", label: "Button", icon: Cursor, category: "action" },
   // Layout
-  { kind: "divider", label: "Divider", glyph: "—", category: "layout" },
-  { kind: "spacer", label: "Spacer", glyph: "␣", category: "layout" },
+  { kind: "divider", label: "Divider", icon: Minus, category: "layout" },
+  { kind: "spacer", label: "Spacer", icon: ArrowsOutLineVertical, category: "layout" },
 ];
 
-function defaultElementConfig(kind: ElementKind): Record<string, unknown> {
+export function defaultElementConfig(kind: ElementKind): Record<string, unknown> {
   switch (kind) {
     case "heading":
       return { text: "Heading", size: "lg" };
@@ -816,6 +884,10 @@ function defaultElementConfig(kind: ElementKind): Record<string, unknown> {
       return { placeholder: "0" };
     case "select_input":
       return { placeholder: "Choose..." };
+    case "chart":
+      return { aggregation: "count", bucket: "day", range: 7 };
+    case "icon":
+      return { name: "ph:Heart", size: 24 };
     default:
       return {};
   }
@@ -823,15 +895,56 @@ function defaultElementConfig(kind: ElementKind): Record<string, unknown> {
 
 // ─── Field types catalog (for pickers) ───────────────────────────────────────
 
-export const FIELD_TYPES: { type: FieldType; label: string; glyph: string }[] = [
-  { type: "text", label: "Text", glyph: "T" },
-  { type: "long_text", label: "Long text", glyph: "¶" },
-  { type: "number", label: "Number", glyph: "#" },
-  { type: "boolean", label: "Toggle", glyph: "◐" },
-  { type: "date", label: "Date", glyph: "📅" },
-  { type: "datetime", label: "Date & time", glyph: "⏱" },
-  { type: "select", label: "Select", glyph: "▾" },
-  { type: "multi_select", label: "Multi-select", glyph: "≡" },
-  { type: "relation", label: "Relation", glyph: "→" },
-  { type: "file", label: "File", glyph: "📎" },
+export const FIELD_TYPES: { type: FieldType; label: string; icon: Icon }[] = [
+  { type: "text", label: "Text", icon: TextT },
+  { type: "long_text", label: "Long text", icon: Paragraph },
+  { type: "number", label: "Number", icon: Hash },
+  { type: "boolean", label: "Toggle", icon: ToggleLeft },
+  { type: "date", label: "Date", icon: CalendarBlank },
+  { type: "datetime", label: "Date & time", icon: Clock },
+  { type: "select", label: "Select", icon: CaretDown },
+  { type: "multi_select", label: "Multi-select", icon: ListChecks },
+  { type: "relation", label: "Relation", icon: ArrowRight },
+  { type: "file", label: "File", icon: Paperclip },
 ];
+
+
+// ─── Computed properties ────────────────────────────────────────────────────
+
+export function addComputed(
+  module: Module,
+  label = "New computed",
+): { module: Module; computed: ComputedProperty } {
+  const existingKeys = (module.computed ?? []).map((c) => c.key);
+  const computed: ComputedProperty = {
+    id: uid(),
+    key: uniqueKey(toKey(label), existingKeys),
+    label,
+    resultType: "number",
+    expression: "",
+  };
+  return {
+    module: { ...module, computed: [...(module.computed ?? []), computed] },
+    computed,
+  };
+}
+
+export function updateComputed(
+  module: Module,
+  id: Id,
+  patch: Partial<ComputedProperty>,
+): Module {
+  return {
+    ...module,
+    computed: (module.computed ?? []).map((c) =>
+      c.id === id ? { ...c, ...patch } : c,
+    ),
+  };
+}
+
+export function deleteComputed(module: Module, id: Id): Module {
+  return {
+    ...module,
+    computed: (module.computed ?? []).filter((c) => c.id !== id),
+  };
+}

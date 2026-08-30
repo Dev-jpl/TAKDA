@@ -37,6 +37,10 @@ interface EntryRow {
 // ─── Type adapters ───────────────────────────────────────────────────────────
 
 function rowToModule(r: ModuleRow): Module {
+  // NOTE: `flowGraph` and `flows` are NOT currently columns on the modules
+  // table. A row pulled from remote will have them as `undefined`. Callers
+  // that pull remote into local must merge these from the local copy or the
+  // user's Behavior-tab work disappears. See `reconcileOnLoad`.
   return {
     id: r.id,
     name: r.name,
@@ -119,7 +123,15 @@ export async function fetchAllModules(): Promise<Module[] | null> {
   return (data as ModuleRow[]).map(rowToModule);
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function pushModule(m: Module): Promise<boolean> {
+  if (!UUID_RE.test(m.id)) {
+    // Legacy local-only id (e.g. "draft" from an older build). Skip remote
+    // sync — Postgres rejects non-uuid ids on the modules table.
+    return false;
+  }
   const userId = await currentUserId();
   if (!userId) return false;
   const supabase = createClient();
@@ -268,7 +280,14 @@ export async function reconcileOnLoad(): Promise<SyncResult> {
       const lTime = Date.parse(l.updatedAt);
       const rTime = Date.parse(r.updatedAt);
       if (rTime > lTime) {
-        localSaveModule(r);
+        // The remote row schema doesn't carry flowGraph/flows yet — they
+        // live in local storage only. Carry them over from local so a remote
+        // pull doesn't silently wipe Behavior-tab work.
+        localSaveModule({
+          ...r,
+          flowGraph: r.flowGraph ?? l.flowGraph,
+          flows: r.flows ?? l.flows,
+        });
         modulesPulled++;
       } else if (lTime > rTime) {
         const ok = await pushModule(l);

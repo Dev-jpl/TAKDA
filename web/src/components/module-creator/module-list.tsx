@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createModule, deleteModule, listModules } from "@/lib/module/draft";
+import {
+  createModule,
+  deleteModule,
+  listModules,
+  persistModule,
+} from "@/lib/module/draft";
+import { TEMPLATES, forkTemplate, type Blueprint } from "@/lib/module/templates";
+import { ModuleIcon } from "@/components/module-icon";
 import type { Module } from "@/lib/module/types";
 
 export function ModuleList() {
@@ -18,6 +25,11 @@ export function ModuleList() {
     const name = window.prompt("Name your module", "Untitled module");
     if (!name) return;
     const m = createModule(name);
+    router.push(`/module-creator/${m.id}`);
+  };
+
+  const onFork = (blueprint: Blueprint) => {
+    const m = persistModule(forkTemplate(blueprint));
     router.push(`/module-creator/${m.id}`);
   };
 
@@ -45,7 +57,29 @@ export function ModuleList() {
         </button>
       </div>
 
-      <div className="px-8 py-8">
+      {/* Templates row — always visible for quick forking. */}
+      <div className="px-8 pt-8 pb-4">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-xs uppercase tracking-[0.18em] text-ink-faint">
+            Start from a template
+          </h2>
+          <span className="text-[10px] text-ink-faint">
+            Fork to your library — yours to edit.
+          </span>
+        </div>
+        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {TEMPLATES.map((t) => (
+            <li key={t.key}>
+              <TemplateCard blueprint={t} onFork={() => onFork(t)} />
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="px-8 pt-2 pb-8">
+        <h2 className="text-xs uppercase tracking-[0.18em] text-ink-faint mb-3">
+          Your modules
+        </h2>
         {modules == null ? null : modules.length === 0 ? (
           <EmptyState onCreate={onCreate} />
         ) : (
@@ -59,6 +93,53 @@ export function ModuleList() {
         )}
       </div>
     </div>
+  );
+}
+
+function TemplateCard({
+  blueprint,
+  onFork,
+}: {
+  blueprint: Blueprint;
+  onFork: () => void;
+}) {
+  return (
+    <button
+      onClick={onFork}
+      className="group w-full text-left rounded-md border border-rule bg-paper p-4 hover:border-ink transition-colors"
+    >
+      <div className="flex items-start gap-2.5">
+        <span className="w-9 h-9 rounded-md border border-rule flex items-center justify-center text-ink-muted shrink-0 group-hover:border-ink group-hover:text-ink transition-colors">
+          <blueprint.icon size={18} weight="regular" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-ink truncate">
+            {blueprint.name}
+          </div>
+          <div className="text-[11px] text-ink-muted line-clamp-2 mt-0.5">
+            {blueprint.tagline}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.15em] text-ink-faint">
+        {blueprint.category && (
+          <>
+            <span>{blueprint.category}</span>
+            <span>·</span>
+          </>
+        )}
+        <span>{blueprint.collections.length} coll</span>
+        {blueprint.screens && (
+          <>
+            <span>·</span>
+            <span>{blueprint.screens.length} scr</span>
+          </>
+        )}
+        <span className="ml-auto normal-case tracking-normal text-ink-muted opacity-0 group-hover:opacity-100 transition-opacity">
+          Fork →
+        </span>
+      </div>
+    </button>
   );
 }
 
@@ -78,14 +159,18 @@ function ModuleCard({
       />
       <div className="flex items-start gap-3">
         <div
-          className="h-10 w-10 rounded-md border border-rule flex items-center justify-center text-xl shrink-0"
+          className="h-10 w-10 rounded-md border border-rule flex items-center justify-center text-ink-muted shrink-0"
           style={
             module.profile.coverColor
               ? { background: module.profile.coverColor }
               : undefined
           }
         >
-          {module.profile.icon ?? "·"}
+          {module.profile.icon ? (
+            <ModuleIcon icon={module.profile.icon} size={20} />
+          ) : (
+            <span className="text-xs text-ink-faint">·</span>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-medium text-ink truncate">
@@ -112,7 +197,7 @@ function ModuleCard({
           e.preventDefault();
           onDelete(module.id, module.name);
         }}
-        className="relative opacity-0 group-hover:opacity-100 transition-opacity absolute top-3 right-3 text-xs text-ink-faint hover:text-ink"
+        className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity text-xs text-ink-faint hover:text-ink"
         aria-label="Delete module"
       >
         ✕

@@ -41,19 +41,46 @@ export function emptyModule(name = "Untitled module"): Module {
   };
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function repairStoreIds(store: Store): { store: Store; changed: boolean } {
+  let changed = false;
+  const out: Store = {};
+  for (const [key, mod] of Object.entries(store)) {
+    if (UUID_RE.test(key) && UUID_RE.test(mod.id)) {
+      out[key] = mod;
+      continue;
+    }
+    const fresh = uid();
+    out[fresh] = { ...mod, id: fresh };
+    changed = true;
+  }
+  return { store: out, changed };
+}
+
 function readStore(): Store {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Store;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Store;
+      const { store, changed } = repairStoreIds(parsed);
+      if (changed) writeStore(store);
+      return store;
+    }
 
     // Legacy migration: single-draft → keyed store.
     const legacy = window.localStorage.getItem(LEGACY_KEY);
     if (legacy) {
       const parsed = JSON.parse(legacy) as Partial<Module>;
+      const base = emptyModule(parsed.name ?? "Untitled module");
       const m: Module = {
-        ...emptyModule(parsed.name ?? "Untitled module"),
+        ...base,
         ...parsed,
+        // Always use a fresh uuid; legacy data sometimes stored id: "draft"
+        // which Postgres rejects on sync.
+        id: base.id,
         profile: {
           visibility: "private",
           ...(parsed.profile ?? {}),
@@ -101,6 +128,15 @@ export function saveModule(module: Module): void {
 
 export function createModule(name = "Untitled module"): Module {
   const m = emptyModule(name);
+  const store = readStore();
+  store[m.id] = m;
+  writeStore(store);
+  void import("./sync").then(({ pushModule }) => pushModule(m));
+  return m;
+}
+
+/** Persist a fully-formed Module produced by a template fork. */
+export function persistModule(m: Module): Module {
   const store = readStore();
   store[m.id] = m;
   writeStore(store);

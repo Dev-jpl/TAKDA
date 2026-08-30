@@ -30,18 +30,29 @@ import type {
   Container,
   DevicePreview,
   Element,
+  ElementSpacing,
+  ElementSurface,
   Id,
   LayoutNode,
   Module,
+  PageWidth,
   Screen,
+  TextAlign,
+  TextSize,
+  TextStyle as TextStyleConfig,
+  TextWeight,
+  VisibilityOp,
 } from "@/lib/module/types";
 import {
   CONTAINER_CATALOG,
   ELEMENT_CATALOG,
   addContainer,
+  cloneNode,
+  insertNodes,
   addElementTo,
   addScreen,
   clearScreen,
+  defaultElementConfig,
   deleteNode,
   deleteScreen,
   findNode,
@@ -55,14 +66,39 @@ import {
   updateNode,
   type ElementCategory,
 } from "@/lib/module/mutations";
+import {
+  COLOR_COMBOS,
+  PALETTE_HUES,
+  swatchByHueTier,
+  swatchFor,
+  type ColorToken,
+} from "@/lib/module/palette";
 import { EmptyState, PanelHeading, ThreePanel } from "../three-panel";
 import { ContainerRenderer, RenderedElement } from "../element-renderer";
 import { Switch } from "@/components/ui/switch";
+import { IconPicker } from "@/components/module-icon";
 
 const DEVICE_WIDTH: Record<DevicePreview, string> = {
   phone: "390px",
   tablet: "820px",
-  desktop: "100%",
+  desktop: "1200px",
+};
+
+// Page-width tokens stored on the screen itself. Mirror DEVICE_WIDTH so a page
+// that picks "mobile" mocks at 390px regardless of the global preview toggle.
+const PAGE_WIDTH: Record<PageWidth, string> = {
+  mobile: "390px",
+  tablet: "820px",
+  desktop: "1200px",
+};
+
+
+// Pixel widths that match the runtime max-w classes for modal sizes.
+const MODAL_CANVAS_WIDTH: Record<"sm" | "md" | "lg" | "xl", string> = {
+  sm: "384px",
+  md: "448px",
+  lg: "672px",
+  xl: "896px",
 };
 
 export function InterfaceMode({
@@ -83,53 +119,49 @@ export function InterfaceMode({
   const [past, setPast] = useState<Module[]>([]);
   const [future, setFuture] = useState<Module[]>([]);
   const skipNextTrack = useRef(false);
+  const prevModuleRef = useRef(module);
 
-  const setModule: Dispatch<SetStateAction<Module>> = useCallback(
-    (updater) => {
-      setModuleRaw((prev) => {
-        const next =
-          typeof updater === "function"
-            ? (updater as (m: Module) => Module)(prev)
-            : updater;
-        if (skipNextTrack.current) {
-          skipNextTrack.current = false;
-          return next;
-        }
-        if (next === prev) return prev;
-        setPast((p) => {
-          const trimmed = p.length >= HISTORY_LIMIT ? p.slice(1) : p;
-          return [...trimmed, prev];
-        });
-        setFuture([]);
-        return next;
-      });
-    },
-    [setModuleRaw],
-  );
+  // Track history via effect so we never call setState during another
+  // component's render (React forbids this and warns in console).
+  useEffect(() => {
+    if (prevModuleRef.current === module) return;
+    if (skipNextTrack.current) {
+      skipNextTrack.current = false;
+      prevModuleRef.current = module;
+      return;
+    }
+    const snapshot = prevModuleRef.current;
+    prevModuleRef.current = module;
+    setPast((p) => {
+      const trimmed = p.length >= HISTORY_LIMIT ? p.slice(1) : p;
+      return [...trimmed, snapshot];
+    });
+    setFuture([]);
+  }, [module]);
+
+  const setModule: Dispatch<SetStateAction<Module>> = setModuleRaw;
 
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;
 
   const undo = useCallback(() => {
     if (past.length === 0) return;
-    setModuleRaw((cur) => {
-      const prev = past[past.length - 1];
-      setPast((p) => p.slice(0, -1));
-      setFuture((f) => [cur, ...f]);
-      skipNextTrack.current = true;
-      return prev;
-    });
+    const prev = past[past.length - 1];
+    const cur = prevModuleRef.current;
+    skipNextTrack.current = true;
+    setPast((p) => p.slice(0, -1));
+    setFuture((f) => [cur, ...f]);
+    setModuleRaw(prev);
   }, [past, setModuleRaw]);
 
   const redo = useCallback(() => {
     if (future.length === 0) return;
-    setModuleRaw((cur) => {
-      const next = future[0];
-      setFuture((f) => f.slice(1));
-      setPast((p) => [...p, cur]);
-      skipNextTrack.current = true;
-      return next;
-    });
+    const next = future[0];
+    const cur = prevModuleRef.current;
+    skipNextTrack.current = true;
+    setFuture((f) => f.slice(1));
+    setPast((p) => [...p, cur]);
+    setModuleRaw(next);
   }, [future, setModuleRaw]);
 
   // Keyboard shortcuts: Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z (or Cmd/Ctrl+Y)
@@ -153,6 +185,7 @@ export function InterfaceMode({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
+
 
   const handleSelect = useCallback(
     (id: Id, opts?: { additive?: boolean }) => {
@@ -265,6 +298,127 @@ export function InterfaceMode({
       updateNode(m, selectedScreen.id, selectedNode.id, patch),
     );
   };
+
+  // ── Copy / cut / paste / duplicate ────────────────────────────────────────
+  // In-memory clipboard scoped to this editor session. We deliberately don't
+  // use the OS clipboard — our nodes have no useful plain-text representation
+  // and pasting random text/images into a layout would be confusing.
+  const [clipboard, setClipboard] = useState<LayoutNode[] | null>(null);
+
+  // Resolve the current selection into an ordered list of nodes from this
+  // screen, in their visual (child-array) order.
+  const collectSelected = useCallback((): LayoutNode[] => {
+    if (!selectedScreen) return [];
+    const ids =
+      multiSelectIds.size > 0
+        ? multiSelectIds
+        : selectedElementId
+          ? new Set([selectedElementId])
+          : new Set<Id>();
+    if (ids.size === 0) return [];
+    const collected: LayoutNode[] = [];
+    const walk = (c: Container) => {
+      for (const child of c.children) {
+        if (ids.has(child.id)) collected.push(child);
+        if (child.kind === "container") walk(child);
+      }
+    };
+    walk(selectedScreen.root);
+    return collected;
+  }, [selectedScreen, multiSelectIds, selectedElementId]);
+
+  // Paste: insert clones as siblings of the current element selection, or
+  // into the selected/target container if a container is focused.
+  const pasteFromClipboard = useCallback(
+    (source: LayoutNode[]) => {
+      if (!selectedScreen || source.length === 0) return;
+      const clones = source.map((n) => cloneNode(n));
+      let parentId: Id;
+      let afterId: Id | undefined;
+      if (selectedNode?.kind === "container") {
+        parentId = selectedNode.id;
+        afterId = undefined;
+      } else if (selectedNode?.kind === "element") {
+        const parent = findParentOf(selectedScreen.root, selectedNode.id);
+        parentId = (parent ?? selectedScreen.root).id;
+        afterId = selectedNode.id;
+      } else {
+        parentId = targetParentId ?? selectedScreen.root.id;
+        afterId = undefined;
+      }
+      setModule((m) => {
+        const { module: next, ids } = insertNodes(
+          m,
+          selectedScreen.id,
+          parentId,
+          clones,
+          afterId,
+        );
+        const last = ids[ids.length - 1];
+        if (last) {
+          setSelectedElementId(last);
+          setMultiSelectIds(new Set(ids));
+        }
+        return next;
+      });
+    },
+    [selectedScreen, selectedNode, targetParentId, setModule],
+  );
+
+  // Keyboard: Cmd/Ctrl + C / X / V / D
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable)
+        return;
+      const k = e.key.toLowerCase();
+      if (k === "c") {
+        const sel = collectSelected();
+        if (sel.length === 0) return;
+        e.preventDefault();
+        setClipboard(sel.map((n) => cloneNode(n)));
+        return;
+      }
+      if (k === "x") {
+        const sel = collectSelected();
+        if (sel.length === 0 || !selectedScreen) return;
+        e.preventDefault();
+        setClipboard(sel.map((n) => cloneNode(n)));
+        setModule((m) => {
+          let next = m;
+          for (const n of sel) next = deleteNode(next, selectedScreen.id, n.id);
+          return next;
+        });
+        clearSelection();
+        return;
+      }
+      if (k === "v") {
+        if (!clipboard || clipboard.length === 0) return;
+        e.preventDefault();
+        pasteFromClipboard(clipboard);
+        return;
+      }
+      if (k === "d") {
+        const sel = collectSelected();
+        if (sel.length === 0) return;
+        e.preventDefault();
+        pasteFromClipboard(sel);
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    collectSelected,
+    clipboard,
+    pasteFromClipboard,
+    selectedScreen,
+    setModule,
+    clearSelection,
+  ]);
 
   return (
     <ThreePanel
@@ -417,6 +571,13 @@ export function InterfaceMode({
                 ),
               );
             }}
+          />
+        ) : selectedScreen ? (
+          <ScreenInspector
+            screen={selectedScreen}
+            onPatch={(p) =>
+              setModule((m) => updateScreen(m, selectedScreen.id, p))
+            }
           />
         ) : (
           <>
@@ -659,11 +820,11 @@ function SortableLayerRow({
           </svg>
         </span>
         <span
-          className={`w-4 text-center text-[11px] ${
+          className={`w-4 flex items-center justify-center ${
             active ? "text-paper/70" : "text-ink-faint"
           }`}
         >
-          {spec?.glyph}
+          {spec?.icon && <spec.icon size={13} weight="regular" />}
         </span>
         <span className="truncate">
           {isContainer
@@ -737,37 +898,121 @@ function Canvas({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
 
+  // ── Zoom (Cmd/Ctrl + / - / 0) ─────────────────────────────────────────────
+  const ZOOM_MIN = 0.25;
+  const ZOOM_MAX = 2;
+  const ZOOM_STEP = 0.1;
+  const [zoom, setZoom] = useState(1);
+  const clampZoom = (z: number) =>
+    Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(z * 100) / 100));
+  const zoomIn = useCallback(() => setZoom((z) => clampZoom(z + ZOOM_STEP)), []);
+  const zoomOut = useCallback(() => setZoom((z) => clampZoom(z - ZOOM_STEP)), []);
+  const zoomReset = useCallback(() => setZoom(1), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      // "=" lives on the + key; some keyboards also report "+" with shift.
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        zoomIn();
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        zoomOut();
+      } else if (e.key === "0") {
+        e.preventDefault();
+        zoomReset();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomIn, zoomOut, zoomReset]);
+
   const targetIsRoot = targetParentId === screen.root.id;
   const targetParent =
     targetParentId && !targetIsRoot
       ? (findNode(screen.root, targetParentId) as Container | null)
       : null;
 
+  const zoomWrapStyle: React.CSSProperties = {
+    transform: `scale(${zoom})`,
+    transformOrigin: "top center",
+    transition: "transform 100ms ease-out",
+  };
+
   return (
     <div
       className="flex flex-col items-center min-h-full relative"
       onClick={onDeselect}
     >
-      <div className="w-full flex justify-center px-8 pt-6 pb-24">
+      {screen.kind === "modal" ? (
         <div
-          className="rounded-md border border-rule bg-paper shadow-sm transition-all"
-          style={{
-            width: DEVICE_WIDTH[device],
-            maxWidth: "100%",
-            minHeight: "70vh",
-          }}
+          className={`w-full flex px-8 ${
+            (screen.modalPosition ?? "center") === "top"
+              ? "items-start pt-12"
+              : (screen.modalPosition ?? "center") === "bottom"
+                ? "items-end pb-12"
+                : "items-center"
+          } justify-center pb-24`}
+          style={{ minHeight: "calc(100vh - 8rem)" }}
         >
-          <DesignContainer
-            container={screen.root}
-            module={module}
-            selectedNodeId={selectedNodeId}
-            multiSelectIds={multiSelectIds}
-            onSelectNode={onSelectNode}
-            onReorderInParent={onReorderInParent}
-            isRoot
-          />
+          <div style={zoomWrapStyle}>
+            <div
+              className="rounded-md border border-rule bg-paper shadow-xl transition-all"
+              style={{
+                width: MODAL_CANVAS_WIDTH[screen.modalSize ?? "md"],
+                maxWidth: "100%",
+                maxHeight: "80vh",
+                overflow: "auto",
+              }}
+            >
+              <DesignContainer
+                container={screen.root}
+                module={module}
+                selectedNodeId={selectedNodeId}
+                multiSelectIds={multiSelectIds}
+                onSelectNode={onSelectNode}
+                onReorderInParent={onReorderInParent}
+                isRoot
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="w-full flex flex-col items-center px-8 pt-6 pb-24">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint mb-2">
+            {screen.pageWidth
+              ? `${screen.pageWidth} · ${PAGE_WIDTH[screen.pageWidth]}`
+              : `preview · ${device} (${DEVICE_WIDTH[device]})`}
+          </div>
+          <div style={zoomWrapStyle}>
+            <div
+              className="rounded-md border border-rule bg-paper shadow-sm transition-all"
+              style={{
+                width: screen.pageWidth
+                  ? PAGE_WIDTH[screen.pageWidth]
+                  : DEVICE_WIDTH[device],
+                maxWidth: "100%",
+                minHeight: "70vh",
+              }}
+            >
+              <DesignContainer
+                container={screen.root}
+                module={module}
+                selectedNodeId={selectedNodeId}
+                multiSelectIds={multiSelectIds}
+                onSelectNode={onSelectNode}
+                onReorderInParent={onReorderInParent}
+                isRoot
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div
         className="sticky bottom-0 left-0 right-0 z-20 w-full border-t border-rule bg-paper/95 backdrop-blur-sm px-6 py-3"
@@ -807,6 +1052,41 @@ function Canvas({
           >
             <span>↷</span> Redo
           </button>
+          <span className="w-px h-6 bg-rule mx-1" />
+          <div className="inline-flex rounded-md border border-rule overflow-hidden">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                zoomOut();
+              }}
+              disabled={zoom <= ZOOM_MIN}
+              title="Zoom out (Cmd/Ctrl + -)"
+              className="px-2.5 py-2 text-sm text-ink-muted hover:text-ink hover:bg-rule/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              −
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                zoomReset();
+              }}
+              title="Reset zoom (Cmd/Ctrl + 0)"
+              className="px-2.5 py-2 text-xs text-ink-muted hover:text-ink hover:bg-rule/30 transition-colors border-l border-r border-rule min-w-[52px]"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                zoomIn();
+              }}
+              disabled={zoom >= ZOOM_MAX}
+              title="Zoom in (Cmd/Ctrl + =)"
+              className="px-2.5 py-2 text-sm text-ink-muted hover:text-ink hover:bg-rule/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              +
+            </button>
+          </div>
           <span className="w-px h-6 bg-rule mx-1" />
           <button
             onClick={(e) => {
@@ -975,6 +1255,20 @@ function DesignContainer({
             alignItems: alignToFlex(container.align),
             justifyContent: justifyToFlex(container.justify),
             flexWrap: container.wrap ? "wrap" : "nowrap",
+            backgroundColor: container.bgColor
+              ? swatchFor(container.bgColor as ColorToken).soft
+              : undefined,
+            border:
+              isRoot && container.border
+                ? `1px solid ${
+                    container.borderColor
+                      ? swatchFor(container.borderColor as ColorToken).fill
+                      : "var(--rule)"
+                  }`
+                : isRoot && !container.border
+                  ? "none"
+                  : undefined,
+            borderRadius: isRoot ? 6 : undefined,
           }}
         >
           {children.map((node) =>
@@ -1036,11 +1330,26 @@ function SortableCanvasContainer({
     useSortable({ id: container.id });
   const selected = container.id === selectedNodeId;
   const multiSelected = multiSelectIds.has(container.id);
+  const bgSwatch = container.bgColor
+    ? swatchFor(container.bgColor as ColorToken)
+    : null;
+  const borderSwatch = container.borderColor
+    ? swatchFor(container.borderColor as ColorToken)
+    : null;
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
-    flexGrow: 1,
+    // Default to grow:1 (fill the flex parent) when neither width nor grow
+    // is set, preserving the prior behavior. An explicit width or grow=0
+    // pins the container to its natural / requested size.
+    flexGrow:
+      container.grow ?? (container.width !== undefined ? 0 : 1),
+    width: container.width,
+    backgroundColor: bgSwatch?.soft,
+    border: container.border
+      ? `1px solid ${borderSwatch?.fill ?? "var(--rule)"}`
+      : undefined,
   };
   return (
     <div
@@ -1116,10 +1425,11 @@ function SortableCanvasElement({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: element.id });
+  const conditional = !!element.visibleIf;
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.4 : conditional ? 0.7 : 1,
     flexGrow: element.grow,
   };
 
@@ -1349,8 +1659,8 @@ function ElementPickerModal({
                     onClick={() => onPickContainer(c.direction)}
                     className="flex items-center gap-3 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-3 py-2 transition-colors"
                   >
-                    <span className="w-6 h-6 rounded border border-rule flex items-center justify-center text-xs text-ink-faint shrink-0">
-                      {c.glyph}
+                    <span className="w-6 h-6 rounded border border-rule flex items-center justify-center text-ink-faint shrink-0">
+                      <c.icon size={14} weight="regular" />
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="truncate">{c.label}</div>
@@ -1376,8 +1686,8 @@ function ElementPickerModal({
                       onClick={() => onPickElement(e.kind)}
                       className="flex items-center gap-3 text-left text-sm text-ink-muted hover:bg-rule/30 hover:text-ink rounded px-3 py-2 transition-colors"
                     >
-                      <span className="w-6 h-6 rounded border border-rule flex items-center justify-center text-xs text-ink-faint shrink-0">
-                        {e.glyph}
+                      <span className="w-6 h-6 rounded border border-rule flex items-center justify-center text-ink-faint shrink-0">
+                        <e.icon size={14} weight="regular" />
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="truncate">{e.label}</div>
@@ -1406,6 +1716,99 @@ function ElementPickerModal({
 }
 
 // ─── Right: container inspector ──────────────────────────────────────────────
+
+function ScreenInspector({
+  screen,
+  onPatch,
+}: {
+  screen: Screen;
+  onPatch: (patch: Partial<Screen>) => void;
+}) {
+  return (
+    <>
+      <PanelHeading>{screen.kind === "modal" ? "Modal" : "Page"}</PanelHeading>
+      <div className="px-4 py-3 space-y-3">
+        <Row label="Name">
+          <input
+            value={screen.name}
+            onChange={(e) => onPatch({ name: e.target.value })}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+        {screen.kind === "page" && (
+          <Row label="Target width">
+            <div className="grid grid-cols-3 gap-1">
+              {(["mobile", "tablet", "desktop"] as const).map((w) => {
+                const active = (screen.pageWidth ?? "desktop") === w;
+                return (
+                  <button
+                    key={w}
+                    onClick={() => onPatch({ pageWidth: w })}
+                    className={`text-xs px-2 py-1.5 rounded border transition-colors capitalize ${
+                      active
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                    }`}
+                  >
+                    {w}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-ink-faint mt-1.5">
+              Web is responsive — this picks the design width. The viewport
+              toggle at the top still lets you preview other sizes.
+            </p>
+          </Row>
+        )}
+        {screen.kind === "modal" && (
+          <>
+            <Row label="Size">
+              <div className="grid grid-cols-4 gap-1">
+                {(["sm", "md", "lg", "xl"] as const).map((s) => {
+                  const active = (screen.modalSize ?? "md") === s;
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => onPatch({ modalSize: s })}
+                      className={`text-xs px-2 py-1.5 rounded border transition-colors uppercase ${
+                        active
+                          ? "border-ink bg-ink text-paper"
+                          : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+            <Row label="Position">
+              <div className="grid grid-cols-3 gap-1">
+                {(["top", "center", "bottom"] as const).map((p) => {
+                  const active = (screen.modalPosition ?? "center") === p;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => onPatch({ modalPosition: p })}
+                      className={`text-xs px-2 py-1.5 rounded border transition-colors capitalize ${
+                        active
+                          ? "border-ink bg-ink text-paper"
+                          : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
 
 function ContainerInspector({
   container,
@@ -1499,6 +1902,58 @@ function ContainerInspector({
           />
         </Row>
 
+        <Row label="Width">
+          <input
+            value={
+              container.width === undefined
+                ? ""
+                : typeof container.width === "number"
+                  ? String(container.width)
+                  : container.width
+            }
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              if (raw === "") {
+                onPatch({ width: undefined });
+                return;
+              }
+              // Bare numbers → px; anything with % / rem / em / vw / vh / etc.
+              // is stored as the literal CSS string.
+              const asNum = Number(raw);
+              if (!Number.isNaN(asNum) && /^\d+(\.\d+)?$/.test(raw)) {
+                onPatch({ width: asNum });
+              } else {
+                onPatch({ width: raw });
+              }
+            }}
+            placeholder="auto · 320 · 50%"
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+          <p className="text-[10px] text-ink-faint mt-1">
+            Number = px. Or use 50%, 20rem, etc. Leave empty to fill the
+            parent.
+          </p>
+        </Row>
+
+        <Row label="Grow">
+          <input
+            type="number"
+            min={0}
+            value={container.grow ?? ""}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") onPatch({ grow: undefined });
+              else onPatch({ grow: Math.max(0, Number(raw) || 0) });
+            }}
+            placeholder="auto"
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+          <p className="text-[10px] text-ink-faint mt-1">
+            Flex-grow factor in the parent. 0 = natural size, 1+ = take share
+            of free space. Empty = auto (fills if no width is set).
+          </p>
+        </Row>
+
         <Row label="Justify">
           <div className="grid grid-cols-2 gap-1">
             {justifies.map((opt) => {
@@ -1552,6 +2007,36 @@ function ContainerInspector({
             onChange={(next) => onPatch({ wrap: next })}
           />
         </Row>
+
+        <div className="pt-4 border-t border-rule space-y-3">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+            Surface
+          </div>
+
+          <Row label="Background">
+            <ColorPicker
+              value={container.bgColor as ColorToken | undefined}
+              onChange={(t) => onPatch({ bgColor: t })}
+            />
+          </Row>
+
+          <Row label="">
+            <Switch
+              label="Border"
+              checked={!!container.border}
+              onChange={(next) => onPatch({ border: next })}
+            />
+          </Row>
+
+          {container.border && (
+            <Row label="Border color">
+              <ColorPicker
+                value={container.borderColor as ColorToken | undefined}
+                onChange={(t) => onPatch({ borderColor: t })}
+              />
+            </Row>
+          )}
+        </div>
 
         <div className="pt-4 border-t border-rule space-y-3">
           <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
@@ -1618,6 +2103,12 @@ function ElementInspector({
   const setConfig = (patch: Record<string, unknown>) =>
     onPatch({ config: { ...(element.config ?? {}), ...patch } });
 
+  const clearConfig = (keys: string[]) => {
+    const next = { ...(element.config ?? {}) } as Record<string, unknown>;
+    for (const k of keys) delete next[k];
+    onPatch({ config: next });
+  };
+
   const idx = screen.root.children.findIndex(
     (n) => n.kind === "element" && n.id === element.id,
   );
@@ -1647,8 +2138,27 @@ function ElementInspector({
             ↓
           </button>
           <button
-            onClick={onDelete}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  "Reset all settings on this element back to defaults?",
+                )
+              )
+                return;
+              onPatch({
+                config: defaultElementConfig(element.type),
+                surface: undefined,
+                spacing: undefined,
+              });
+            }}
+            title="Reset all settings on this element"
             className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-ink"
+          >
+            Reset all
+          </button>
+          <button
+            onClick={onDelete}
+            className="px-2 py-1 text-xs text-ink-muted hover:text-ink"
           >
             Delete
           </button>
@@ -1659,138 +2169,112 @@ function ElementInspector({
           element.type === "paragraph" ||
           element.type === "label" ||
           element.type === "button") && (
-          <Row label="Text">
-            <input
-              value={(element.config?.text as string) ?? ""}
-              onChange={(e) => setConfig({ text: e.target.value })}
-              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-            />
-          </Row>
-        )}
+          <Section
+            title="Basics"
+            onReset={() => clearConfig(["text", "size"])}
+          >
+            <Row label="Text">
+              <input
+                value={(element.config?.text as string) ?? ""}
+                onChange={(e) => setConfig({ text: e.target.value })}
+                placeholder={
+                  element.type === "button"
+                    ? "Button label"
+                    : element.type === "heading"
+                      ? "Heading text"
+                      : "Text"
+                }
+                className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+              />
+            </Row>
 
-        {element.type === "heading" && (
-          <Row label="Size">
-            <select
-              value={(element.config?.size as string) ?? "lg"}
-              onChange={(e) => setConfig({ size: e.target.value })}
-              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-            >
-              <option value="md">Medium</option>
-              <option value="lg">Large</option>
-              <option value="xl">Extra large</option>
-            </select>
-          </Row>
+            {element.type === "heading" && (
+              <Row label="Size">
+                <select
+                  value={(element.config?.size as string) ?? "lg"}
+                  onChange={(e) => setConfig({ size: e.target.value })}
+                  className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                >
+                  <option value="md">Medium</option>
+                  <option value="lg">Large</option>
+                  <option value="xl">Extra large</option>
+                </select>
+              </Row>
+            )}
+          </Section>
         )}
 
         {element.type === "button" && (
           <>
-            <Row label="Action">
-              <select
-                value={(element.config?.action as string) ?? "save_entry"}
-                onChange={(e) =>
-                  setConfig({
-                    action: e.target.value,
-                    ...(e.target.value === "navigate_screen" ||
-                    e.target.value === "open_modal"
-                      ? {}
-                      : { targetScreenId: undefined }),
-                  })
-                }
-                className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-              >
-                <option value="save_entry">Save entry</option>
-                <option value="navigate_screen">Go to screen</option>
-                <option value="navigate_back">Go back</option>
-                <option value="open_modal">Open modal</option>
-                <option value="close_modal">Close modal</option>
-              </select>
-            </Row>
+            <p className="text-[11px] text-ink-faint italic px-1">
+              Wire button actions in the Behavior tab.
+            </p>
+            <Section
+              title="Layout"
+              defaultOpen={false}
+              onReset={() => clearConfig(["fullWidth", "align"])}
+            >
+              <Row label="">
+                <Switch
+                  label="Full width"
+                  checked={!!element.config?.fullWidth}
+                  onChange={(next) => setConfig({ fullWidth: next })}
+                />
+              </Row>
+              {!element.config?.fullWidth && (
+                <Row label="Align">
+                  <div className="grid grid-cols-3 gap-1">
+                    {(
+                      [
+                        { id: "left", label: "Left" },
+                        { id: "center", label: "Center" },
+                        { id: "right", label: "Right" },
+                      ] as const
+                    ).map((opt) => {
+                      const active =
+                        ((element.config?.align as string) ?? "left") ===
+                        opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          onClick={() => setConfig({ align: opt.id })}
+                          className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                            active
+                              ? "border-ink bg-ink text-paper"
+                              : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Row>
+              )}
+            </Section>
 
-            {((element.config?.action ?? "save_entry") === "navigate_screen" ||
-              element.config?.action === "open_modal") && (
-              <Row
-                label={
-                  element.config?.action === "open_modal"
-                    ? "Target modal"
-                    : "Target screen"
-                }
-              >
+            <Section
+              title="Appearance"
+              defaultOpen={false}
+              onReset={() => clearConfig(["variant", "color"])}
+            >
+              <Row label="Variant">
                 <select
-                  value={(element.config?.targetScreenId as string) ?? ""}
-                  onChange={(e) =>
-                    setConfig({ targetScreenId: e.target.value || undefined })
-                  }
+                  value={(element.config?.variant as string) ?? "primary"}
+                  onChange={(e) => setConfig({ variant: e.target.value })}
                   className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
                 >
-                  <option value="">— pick —</option>
-                  {module.screens
-                    .filter((s) => s.id !== screen.id)
-                    .filter((s) =>
-                      element.config?.action === "open_modal"
-                        ? s.kind === "modal"
-                        : s.kind !== "modal",
-                    )
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
+                  <option value="primary">Primary</option>
+                  <option value="secondary">Secondary</option>
                 </select>
-                {element.config?.action === "open_modal" &&
-                  !module.screens.some((s) => s.kind === "modal") && (
-                    <p className="text-xs text-ink-faint mt-1">
-                      Add a modal first (left rail → + Add modal).
-                    </p>
-                  )}
               </Row>
-            )}
-
-            <Row label="Variant">
-              <select
-                value={(element.config?.variant as string) ?? "primary"}
-                onChange={(e) => setConfig({ variant: e.target.value })}
-                className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-              >
-                <option value="primary">Primary</option>
-                <option value="secondary">Secondary</option>
-              </select>
-            </Row>
-            <Row label="">
-              <Switch
-                label="Full width"
-                checked={!!element.config?.fullWidth}
-                onChange={(next) => setConfig({ fullWidth: next })}
-              />
-            </Row>
-            {!element.config?.fullWidth && (
-              <Row label="Align">
-                <div className="grid grid-cols-3 gap-1">
-                  {(
-                    [
-                      { id: "left", label: "Left" },
-                      { id: "center", label: "Center" },
-                      { id: "right", label: "Right" },
-                    ] as const
-                  ).map((opt) => {
-                    const active =
-                      ((element.config?.align as string) ?? "left") === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        onClick={() => setConfig({ align: opt.id })}
-                        className={`text-xs px-3 py-1.5 rounded border transition-colors ${
-                          active
-                            ? "border-ink bg-ink text-paper"
-                            : "border-rule text-ink-muted hover:border-ink hover:text-ink"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
+              <Row label="Color">
+                <ColorPicker
+                  value={element.config?.color as ColorToken | undefined}
+                  onChange={(t) => setConfig({ color: t })}
+                />
               </Row>
-            )}
+            </Section>
           </>
         )}
 
@@ -1805,6 +2289,81 @@ function ElementInspector({
               className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
             />
           </Row>
+        )}
+
+        {element.type === "icon" && (
+          <Section
+            title="Icon"
+            onReset={() =>
+              clearConfig(["name", "size", "weight", "color", "align"])
+            }
+          >
+            <Row label="Pick">
+              <IconPicker
+                value={element.config?.name as string | undefined}
+                onChange={(name) => setConfig({ name })}
+              />
+            </Row>
+            <Row label="Size (px)">
+              <input
+                type="number"
+                min={8}
+                max={256}
+                value={(element.config?.size as number) ?? 24}
+                onChange={(e) =>
+                  setConfig({ size: Number(e.target.value) || 24 })
+                }
+                className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+              />
+            </Row>
+            <Row label="Weight">
+              <select
+                value={(element.config?.weight as string) ?? "regular"}
+                onChange={(e) => setConfig({ weight: e.target.value })}
+                className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+              >
+                <option value="thin">Thin</option>
+                <option value="light">Light</option>
+                <option value="regular">Regular</option>
+                <option value="bold">Bold</option>
+                <option value="fill">Fill</option>
+                <option value="duotone">Duotone</option>
+              </select>
+            </Row>
+            <Row label="Color">
+              <ColorPicker
+                value={element.config?.color as ColorToken | undefined}
+                onChange={(t) => setConfig({ color: t })}
+              />
+            </Row>
+            <Row label="Align">
+              <div className="grid grid-cols-3 gap-1">
+                {(
+                  [
+                    { id: "left", label: "Left" },
+                    { id: "center", label: "Center" },
+                    { id: "right", label: "Right" },
+                  ] as const
+                ).map((opt) => {
+                  const active =
+                    ((element.config?.align as string) ?? "left") === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => setConfig({ align: opt.id })}
+                      className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                        active
+                          ? "border-ink bg-ink text-paper"
+                          : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+          </Section>
         )}
 
         {(element.type === "text_input" ||
@@ -1930,8 +2489,1159 @@ function ElementInspector({
             onPatch={onPatch}
           />
         )}
+
+        {/* Chart config */}
+        {element.type === "chart" && (
+          <ChartConfigPanel
+            module={module}
+            element={element}
+            onPatch={onPatch}
+          />
+        )}
+
+        {/* Surface & spacing — shared across all elements */}
+        <SurfaceSpacingInspector element={element} onPatch={onPatch} />
+
+        {/* Conditional visibility — shared across all elements */}
+        <VisibilityInspector
+          module={module}
+          element={element}
+          onPatch={onPatch}
+        />
       </div>
     </>
+  );
+}
+
+function VisibilityInspector({
+  module,
+  element,
+  onPatch,
+}: {
+  module: Module;
+  element: Element;
+  onPatch: (patch: Partial<Element>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rule = element.visibleIf;
+  const watchedColl = rule
+    ? module.collections.find((c) => c.id === rule.collectionId) ?? null
+    : null;
+  const watchedFields = watchedColl?.fields ?? [];
+  const watchedField =
+    rule && watchedColl
+      ? watchedColl.fields.find((f) => f.id === rule.fieldId) ?? null
+      : null;
+
+  const setRule = (next: Element["visibleIf"] | undefined) =>
+    onPatch({ visibleIf: next });
+
+  const OPS: {
+    id: NonNullable<Element["visibleIf"]>["op"];
+    label: string;
+    needsValue: boolean;
+  }[] = [
+    { id: "equals", label: "Equals", needsValue: true },
+    { id: "not_equals", label: "Not equals", needsValue: true },
+    { id: "truthy", label: "Is set / on", needsValue: false },
+    { id: "falsy", label: "Is empty / off", needsValue: false },
+    { id: "gt", label: ">", needsValue: true },
+    { id: "lt", label: "<", needsValue: true },
+  ];
+  const opSpec = rule ? OPS.find((o) => o.id === rule.op) : null;
+
+  return (
+    <div
+      className={`rounded-md mb-2 last:mb-0 transition-colors ${
+        open ? "bg-rule/25" : "bg-rule/10 hover:bg-rule/20"
+      }`}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
+        className={`group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[10px] uppercase tracking-[0.18em] cursor-pointer transition-colors ${
+          open ? "text-ink" : "text-ink-muted hover:text-ink"
+        }`}
+      >
+        <span className="text-left">
+          Visibility
+          {rule && (
+            <span className="ml-1 inline-block w-1 h-1 rounded-full bg-ink align-middle" />
+          )}
+        </span>
+        <div className="flex items-center gap-1.5">
+          {rule && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRule(undefined);
+              }}
+              title="Always visible"
+              className="normal-case tracking-normal text-[10px] text-ink-faint opacity-0 group-hover:opacity-100 hover:text-ink transition-opacity"
+            >
+              Reset
+            </button>
+          )}
+          <span
+            className="inline-flex w-5 h-5 items-center justify-center rounded border border-rule bg-paper text-ink-muted group-hover:border-ink group-hover:text-ink transition-colors"
+            aria-hidden
+          >
+            <span
+              className="inline-block transition-transform leading-none text-[11px]"
+              style={{ transform: open ? "rotate(180deg)" : "none" }}
+            >
+              ▾
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {open && (
+        <div className="px-3 pb-3 pt-1 space-y-3">
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              onClick={() => setRule(undefined)}
+              className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                !rule
+                  ? "border-ink bg-ink text-paper"
+                  : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+              }`}
+            >
+              Always
+            </button>
+            <button
+              onClick={() => {
+                if (rule) return;
+                const firstColl = module.collections[0];
+                const firstField = firstColl?.fields[0];
+                if (firstColl && firstField) {
+                  setRule({
+                    collectionId: firstColl.id,
+                    fieldId: firstField.id,
+                    op: "truthy",
+                  });
+                }
+              }}
+              disabled={
+                !rule &&
+                (module.collections.length === 0 ||
+                  !module.collections.some((c) => c.fields.length > 0))
+              }
+              className={`text-xs px-3 py-1.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                rule
+                  ? "border-ink bg-ink text-paper"
+                  : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+              }`}
+            >
+              When field…
+            </button>
+          </div>
+
+          {rule && (
+            <>
+              <Row label="Collection">
+                <select
+                  value={rule.collectionId}
+                  onChange={(e) => {
+                    const nextColl = module.collections.find(
+                      (c) => c.id === e.target.value,
+                    );
+                    setRule({
+                      ...rule,
+                      collectionId: e.target.value,
+                      fieldId: nextColl?.fields[0]?.id ?? "",
+                    });
+                  }}
+                  className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                >
+                  {module.collections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+
+              <Row label="Field">
+                <select
+                  value={rule.fieldId}
+                  onChange={(e) =>
+                    setRule({ ...rule, fieldId: e.target.value })
+                  }
+                  className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                >
+                  <option value="">— pick a field —</option>
+                  {watchedFields.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+
+              <Row label="Condition">
+                <select
+                  value={rule.op}
+                  onChange={(e) =>
+                    setRule({
+                      ...rule,
+                      op: e.target.value as VisibilityOp,
+                    })
+                  }
+                  className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                >
+                  {OPS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+
+              {opSpec?.needsValue && (
+                <Row label="Value">
+                  {watchedField?.type === "select" ? (
+                    <select
+                      value={(rule.value as string | undefined) ?? ""}
+                      onChange={(e) =>
+                        setRule({ ...rule, value: e.target.value })
+                      }
+                      className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                    >
+                      <option value="">— pick —</option>
+                      {watchedField.options.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : watchedField?.type === "boolean" ? (
+                    <select
+                      value={
+                        rule.value === true
+                          ? "true"
+                          : rule.value === false
+                            ? "false"
+                            : ""
+                      }
+                      onChange={(e) =>
+                        setRule({
+                          ...rule,
+                          value: e.target.value === "true",
+                        })
+                      }
+                      className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                    >
+                      <option value="true">On</option>
+                      <option value="false">Off</option>
+                    </select>
+                  ) : (
+                    <input
+                      type={watchedField?.type === "number" ? "number" : "text"}
+                      value={
+                        rule.value === undefined ? "" : String(rule.value)
+                      }
+                      onChange={(e) =>
+                        setRule({
+                          ...rule,
+                          value:
+                            watchedField?.type === "number"
+                              ? Number(e.target.value)
+                              : e.target.value,
+                        })
+                      }
+                      className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                    />
+                  )}
+                </Row>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SurfaceSpacingInspector({
+  element,
+  onPatch,
+}: {
+  element: Element;
+  onPatch: (patch: Partial<Element>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const surface = element.surface ?? {};
+  const spacing = element.spacing ?? {};
+
+  const patchSurface = (p: Partial<ElementSurface>) =>
+    onPatch({ surface: { ...surface, ...p } });
+  const patchSpacing = (p: Partial<ElementSpacing>) =>
+    onPatch({ spacing: { ...spacing, ...p } });
+
+  const hasAny =
+    surface.bgColor ||
+    surface.border ||
+    surface.borderColor ||
+    Object.values(spacing).some((v) => v !== undefined && v !== 0);
+
+  return (
+    <div
+      className={`rounded-md mb-2 last:mb-0 transition-colors ${
+        open ? "bg-rule/25" : "bg-rule/10 hover:bg-rule/20"
+      }`}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
+        className={`group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[10px] uppercase tracking-[0.18em] cursor-pointer transition-colors ${
+          open ? "text-ink" : "text-ink-muted hover:text-ink"
+        }`}
+      >
+        <span className="text-left">
+          Surface & spacing
+          {hasAny && (
+            <span className="ml-1 inline-block w-1 h-1 rounded-full bg-ink align-middle" />
+          )}
+        </span>
+        <div className="flex items-center gap-1.5">
+          {hasAny && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPatch({ surface: undefined, spacing: undefined });
+              }}
+              title="Reset surface & spacing"
+              className="normal-case tracking-normal text-[10px] text-ink-faint opacity-0 group-hover:opacity-100 hover:text-ink transition-opacity"
+            >
+              Reset
+            </button>
+          )}
+          <span
+            className="inline-flex w-5 h-5 items-center justify-center rounded border border-rule bg-paper text-ink-muted group-hover:border-ink group-hover:text-ink transition-colors"
+            aria-hidden
+          >
+            <span
+              className="inline-block transition-transform leading-none text-[11px]"
+              style={{ transform: open ? "rotate(180deg)" : "none" }}
+            >
+              ▾
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {open && (
+        <div className="px-3 pb-3 pt-1 space-y-3">
+          <Row label="Background">
+            <ColorPicker
+              value={surface.bgColor as ColorToken | undefined}
+              onChange={(t) => patchSurface({ bgColor: t })}
+            />
+          </Row>
+          <Row label="">
+            <Switch
+              label="Border"
+              checked={!!surface.border}
+              onChange={(b) => patchSurface({ border: b })}
+            />
+          </Row>
+          {surface.border && (
+            <Row label="Border color">
+              <ColorPicker
+                value={surface.borderColor as ColorToken | undefined}
+                onChange={(t) => patchSurface({ borderColor: t })}
+              />
+            </Row>
+          )}
+          <SpacingControl
+            label="Padding"
+            values={{
+              top: spacing.paddingTop,
+              right: spacing.paddingRight,
+              bottom: spacing.paddingBottom,
+              left: spacing.paddingLeft,
+            }}
+            onChange={(side, v) => {
+              const key = `padding${side[0].toUpperCase()}${side.slice(1)}` as
+                | "paddingTop"
+                | "paddingRight"
+                | "paddingBottom"
+                | "paddingLeft";
+              patchSpacing({ [key]: v });
+            }}
+            onSetAll={(v) =>
+              patchSpacing({
+                paddingTop: v,
+                paddingRight: v,
+                paddingBottom: v,
+                paddingLeft: v,
+              })
+            }
+            onSetAxis={(axis, v) =>
+              patchSpacing(
+                axis === "x"
+                  ? { paddingLeft: v, paddingRight: v }
+                  : { paddingTop: v, paddingBottom: v },
+              )
+            }
+          />
+          <SpacingControl
+            label="Margin"
+            values={{
+              top: spacing.marginTop,
+              right: spacing.marginRight,
+              bottom: spacing.marginBottom,
+              left: spacing.marginLeft,
+            }}
+            onChange={(side, v) => {
+              const key = `margin${side[0].toUpperCase()}${side.slice(1)}` as
+                | "marginTop"
+                | "marginRight"
+                | "marginBottom"
+                | "marginLeft";
+              patchSpacing({ [key]: v });
+            }}
+            onSetAll={(v) =>
+              patchSpacing({
+                marginTop: v,
+                marginRight: v,
+                marginBottom: v,
+                marginLeft: v,
+              })
+            }
+            onSetAxis={(axis, v) =>
+              patchSpacing(
+                axis === "x"
+                  ? { marginLeft: v, marginRight: v }
+                  : { marginTop: v, marginBottom: v },
+              )
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+type SpacingSide = "top" | "right" | "bottom" | "left";
+
+function SpacingControl({
+  label,
+  values,
+  onChange,
+  onSetAll,
+  onSetAxis,
+}: {
+  label: string;
+  values: Record<SpacingSide, number | undefined>;
+  onChange: (side: SpacingSide, v: number | undefined) => void;
+  onSetAll: (v: number | undefined) => void;
+  onSetAxis: (axis: "x" | "y", v: number | undefined) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const all =
+    values.top !== undefined &&
+    values.top === values.right &&
+    values.top === values.bottom &&
+    values.top === values.left
+      ? values.top
+      : undefined;
+  const x =
+    values.left !== undefined && values.left === values.right
+      ? values.left
+      : undefined;
+  const y =
+    values.top !== undefined && values.top === values.bottom
+      ? values.top
+      : undefined;
+  const isMixed = all === undefined;
+
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint mb-1">
+        {label}
+      </div>
+      <div className="flex items-center gap-1">
+        <label className="flex-1 flex items-center gap-2 border border-rule rounded px-2 py-1 focus-within:border-ink transition-colors">
+          <span className="text-[10px] uppercase tracking-[0.12em] text-ink-faint shrink-0">
+            All
+          </span>
+          <input
+            type="number"
+            value={all ?? ""}
+            onChange={(e) => {
+              const raw = e.target.value;
+              onSetAll(raw === "" ? undefined : Number(raw));
+            }}
+            placeholder={isMixed ? "mixed" : "—"}
+            className="w-full bg-transparent outline-none text-xs text-right min-w-0"
+          />
+        </label>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          title={open ? "Collapse sides" : "Break down by side"}
+          className="px-2 py-1 text-xs border border-rule rounded text-ink-faint hover:border-ink hover:text-ink transition-colors"
+        >
+          <span
+            className="inline-block transition-transform"
+            style={{ transform: open ? "rotate(180deg)" : "none" }}
+          >
+            ▾
+          </span>
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-1.5 space-y-1 pl-2 border-l border-rule">
+          <div className="grid grid-cols-2 gap-1">
+            <AxisInput label="X" value={x} onChange={(v) => onSetAxis("x", v)} />
+            <AxisInput label="Y" value={y} onChange={(v) => onSetAxis("y", v)} />
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            <SideInput
+              label="Top"
+              value={values.top}
+              onChange={(v) => onChange("top", v)}
+            />
+            <SideInput
+              label="Right"
+              value={values.right}
+              onChange={(v) => onChange("right", v)}
+            />
+            <SideInput
+              label="Bottom"
+              value={values.bottom}
+              onChange={(v) => onChange("bottom", v)}
+            />
+            <SideInput
+              label="Left"
+              value={values.left}
+              onChange={(v) => onChange("left", v)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SideInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | undefined;
+  onChange: (v: number | undefined) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 border border-rule rounded px-2 py-1 focus-within:border-ink transition-colors">
+      <span className="text-[10px] uppercase tracking-[0.12em] text-ink-faint shrink-0">
+        {label}
+      </span>
+      <input
+        type="number"
+        value={value ?? ""}
+        onChange={(e) => {
+          const raw = e.target.value;
+          onChange(raw === "" ? undefined : Number(raw));
+        }}
+        placeholder="—"
+        className="w-full bg-transparent outline-none text-xs text-right min-w-0"
+      />
+    </label>
+  );
+}
+
+function TextStyleControl({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: TextStyleConfig | undefined;
+  onChange: (next: TextStyleConfig | undefined) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const t = value ?? {};
+  const patch = (p: Partial<TextStyleConfig>) => {
+    const merged = { ...t, ...p };
+    const hasAny = Object.values(merged).some(
+      (v) => v !== undefined && v !== null,
+    );
+    onChange(hasAny ? merged : undefined);
+  };
+
+  const sizes: { id: TextSize; label: string }[] = [
+    { id: "xs", label: "XS" },
+    { id: "sm", label: "SM" },
+    { id: "md", label: "MD" },
+    { id: "lg", label: "LG" },
+    { id: "xl", label: "XL" },
+  ];
+  const weights: { id: TextWeight; label: string }[] = [
+    { id: "normal", label: "Normal" },
+    { id: "medium", label: "Medium" },
+    { id: "semibold", label: "Semi" },
+    { id: "bold", label: "Bold" },
+  ];
+  const aligns: { id: TextAlign; label: string }[] = [
+    { id: "left", label: "Left" },
+    { id: "center", label: "Center" },
+    { id: "right", label: "Right" },
+  ];
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-ink-faint hover:text-ink transition-colors"
+      >
+        <span>{label}</span>
+        <span
+          className="inline-block transition-transform"
+          style={{ transform: open ? "rotate(180deg)" : "none" }}
+        >
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <Row label="Size">
+            <div className="grid grid-cols-5 gap-1">
+              {sizes.map((s) => {
+                const active = (t.size ?? "sm") === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => patch({ size: s.id })}
+                    className={`text-[11px] px-2 py-1 rounded border transition-colors ${
+                      active
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Row>
+          <Row label="Weight">
+            <div className="grid grid-cols-4 gap-1">
+              {weights.map((w) => {
+                const active = (t.weight ?? "normal") === w.id;
+                return (
+                  <button
+                    key={w.id}
+                    onClick={() => patch({ weight: w.id })}
+                    className={`text-[11px] px-1.5 py-1 rounded border transition-colors ${
+                      active
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                    }`}
+                  >
+                    {w.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Row>
+          <Row label="Align">
+            <div className="grid grid-cols-3 gap-1">
+              {aligns.map((a) => {
+                const active = (t.align ?? "left") === a.id;
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => patch({ align: a.id })}
+                    className={`text-[11px] px-2 py-1 rounded border transition-colors ${
+                      active
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Row>
+          <SpacingControl
+            label="Padding"
+            values={{
+              top: t.paddingTop,
+              right: t.paddingRight,
+              bottom: t.paddingBottom,
+              left: t.paddingLeft,
+            }}
+            onChange={(side, v) => {
+              const key = `padding${side[0].toUpperCase()}${side.slice(1)}` as
+                | "paddingTop"
+                | "paddingRight"
+                | "paddingBottom"
+                | "paddingLeft";
+              patch({ [key]: v } as Partial<TextStyleConfig>);
+            }}
+            onSetAll={(v) =>
+              patch({
+                paddingTop: v,
+                paddingRight: v,
+                paddingBottom: v,
+                paddingLeft: v,
+              })
+            }
+            onSetAxis={(axis, v) =>
+              patch(
+                axis === "x"
+                  ? { paddingLeft: v, paddingRight: v }
+                  : { paddingTop: v, paddingBottom: v },
+              )
+            }
+          />
+          <SpacingControl
+            label="Margin"
+            values={{
+              top: t.marginTop,
+              right: t.marginRight,
+              bottom: t.marginBottom,
+              left: t.marginLeft,
+            }}
+            onChange={(side, v) => {
+              const key = `margin${side[0].toUpperCase()}${side.slice(1)}` as
+                | "marginTop"
+                | "marginRight"
+                | "marginBottom"
+                | "marginLeft";
+              patch({ [key]: v } as Partial<TextStyleConfig>);
+            }}
+            onSetAll={(v) =>
+              patch({
+                marginTop: v,
+                marginRight: v,
+                marginBottom: v,
+                marginLeft: v,
+              })
+            }
+            onSetAxis={(axis, v) =>
+              patch(
+                axis === "x"
+                  ? { marginLeft: v, marginRight: v }
+                  : { marginTop: v, marginBottom: v },
+              )
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AxisInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | undefined;
+  onChange: (v: number | undefined) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 border border-rule rounded px-2 py-1 focus-within:border-ink transition-colors bg-rule/10">
+      <span className="text-[10px] uppercase tracking-[0.12em] text-ink-faint shrink-0">
+        {label}
+      </span>
+      <input
+        type="number"
+        value={value ?? ""}
+        onChange={(e) => {
+          const raw = e.target.value;
+          onChange(raw === "" ? undefined : Number(raw));
+        }}
+        placeholder={value === undefined ? "mixed" : "—"}
+        className="w-full bg-transparent outline-none text-xs text-right min-w-0"
+      />
+    </label>
+  );
+}
+
+function ChartConfigPanel({
+  module,
+  element,
+  onPatch,
+}: {
+  module: Module;
+  element: Element;
+  onPatch: (patch: Partial<Element>) => void;
+}) {
+  const cfg = (element.config ?? {}) as Record<string, unknown>;
+  const collectionId = (cfg.collectionId as string) ?? "";
+  const aggregation = (cfg.aggregation as string) ?? "count";
+  const fieldId = (cfg.fieldId as string) ?? "";
+  const bucket = (cfg.bucket as string) ?? "day";
+  const range = (cfg.range as number) ?? 7;
+  const style = (cfg.style as string) ?? "bar";
+  const groupBy = (cfg.groupBy as string) ?? "";
+  const collection = collectionId
+    ? module.collections.find((c) => c.id === collectionId) ?? null
+    : null;
+  const numberFields =
+    collection?.fields.filter((f) => f.type === "number") ?? [];
+  const categoryFields =
+    collection?.fields.filter(
+      (f) => f.type === "select" || f.type === "multi_select",
+    ) ?? [];
+  const isTimeSeries =
+    style === "bar" || style === "line" || style === "area" || style === "spark";
+  const isDonut = style === "donut";
+  const isHeatmap = style === "heatmap";
+
+  const set = (patch: Record<string, unknown>) =>
+    onPatch({ config: { ...(element.config ?? {}), ...patch } });
+
+  const clear = (keys: string[]) => {
+    const next = { ...(element.config ?? {}) } as Record<string, unknown>;
+    for (const k of keys) delete next[k];
+    onPatch({ config: next });
+  };
+
+  return (
+    <div className="pt-2 mt-2 border-t border-rule">
+      <Section
+        title="Basics"
+        onReset={() => clear(["style", "label", "labelText"])}
+      >
+        <Row label="Style">
+          <div className="grid grid-cols-3 gap-1">
+            {(
+              [
+                { id: "bar", label: "Bar" },
+                { id: "line", label: "Line" },
+                { id: "area", label: "Area" },
+                { id: "spark", label: "Spark" },
+                { id: "donut", label: "Donut" },
+                { id: "heatmap", label: "Heatmap" },
+              ] as const
+            ).map((opt) => {
+              const active = style === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => set({ style: opt.id })}
+                  className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
+
+        <Row label="Label">
+          <input
+            value={(cfg.label as string) ?? ""}
+            onChange={(e) => set({ label: e.target.value || undefined })}
+            placeholder="e.g. Calories last 7 days"
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+      </Section>
+
+      <Section
+        title="Data"
+        onReset={() =>
+          clear(["collectionId", "aggregation", "fieldId", "groupBy"])
+        }
+      >
+        <Row label="Collection">
+          <select
+            value={collectionId}
+            onChange={(e) =>
+              set({
+                collectionId: e.target.value || undefined,
+                fieldId: undefined,
+                groupBy: undefined,
+              })
+            }
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          >
+            <option value="">— pick a collection —</option>
+            {module.collections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Row>
+
+        {isDonut && (
+          <Row label="Group by">
+            <select
+              value={groupBy}
+              onChange={(e) => set({ groupBy: e.target.value || undefined })}
+              disabled={!collection}
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+            >
+              <option value="">— pick a category field —</option>
+              {categoryFields.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            {categoryFields.length === 0 && collection && (
+              <p className="text-xs text-ink-faint mt-1">
+                Add a select / multi-select field to this collection first.
+              </p>
+            )}
+          </Row>
+        )}
+
+        <Row label="Aggregation">
+          <div className="grid grid-cols-2 gap-1">
+            {(
+              [
+                { id: "count", label: "Count" },
+                { id: "sum", label: "Sum" },
+              ] as const
+            ).map((opt) => {
+              const active = aggregation === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => set({ aggregation: opt.id })}
+                  className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
+
+        {aggregation === "sum" && (
+          <Row label="Number field">
+            <select
+              value={fieldId}
+              onChange={(e) => set({ fieldId: e.target.value || undefined })}
+              disabled={!collection}
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+            >
+              <option value="">— pick a number field —</option>
+              {numberFields.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </Row>
+        )}
+      </Section>
+
+      {(isTimeSeries || isHeatmap) && (
+        <Section
+          title="Time range"
+          onReset={() => clear(["bucket", "range", "suffix"])}
+        >
+          <Row label="Default window">
+            <div className="grid grid-cols-2 gap-1">
+              {(isHeatmap
+                ? ([
+                    { id: "30d", label: "Month", bucket: "day", range: 30 },
+                    { id: "90d", label: "Quarter", bucket: "day", range: 90 },
+                    { id: "365d", label: "Year", bucket: "day", range: 365 },
+                    { id: "custom", label: "Custom" },
+                  ] as const)
+                : ([
+                    { id: "7d", label: "Week", bucket: "day", range: 7 },
+                    { id: "30d", label: "Month", bucket: "day", range: 30 },
+                    { id: "12w", label: "12 weeks", bucket: "week", range: 12 },
+                    { id: "12mo", label: "Year", bucket: "month", range: 12 },
+                    { id: "custom", label: "Custom" },
+                  ] as const)
+              ).map((opt) => {
+                const isCustom = opt.id === "custom";
+                const matchesAnyPreset = isHeatmap
+                  ? [30, 90, 365].includes(range)
+                  : (bucket === "day" && [7, 30].includes(range)) ||
+                    (bucket === "week" && range === 12) ||
+                    (bucket === "month" && range === 12);
+                const active = isCustom
+                  ? !matchesAnyPreset
+                  : !isCustom &&
+                    "bucket" in opt &&
+                    bucket === opt.bucket &&
+                    range === opt.range;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => {
+                      if (isCustom) return;
+                      if ("bucket" in opt)
+                        set({ bucket: opt.bucket, range: opt.range });
+                    }}
+                    className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                      active
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-ink-faint mt-1.5">
+              Viewers can switch Week / Month / Year on the chart itself.
+            </p>
+          </Row>
+
+          {/* Show advanced controls only when no preset matches the saved values. */}
+          {(() => {
+            const matchesAnyPreset = isHeatmap
+              ? [30, 90, 365].includes(range)
+              : (bucket === "day" && [7, 30].includes(range)) ||
+                (bucket === "week" && range === 12) ||
+                (bucket === "month" && range === 12);
+            if (matchesAnyPreset) return null;
+            return (
+              <>
+                {isTimeSeries && (
+                  <>
+                    <Row label="Bucket (one bar per…)">
+                      <div className="grid grid-cols-3 gap-1">
+                        {(
+                          [
+                            { id: "day", label: "Day" },
+                            { id: "week", label: "Week" },
+                            { id: "month", label: "Month" },
+                          ] as const
+                        ).map((opt) => {
+                          const active = bucket === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() => set({ bucket: opt.id })}
+                              className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                                active
+                                  ? "border-ink bg-ink text-paper"
+                                  : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Row>
+                    <Row label={`How many (${range} × ${bucket}${range > 1 ? "s" : ""})`}>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={range}
+                        onChange={(e) =>
+                          set({
+                            range: Math.max(
+                              1,
+                              Math.min(60, Number(e.target.value) || 7),
+                            ),
+                          })
+                        }
+                        className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                      />
+                    </Row>
+                  </>
+                )}
+                {isHeatmap && (
+                  <Row label={`Days (${range})`}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={range}
+                      onChange={(e) =>
+                        set({
+                          range: Math.max(
+                            1,
+                            Math.min(365, Number(e.target.value) || 90),
+                          ),
+                        })
+                      }
+                      className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+                    />
+                  </Row>
+                )}
+              </>
+            );
+          })()}
+
+          <Row label="Suffix">
+            <input
+              value={(cfg.suffix as string) ?? ""}
+              onChange={(e) => set({ suffix: e.target.value || undefined })}
+              placeholder="kcal, kg..."
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+            />
+          </Row>
+        </Section>
+      )}
+
+      <Section
+        title="Appearance"
+        defaultOpen={false}
+        onReset={() => clear(["color"])}
+      >
+        <Row label="Bar color">
+          <ColorPicker
+            value={cfg.color as ColorToken | undefined}
+            onChange={(t) => set({ color: t })}
+          />
+        </Row>
+      </Section>
+
+      <Section
+        title="Typography"
+        defaultOpen={false}
+        onReset={() => clear(["labelText", "totalText"])}
+      >
+        <TextStyleControl
+          label="Label text style"
+          value={cfg.labelText as TextStyleConfig | undefined}
+          onChange={(next) => set({ labelText: next })}
+        />
+        <TextStyleControl
+          label="Total text style"
+          value={cfg.totalText as TextStyleConfig | undefined}
+          onChange={(next) => set({ totalText: next })}
+        />
+      </Section>
+    </div>
   );
 }
 
@@ -1957,119 +3667,230 @@ function ProgressConfigPanel({
   const set = (patch: Record<string, unknown>) =>
     onPatch({ config: { ...(element.config ?? {}), ...patch } });
 
+  const clear = (keys: string[]) => {
+    const next = { ...(element.config ?? {}) } as Record<string, unknown>;
+    for (const k of keys) delete next[k];
+    onPatch({ config: next });
+  };
+
   return (
-    <div className="pt-4 border-t border-rule space-y-3">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
-        Progress
-      </div>
+    <div className="pt-2 mt-2 border-t border-rule">
+      <Section
+        title="Basics"
+        onReset={() => clear(["style", "align", "label", "labelText"])}
+      >
+        <Row label="Style">
+          <div className="grid grid-cols-2 gap-1">
+            {(
+              [
+                { id: "linear", label: "Linear" },
+                { id: "radial", label: "Radial" },
+              ] as const
+            ).map((opt) => {
+              const active =
+                ((cfg.style as string) ?? "linear") === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => set({ style: opt.id })}
+                  className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
 
-      <Row label="Label">
-        <input
-          value={(cfg.label as string) ?? ""}
-          onChange={(e) => set({ label: e.target.value || undefined })}
-          placeholder="e.g. Calories today"
-          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-        />
-      </Row>
+        {cfg.style === "radial" && (
+          <Row label="Align">
+            <div className="grid grid-cols-3 gap-1">
+              {(
+                [
+                  { id: "left", label: "Left" },
+                  { id: "center", label: "Center" },
+                  { id: "right", label: "Right" },
+                ] as const
+              ).map((opt) => {
+                const active = ((cfg.align as string) ?? "center") === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => set({ align: opt.id })}
+                    className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                      active
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Row>
+        )}
 
-      <Row label="Collection">
-        <select
-          value={collectionId}
-          onChange={(e) =>
-            set({
-              collectionId: e.target.value || undefined,
-              fieldId: undefined,
-            })
-          }
-          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-        >
-          <option value="">— pick a collection —</option>
-          {module.collections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </Row>
+        <Row label="Label">
+          <input
+            value={(cfg.label as string) ?? ""}
+            onChange={(e) => set({ label: e.target.value || undefined })}
+            placeholder="e.g. Calories today"
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+      </Section>
 
-      <Row label="Aggregation">
-        <div className="grid grid-cols-3 gap-1">
-          {(
-            [
-              { id: "count", label: "Count" },
-              { id: "sum", label: "Sum" },
-              { id: "avg", label: "Avg" },
-              { id: "min", label: "Min" },
-              { id: "max", label: "Max" },
-            ] as const
-          ).map((opt) => {
-            const active = aggregation === opt.id;
-            return (
-              <button
-                key={opt.id}
-                onClick={() => set({ aggregation: opt.id })}
-                className={`text-xs px-2 py-1.5 rounded border transition-colors ${
-                  active
-                    ? "border-ink bg-ink text-paper"
-                    : "border-rule text-ink-muted hover:border-ink hover:text-ink"
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-      </Row>
-
-      {aggregation !== "count" && (
-        <Row label="Number field">
+      <Section
+        title="Data"
+        onReset={() =>
+          clear(["collectionId", "aggregation", "fieldId", "filter"])
+        }
+      >
+        <Row label="Collection">
           <select
-            value={fieldId}
-            onChange={(e) => set({ fieldId: e.target.value || undefined })}
-            disabled={!collection}
-            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+            value={collectionId}
+            onChange={(e) =>
+              set({
+                collectionId: e.target.value || undefined,
+                fieldId: undefined,
+              })
+            }
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
           >
-            <option value="">— pick a number field —</option>
-            {numberFields.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
+            <option value="">— pick a collection —</option>
+            {module.collections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </select>
         </Row>
-      )}
 
-      <Row label="Time window">
-        <select
-          value={filter}
-          onChange={(e) => set({ filter: e.target.value })}
-          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-        >
-          <option value="all">All time</option>
-          <option value="today">Today</option>
-          <option value="this_week">This week</option>
-          <option value="this_month">This month</option>
-        </select>
-      </Row>
+        <Row label="Aggregation">
+          <div className="grid grid-cols-3 gap-1">
+            {(
+              [
+                { id: "count", label: "Count" },
+                { id: "sum", label: "Sum" },
+                { id: "avg", label: "Avg" },
+                { id: "min", label: "Min" },
+                { id: "max", label: "Max" },
+              ] as const
+            ).map((opt) => {
+              const active = aggregation === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => set({ aggregation: opt.id })}
+                  className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
 
-      <GoalSourceControl module={module} element={element} onPatch={onPatch} />
+        {aggregation !== "count" && (
+          <Row label="Number field">
+            <select
+              value={fieldId}
+              onChange={(e) => set({ fieldId: e.target.value || undefined })}
+              disabled={!collection}
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+            >
+              <option value="">— pick a number field —</option>
+              {numberFields.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </Row>
+        )}
 
-      <Row label="Suffix">
-        <input
-          value={(cfg.suffix as string) ?? ""}
-          onChange={(e) => set({ suffix: e.target.value || undefined })}
-          placeholder="kcal, kg..."
-          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+        <Row label="Time window">
+          <select
+            value={filter}
+            onChange={(e) => set({ filter: e.target.value })}
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          >
+            <option value="all">All time</option>
+            <option value="today">Today</option>
+            <option value="this_week">This week</option>
+            <option value="this_month">This month</option>
+          </select>
+        </Row>
+      </Section>
+
+      <Section
+        title="Goal"
+        onReset={() =>
+          clear(["goal", "goalSource", "suffix", "showText"])
+        }
+      >
+        <GoalSourceControl
+          module={module}
+          element={element}
+          onPatch={onPatch}
         />
-      </Row>
+        <Row label="Suffix">
+          <input
+            value={(cfg.suffix as string) ?? ""}
+            onChange={(e) => set({ suffix: e.target.value || undefined })}
+            placeholder="kcal, kg..."
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+        <Row label="">
+          <Switch
+            label="Show value / goal text"
+            checked={cfg.showText !== false}
+            onChange={(next) => set({ showText: next })}
+          />
+        </Row>
+      </Section>
 
-      <Row label="">
-        <Switch
-          label="Show value / goal text"
-          checked={cfg.showText !== false}
-          onChange={(next) => set({ showText: next })}
+      <Section
+        title="Appearance"
+        defaultOpen={false}
+        onReset={() => clear(["color"])}
+      >
+        <Row label="Color">
+          <ColorPicker
+            value={cfg.color as ColorToken | undefined}
+            onChange={(t) => set({ color: t })}
+          />
+        </Row>
+      </Section>
+
+      <Section
+        title="Typography"
+        defaultOpen={false}
+        onReset={() => clear(["labelText", "valueText"])}
+      >
+        <TextStyleControl
+          label="Label text style"
+          value={cfg.labelText as TextStyleConfig | undefined}
+          onChange={(next) => set({ labelText: next })}
         />
-      </Row>
+        {cfg.showText !== false && (
+          <TextStyleControl
+            label="Value text style"
+            value={cfg.valueText as TextStyleConfig | undefined}
+            onChange={(next) => set({ valueText: next })}
+          />
+        )}
+      </Section>
     </div>
   );
 }
@@ -2096,124 +3917,171 @@ function StatConfigPanel({
   const set = (patch: Record<string, unknown>) =>
     onPatch({ config: { ...(element.config ?? {}), ...patch } });
 
+  const clear = (keys: string[]) => {
+    const next = { ...(element.config ?? {}) } as Record<string, unknown>;
+    for (const k of keys) delete next[k];
+    onPatch({ config: next });
+  };
+
   return (
-    <div className="pt-4 border-t border-rule space-y-3">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-ink-faint">
-        Stat
-      </div>
+    <div className="pt-2 mt-2 border-t border-rule">
+      <Section title="Basics" onReset={() => clear(["label"])}>
+        <Row label="Label">
+          <input
+            value={(cfg.label as string) ?? ""}
+            onChange={(e) => set({ label: e.target.value || undefined })}
+            placeholder="e.g. Today's calories"
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          />
+        </Row>
+      </Section>
 
-      <Row label="Label">
-        <input
-          value={(cfg.label as string) ?? ""}
-          onChange={(e) => set({ label: e.target.value || undefined })}
-          placeholder="e.g. Today's calories"
-          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-        />
-      </Row>
-
-      <Row label="Collection">
-        <select
-          value={collectionId}
-          onChange={(e) =>
-            set({
-              collectionId: e.target.value || undefined,
-              fieldId: undefined,
-            })
-          }
-          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-        >
-          <option value="">— pick a collection —</option>
-          {module.collections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </Row>
-
-      <Row label="Aggregation">
-        <div className="grid grid-cols-3 gap-1">
-          {(
-            [
-              { id: "count", label: "Count" },
-              { id: "sum", label: "Sum" },
-              { id: "avg", label: "Avg" },
-              { id: "min", label: "Min" },
-              { id: "max", label: "Max" },
-            ] as const
-          ).map((opt) => {
-            const active = aggregation === opt.id;
-            return (
-              <button
-                key={opt.id}
-                onClick={() => set({ aggregation: opt.id })}
-                className={`text-xs px-2 py-1.5 rounded border transition-colors ${
-                  active
-                    ? "border-ink bg-ink text-paper"
-                    : "border-rule text-ink-muted hover:border-ink hover:text-ink"
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-      </Row>
-
-      {aggregation !== "count" && (
-        <Row label="Number field">
+      <Section
+        title="Data"
+        onReset={() =>
+          clear(["collectionId", "aggregation", "fieldId", "filter"])
+        }
+      >
+        <Row label="Collection">
           <select
-            value={fieldId}
-            onChange={(e) => set({ fieldId: e.target.value || undefined })}
-            disabled={!collection}
-            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+            value={collectionId}
+            onChange={(e) =>
+              set({
+                collectionId: e.target.value || undefined,
+                fieldId: undefined,
+              })
+            }
+            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
           >
-            <option value="">— pick a number field —</option>
-            {numberFields.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
+            <option value="">— pick a collection —</option>
+            {module.collections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </select>
-          {collection && numberFields.length === 0 && (
-            <p className="text-xs text-ink-faint mt-1">
-              This collection has no number fields.
-            </p>
-          )}
         </Row>
-      )}
 
-      <Row label="Time window">
-        <select
-          value={filter}
-          onChange={(e) => set({ filter: e.target.value })}
-          className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-        >
-          <option value="all">All time</option>
-          <option value="today">Today</option>
-          <option value="this_week">This week</option>
-          <option value="this_month">This month</option>
-        </select>
-      </Row>
+        <Row label="Aggregation">
+          <div className="grid grid-cols-3 gap-1">
+            {(
+              [
+                { id: "count", label: "Count" },
+                { id: "sum", label: "Sum" },
+                { id: "avg", label: "Avg" },
+                { id: "min", label: "Min" },
+                { id: "max", label: "Max" },
+              ] as const
+            ).map((opt) => {
+              const active = aggregation === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => set({ aggregation: opt.id })}
+                  className={`text-xs px-2 py-1.5 rounded border transition-colors ${
+                    active
+                      ? "border-ink bg-ink text-paper"
+                      : "border-rule text-ink-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
 
-      <div className="grid grid-cols-2 gap-2">
-        <Row label="Prefix">
-          <input
-            value={(cfg.prefix as string) ?? ""}
-            onChange={(e) => set({ prefix: e.target.value || undefined })}
-            placeholder="$, etc."
+        {aggregation !== "count" && (
+          <Row label="Number field">
+            <select
+              value={fieldId}
+              onChange={(e) => set({ fieldId: e.target.value || undefined })}
+              disabled={!collection}
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm disabled:opacity-50"
+            >
+              <option value="">— pick a number field —</option>
+              {numberFields.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            {collection && numberFields.length === 0 && (
+              <p className="text-xs text-ink-faint mt-1">
+                This collection has no number fields.
+              </p>
+            )}
+          </Row>
+        )}
+
+        <Row label="Time window">
+          <select
+            value={filter}
+            onChange={(e) => set({ filter: e.target.value })}
             className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+          >
+            <option value="all">All time</option>
+            <option value="today">Today</option>
+            <option value="this_week">This week</option>
+            <option value="this_month">This month</option>
+          </select>
+        </Row>
+      </Section>
+
+      <Section
+        title="Format"
+        defaultOpen={false}
+        onReset={() => clear(["prefix", "suffix"])}
+      >
+        <div className="grid grid-cols-2 gap-2">
+          <Row label="Prefix">
+            <input
+              value={(cfg.prefix as string) ?? ""}
+              onChange={(e) => set({ prefix: e.target.value || undefined })}
+              placeholder="$, etc."
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+            />
+          </Row>
+          <Row label="Suffix">
+            <input
+              value={(cfg.suffix as string) ?? ""}
+              onChange={(e) => set({ suffix: e.target.value || undefined })}
+              placeholder="kcal, kg..."
+              className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
+            />
+          </Row>
+        </div>
+      </Section>
+
+      <Section
+        title="Appearance"
+        defaultOpen={false}
+        onReset={() => clear(["color"])}
+      >
+        <Row label="Color">
+          <ColorPicker
+            value={cfg.color as ColorToken | undefined}
+            onChange={(t) => set({ color: t })}
           />
         </Row>
-        <Row label="Suffix">
-          <input
-            value={(cfg.suffix as string) ?? ""}
-            onChange={(e) => set({ suffix: e.target.value || undefined })}
-            placeholder="kcal, kg..."
-            className="w-full bg-transparent border-b border-rule focus:border-ink outline-none py-1 text-sm"
-          />
-        </Row>
-      </div>
+      </Section>
+
+      <Section
+        title="Typography"
+        defaultOpen={false}
+        onReset={() => clear(["labelText", "valueText"])}
+      >
+        <TextStyleControl
+          label="Label text style"
+          value={cfg.labelText as TextStyleConfig | undefined}
+          onChange={(next) => set({ labelText: next })}
+        />
+        <TextStyleControl
+          label="Value text style"
+          value={cfg.valueText as TextStyleConfig | undefined}
+          onChange={(next) => set({ valueText: next })}
+        />
+      </Section>
     </div>
   );
 }
@@ -2395,8 +4263,7 @@ function GoalSourceControl({
   const goalSource = cfg.goalSource as
     | { collectionId?: string; fieldId?: string }
     | undefined;
-  const mode: "fixed" | "field" =
-    goalSource?.collectionId && goalSource?.fieldId ? "field" : "fixed";
+  const mode: "fixed" | "field" = goalSource !== undefined ? "field" : "fixed";
 
   const set = (patch: Record<string, unknown>) =>
     onPatch({ config: { ...(element.config ?? {}), ...patch } });
@@ -2405,7 +4272,10 @@ function GoalSourceControl({
     ? module.collections.find((c) => c.id === goalSource.collectionId) ?? null
     : null;
   const numberFields = collection?.fields.filter((f) => f.type === "number") ?? [];
-  const singletonCollections = module.collections.filter((c) => c.singleton);
+  const collectionsWithNumberField = module.collections.filter((c) =>
+    c.fields.some((f) => f.type === "number"),
+  );
+  const hasSingleton = module.collections.some((c) => c.singleton);
 
   return (
     <>
@@ -2418,16 +4288,27 @@ function GoalSourceControl({
             ] as const
           ).map((opt) => {
             const active = mode === opt.id;
+            const disabled =
+              opt.id === "field" && collectionsWithNumberField.length === 0;
             return (
               <button
                 key={opt.id}
+                disabled={disabled}
+                title={
+                  disabled
+                    ? "Add a number field to a collection on the Schema tab first"
+                    : undefined
+                }
                 onClick={() => {
                   if (opt.id === "fixed") {
                     set({ goalSource: undefined });
                   } else {
+                    const preferred =
+                      collectionsWithNumberField.find((c) => c.singleton) ??
+                      collectionsWithNumberField[0];
                     set({
                       goalSource: {
-                        collectionId: singletonCollections[0]?.id,
+                        collectionId: preferred?.id,
                         fieldId: undefined,
                       },
                     });
@@ -2437,7 +4318,7 @@ function GoalSourceControl({
                   active
                     ? "border-ink bg-ink text-paper"
                     : "border-rule text-ink-muted hover:border-ink hover:text-ink"
-                }`}
+                } disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-rule disabled:hover:text-ink-muted`}
               >
                 {opt.label}
               </button>
@@ -2484,7 +4365,7 @@ function GoalSourceControl({
                 </option>
               ))}
             </select>
-            {singletonCollections.length === 0 && (
+            {!hasSingleton && (
               <p className="text-xs text-ink-faint mt-1">
                 Tip: mark a collection as singleton on the Schema tab so end
                 users can edit the goal.
@@ -2516,6 +4397,188 @@ function GoalSourceControl({
         </>
       )}
     </>
+  );
+}
+
+function ColorPicker({
+  value,
+  onChange,
+}: {
+  value: ColorToken | undefined;
+  onChange: (token: ColorToken | undefined) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = swatchFor(value);
+  const tiers: ("soft" | "mid" | "vivid")[] = ["soft", "mid", "vivid"];
+
+  const pick = (t: ColorToken | undefined) => {
+    onChange(t);
+    setOpen(false);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {/* Trigger: compact chip showing current selection */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 w-full px-2 py-1.5 rounded border border-rule hover:border-ink transition-colors text-xs text-ink-muted hover:text-ink"
+      >
+        <span
+          className="w-4 h-4 rounded-full border border-rule shrink-0"
+          style={{ backgroundColor: current.fill }}
+        />
+        <span className="flex-1 text-left truncate">
+          {value ? current.label : "Ink · default"}
+        </span>
+        <span
+          className="text-ink-faint inline-block transition-transform"
+          style={{ transform: open ? "rotate(180deg)" : "none" }}
+        >
+          ▾
+        </span>
+      </button>
+
+      {/* Expanded picker */}
+      {open && (
+        <div className="space-y-1.5 p-2 rounded border border-rule bg-paper">
+          {/* Ink (default / clear) */}
+          <button
+            onClick={() => pick(undefined)}
+            className={`flex items-center gap-2 w-full px-2 py-1 rounded text-[11px] transition-colors ${
+              !value
+                ? "bg-ink text-paper"
+                : "text-ink-muted hover:bg-rule/30 hover:text-ink"
+            }`}
+          >
+            <span
+              className="w-3.5 h-3.5 rounded-full border border-rule shrink-0"
+              style={{ backgroundColor: swatchFor("ink").fill }}
+            />
+            <span>Ink · default</span>
+          </button>
+
+          {/* Tier rows, no labels — soft sits on top (lightest), vivid bottom */}
+          <div className="space-y-1">
+            {tiers.map((tier) => (
+              <div
+                key={tier}
+                className="grid grid-cols-8 gap-1"
+                title={tier === "soft" ? "Soft" : tier === "mid" ? "Mid" : "Vivid"}
+              >
+                {PALETTE_HUES.map((hue) => {
+                  const s = swatchByHueTier(hue, tier);
+                  const active = value === s.token;
+                  return (
+                    <button
+                      key={s.token}
+                      onClick={() => pick(s.token)}
+                      title={s.label}
+                      className={`w-6 h-6 rounded-full border transition-all ${
+                        active
+                          ? "border-ink scale-110 shadow-sm"
+                          : "border-rule hover:border-ink"
+                      }`}
+                      style={{ backgroundColor: s.fill }}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Combos — compact strip, tooltip only */}
+          <div className="flex flex-wrap gap-1 pt-1 border-t border-rule">
+            {COLOR_COMBOS.map((combo) => {
+              const swatches = combo.tokens.map((t) => swatchFor(t));
+              return (
+                <button
+                  key={combo.id}
+                  onClick={() => pick(combo.tokens[0])}
+                  title={`${combo.label}: ${swatches
+                    .map((s) => s.label)
+                    .join(" + ")}`}
+                  className="flex -space-x-1 px-1.5 py-1 rounded border border-rule hover:border-ink transition-colors"
+                >
+                  {swatches.map((s, i) => (
+                    <span
+                      key={i}
+                      className="w-3 h-3 rounded-full border border-paper"
+                      style={{ backgroundColor: s.fill }}
+                    />
+                  ))}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  defaultOpen = true,
+  onReset,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  onReset?: () => void;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div
+      className={`rounded-md mb-2 last:mb-0 transition-colors ${
+        open ? "bg-rule/25" : "bg-rule/10 hover:bg-rule/20"
+      }`}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
+        className={`group w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[10px] uppercase tracking-[0.18em] cursor-pointer transition-colors ${
+          open ? "text-ink" : "text-ink-muted hover:text-ink"
+        }`}
+      >
+        <span className="text-left">{title}</span>
+        <div className="flex items-center gap-1.5">
+          {onReset && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReset();
+              }}
+              title={`Reset ${title.toLowerCase()}`}
+              className="normal-case tracking-normal text-[10px] text-ink-faint opacity-0 group-hover:opacity-100 hover:text-ink transition-opacity"
+            >
+              Reset
+            </button>
+          )}
+          <span
+            className="inline-flex w-5 h-5 items-center justify-center rounded border border-rule bg-paper text-ink-muted group-hover:border-ink group-hover:text-ink transition-colors"
+            aria-hidden
+          >
+            <span
+              className="inline-block transition-transform leading-none text-[11px]"
+              style={{ transform: open ? "rotate(180deg)" : "none" }}
+            >
+              ▾
+            </span>
+          </span>
+        </div>
+      </div>
+      {open && <div className="px-3 pb-3 pt-1 space-y-3">{children}</div>}
+    </div>
   );
 }
 

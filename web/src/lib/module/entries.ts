@@ -129,3 +129,22 @@ export function replaceLocalEntry(entry: Entry): void {
 export function countEntries(moduleId: Id, collectionId: Id): number {
   return readAll(moduleId)[collectionId]?.length ?? 0;
 }
+
+/** Summary across every collection in a module — used for home cards. */
+export function moduleActivity(moduleId: Id): {
+  total: number;
+  lastAt: string | null;
+} {
+  const store = readAll(moduleId);
+  let total = 0;
+  let lastAt: number | null = null;
+  for (const list of Object.values(store)) {
+    if (!list) continue;
+    total += list.length;
+    for (const e of list) {
+      const t = Date.parse(e.updatedAt || e.createdAt);
+      if (!Number.isNaN(t) && (lastAt === null || t > lastAt)) lastAt = t;
+    }
+  }
+  return { total, lastAt: lastAt === null ? null : new Date(lastAt).toISOString() };
+}

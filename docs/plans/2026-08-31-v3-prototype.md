@@ -1,5 +1,9 @@
 # TAKDA v3 — Prototype Plan (Finance vertical slice)
 
+**Module:** Blueprint · touches: Compiler, Runtime, Studio MCP, Capability Engine, Finance Proving Ground
+**Branch:** per ticket — see each section below
+**GroveLab:** none — not yet asked; see "Open questions"
+
 **Created:** 2026-08-31
 **Window:** 2026-09-01 → 2026-09-11 (2 weeks)
 **Status:** Prototype. Validation only — not production scope.
@@ -31,32 +35,6 @@ visual builder port. No diagnostic metadata. No tiny local model. No Module MCP
 
 These are all real and all deferred until the core loop is proven.
 
-## Stages
-
-1. **Contract** — Blueprint schema + MDL shape + stable identity scheme.
-   Hand-write the Expenses Blueprint by hand. No tooling yet.
-2. **Runtime** — fresh minimal web renderer against hand-written MDL:
-   form, list, stat. Records in browser-local storage.
-3. **Compiler** — Blueprint → MDL + Capability Manifest, plus the validator.
-   Same hand-written Blueprint must now produce the MDL from stage 1.
-4. **Studio MCP** — stdio MCP server: primitives, validate, publish, list, get.
-   Connected to a real Claude client.
-5. **Proving ground** — Expenses authored *by prompt*, then Bills, proving
-   `mark_paid` creates exactly one linked Expense.
-
-## Definition of done
-
-The prototype succeeds when, from a fresh Claude session with only the Studio
-MCP connected:
-
-1. "I want to track my expenses" produces a valid published Module.
-2. Opening the runtime renders it with no module-specific code.
-3. A real expense can be logged and appears in the list and the total.
-4. "Add bills, and mark-paid should record the expense" extends the Module.
-5. Marking a bill paid creates exactly one Expense, twice in a row.
-
-Anything past step 3 is upside. Steps 1-3 are the actual test.
-
 ## Schedule
 
 | Stage | Target | Window |
@@ -72,39 +50,96 @@ contract it produces. If stage 1 slips, the whole slice slips.
 
 ## Tasks
 
-Numbered so Build Log progress entries have something real to reference.
-Numbering is continuous across the plan and never reused.
+Numbered continuously and never reused. Every task names the files it touches —
+that is the attachment point between this plan and its evidence.
 
-### WG-TX-AJHJ94-00001-TK — Blueprint schema (stage 1)
+### WG-TX-AJHJ94-00001-TK — Blueprint schema
 
-1. Stable identity scheme — branded opaque ids, minted once at the Blueprint
+**Module:** Blueprint
+**Branch:** AJHJ94/task/00001-define-the-blueprint-schema-hand-written
+
+1. **Stable identity scheme.** Branded opaque ids, minted once at the Blueprint
    layer, never derived from names.
-2. Blueprint intent schema — records, fields, actions, questions, views.
+   — `core/ids.ts`
+2. **Blueprint intent schema.** Records, fields, actions, questions, views.
    Views carry an intent, not a layout.
-3. Hand-write the Expenses Blueprint against the schema.
-4. Verify — typecheck under strict, and prove no spatial property leaked in.
+   — `core/blueprint.ts`
+3. **Hand-write the Expenses Blueprint** against the schema.
+   — `core/blueprints/expenses.ts`
+4. **Verify.** Typecheck under strict; confirm no spatial property leaked in.
+   — `core/tsconfig.json`
 
-### WG-TX-AJHJ94-00002-TK — Stable identity proof (stage 1)
+### WG-TX-AJHJ94-00002-TK — Stable identity proof
 
-5. Rename a field key and a record key in the Expenses Blueprint.
-6. Demonstrate every id is unchanged and no stored record is orphaned.
+**Module:** Stable Identity
+**Branch:** AJHJ94/task/00002-stable-internal-id-scheme-and-minting
 
-### WG-TX-AJHJ94-00003-TK — MDL v3 shape (stage 1)
+5. **Rename a field key and a record key** in the Expenses Blueprint.
+   — `core/blueprints/expenses.ts`
+6. **Demonstrate every id is unchanged** and no stored record is orphaned.
+   — `core/identity-check.ts`
 
-7. Define the MDL execution contract — deliberately smaller than v2's.
-8. Hand-write the Expenses MDL as the fixture the compiler must reproduce.
+### WG-TX-AJHJ94-00003-TK — MDL v3 shape
 
-### WG-TX-AJHJ94-00004-FE — Web renderer (stage 2)
+**Module:** Compiler
+**Branch:** AJHJ94/task/00003-define-mdl-v3-shape-and-hand
 
-9. Render form, list, stat and group blocks from MDL.
-10. Degrade visibly on an unknown block rather than crashing.
+7. **Define the MDL execution contract** — deliberately smaller than v2's.
+   — `core/mdl.ts`
+8. **Hand-write the Expenses MDL** as the fixture the compiler must reproduce.
+   — `core/mdl/expenses.ts`
 
-### WG-TX-AJHJ94-00005-FE — Local store (stage 2)
+### WG-TX-AJHJ94-00004-FE — Web renderer
 
-11. Persist records keyed by stable id, surviving reload.
-12. Keep the store interface narrow enough to reimplement on SQLite.
+**Module:** Web Renderer
+**Branch:** AJHJ94/feature/00004-minimal-web-renderer-form-list
 
-### WG-TX-AJHJ94-00006-FE — Runtime route (stage 2)
+9. **Render form, list, stat and group blocks** from MDL.
+   — `web/src/components/v3/renderer.tsx`, `web/src/components/v3/blocks.tsx`
+10. **Degrade visibly on an unknown block** rather than crashing.
+    — `web/src/components/v3/renderer.tsx`
 
-13. Wire definition, renderer and store into a usable route.
-14. Log a real expense end to end with no expenses-specific code in the path.
+### WG-TX-AJHJ94-00005-FE — Local store
+
+**Module:** Local Store
+**Branch:** AJHJ94/feature/00005-browser-local-record-store-against
+
+11. **Persist records keyed by stable id**, surviving reload.
+    — `web/src/lib/v3/store.ts`
+12. **Keep the store interface narrow** enough to reimplement on SQLite.
+    — `web/src/lib/v3/store.ts`
+
+### WG-TX-AJHJ94-00006-FE — Runtime route
+
+**Module:** Runtime
+**Branch:** AJHJ94/feature/00006-runtime-route-rendering-the-hand-written
+
+13. **Wire definition, renderer and store** into a usable route.
+    — `web/src/app/(app)/v3/[slug]/page.tsx`
+14. **Log a real expense end to end** with no expenses-specific code in the path.
+    — `web/src/app/(app)/v3/[slug]/page.tsx`
+
+## Definition of done
+
+The prototype succeeds when, from a fresh Claude session with only the Studio
+MCP connected:
+
+1. "I want to track my expenses" produces a valid published Module.
+2. Opening the runtime renders it with no module-specific code.
+3. A real expense can be logged and appears in the list and the total.
+4. "Add bills, and mark-paid should record the expense" extends the Module.
+5. Marking a bill paid creates exactly one Expense, twice in a row.
+
+Anything past step 3 is upside. Steps 1-3 are the actual test.
+
+## Open questions
+
+- **Lifecycle branches.** RULES §6 defines `development → staging → main` and
+  names `forgejo` as the remote. This repository has neither: the branches are
+  `main`, `v1`, `v2`, `v3`, and the remote is `origin` on GitHub. Which branch
+  plays `development` here needs deciding before anything merges.
+- **GroveLab.** RULES §7 requires asking whether one exists before planning.
+  Asked as part of this plan's review; not yet answered.
+- **Plan granularity.** RULES §7 implies one plan per ticket (singular Module
+  and Branch in the header). This is one plan covering six tickets, with
+  per-ticket sections as the compromise. Split if that is wrong.

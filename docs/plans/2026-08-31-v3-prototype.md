@@ -69,3 +69,42 @@ Anything past step 3 is upside. Steps 1-3 are the actual test.
 
 Stage 1 is the critical path: everything downstream compiles against the
 contract it produces. If stage 1 slips, the whole slice slips.
+
+## Tasks
+
+Numbered so Build Log progress entries have something real to reference.
+Numbering is continuous across the plan and never reused.
+
+### WG-TX-AJHJ94-00001-TK — Blueprint schema (stage 1)
+
+1. Stable identity scheme — branded opaque ids, minted once at the Blueprint
+   layer, never derived from names.
+2. Blueprint intent schema — records, fields, actions, questions, views.
+   Views carry an intent, not a layout.
+3. Hand-write the Expenses Blueprint against the schema.
+4. Verify — typecheck under strict, and prove no spatial property leaked in.
+
+### WG-TX-AJHJ94-00002-TK — Stable identity proof (stage 1)
+
+5. Rename a field key and a record key in the Expenses Blueprint.
+6. Demonstrate every id is unchanged and no stored record is orphaned.
+
+### WG-TX-AJHJ94-00003-TK — MDL v3 shape (stage 1)
+
+7. Define the MDL execution contract — deliberately smaller than v2's.
+8. Hand-write the Expenses MDL as the fixture the compiler must reproduce.
+
+### WG-TX-AJHJ94-00004-FE — Web renderer (stage 2)
+
+9. Render form, list, stat and group blocks from MDL.
+10. Degrade visibly on an unknown block rather than crashing.
+
+### WG-TX-AJHJ94-00005-FE — Local store (stage 2)
+
+11. Persist records keyed by stable id, surviving reload.
+12. Keep the store interface narrow enough to reimplement on SQLite.
+
+### WG-TX-AJHJ94-00006-FE — Runtime route (stage 2)
+
+13. Wire definition, renderer and store into a usable route.
+14. Log a real expense end to end with no expenses-specific code in the path.

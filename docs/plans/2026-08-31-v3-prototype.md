@@ -2,7 +2,7 @@
 
 **Module:** Blueprint · touches: Compiler, Runtime, Studio MCP, Capability Engine, Finance Proving Ground
 **Branch:** per ticket — see each section below
-**GroveLab:** none — not yet asked; see "Open questions"
+**GroveLab:** none — asked, none exists
 
 **Created:** 2026-08-31
 **Window:** 2026-09-01 → 2026-09-11 (2 weeks)
@@ -132,14 +132,14 @@ MCP connected:
 
 Anything past step 3 is upside. Steps 1-3 are the actual test.
 
-## Open questions
+## Resolved questions
 
-- **Lifecycle branches.** RULES §6 defines `development → staging → main` and
-  names `forgejo` as the remote. This repository has neither: the branches are
-  `main`, `v1`, `v2`, `v3`, and the remote is `origin` on GitHub. Which branch
-  plays `development` here needs deciding before anything merges.
-- **GroveLab.** RULES §7 requires asking whether one exists before planning.
-  Asked as part of this plan's review; not yet answered.
-- **Plan granularity.** RULES §7 implies one plan per ticket (singular Module
-  and Branch in the header). This is one plan covering six tickets, with
-  per-ticket sections as the compromise. Split if that is wrong.
+- **Lifecycle branches.** Resolved. A real `development` branch now exists,
+  cut from `v3` at `c839add`, and is the integration stream: cut every ticket
+  branch from it, merge every ticket branch back into it with `--no-ff`. The
+  remote is `origin` on GitHub, not `forgejo` as RULES §6 names — that is the
+  one place this repository departs from the contract.
+- **GroveLab.** Asked; none exists. Recorded in the header.
+- **Plan granularity.** Agreed as one slice plan covering all six tickets,
+  with a per-ticket section carrying its own module and branch. RULES §7's
+  header is singular; this is the agreed departure from it.
